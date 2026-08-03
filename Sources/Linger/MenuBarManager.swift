@@ -7,6 +7,7 @@ import os.log
 final class MenuBarManager: NSObject {
 
     private let statusItem: NSStatusItem
+    private let statusItemView = LingerStatusItemView()
     private let log = OSLog(subsystem: "com.linger.menubar", category: "MenuBarManager")
 
     // MARK: - 拖拽状态机（自 Linger2.1 打磨版移植）
@@ -46,7 +47,6 @@ final class MenuBarManager: NSObject {
     private var hoverListView: HoverListView?
     /// 窗口顶部锚点 Y（屏幕坐标，动画中保持不变，底部随高度变化）
     private var hoverListTopAnchorY: CGFloat = 0
-    private var hoverOverlay: HoverTrackingOverlay?
     /// 鼠标移到面板上时 0.3s 延迟关闭 —— 防止误关
     private var hoverHideWorkItem: DispatchWorkItem?
     /// 鼠标真的进入过面板区域（延迟 0.3s 后判定）→ 用这个标志让面板一直保持打开直到真离开
@@ -62,6 +62,7 @@ final class MenuBarManager: NSObject {
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
         rightClickMenu = NSMenu()
         super.init()
+        statusItem.view = statusItemView
         configureStatusItemStep2()
         // 右键菜单在 showRightClickMenu 中每次重建（实时更新日历权限状态）
         // Step 3 修正：接入 timerStateChangedNotification 监听 — 菜单栏实时同步倒计时
@@ -84,7 +85,6 @@ final class MenuBarManager: NSObject {
         clickHintTimer?.invalidate()
         if let m = localMonitor { NSEvent.removeMonitor(m) }
         hoverHideWorkItem?.cancel()
-        hoverOverlay?.removeFromSuperview()
         hoverListWindow?.orderOut(nil)
     }
 
@@ -145,42 +145,39 @@ final class MenuBarManager: NSObject {
 
     /// 图标风格切换后由设置窗口通知触发，重建菜单栏图标（T10 / T12）
     private func refreshMenuBarIcon() {
-        guard let button = statusItem.button else { return }
-        button.image = buildMenuBarIcon()
+        if let icon = buildMenuBarIcon() {
+            statusItemView.setIcon(icon)
+        }
     }
 
     // MARK: - 配置
 
-    /// Step 3 修正：加载 SF Symbol 图标 + 拦截 mouseDown；右键菜单不再绑在 statusItem.menu 上
+    /// 自定义 statusItem.view 装配：事件直接在视图层处理，
+    /// 不再经过 NSStatusBarButton 的 cell tracking loop ——
+    /// 这是「按钮吞 mouseUp → 拖拽状态机卡死 → 松手不计时」老 bug 的根治方案。
     private func configureStatusItemStep2() {
-        guard let button = statusItem.button else {
-            NSLog("[Linger] ERROR: statusItem.button is nil")
-            return
-        }
-
-        button.imagePosition = .imageLeft
         if let icon = buildMenuBarIcon() {
-            button.image = icon
-            button.title = ""
-        } else {
-            // 降级：SF Symbol 都加载不到时显示文字
-            button.image = nil
-            button.title = "Linger"
+            statusItemView.setIcon(icon)
         }
-        button.font = NSFont.systemFont(ofSize: NSFont.systemFontSize)
+        statusItemView.setTitle("")
 
-        // 关键：解绑 statusItem.menu，让 AppKit 把所有点击交给 button.action
-        statusItem.menu = nil
+        statusItemView.onMouseDown = { [weak self] in
+            self?.beginDrag()
+        }
+        statusItemView.onMouseUp = { [weak self] in
+            self?.finishDrag()
+        }
+        statusItemView.onRightMouseUp = { [weak self] in
+            self?.showRightClickMenu()
+        }
+        statusItemView.onMouseEntered = { [weak self] in
+            self?.handleHoverEntered()
+        }
+        statusItemView.onMouseExited = { [weak self] in
+            self?.handleHoverExited()
+        }
 
-        // 2.1 装配：左键**按下**进拖拽状态机；右键**抬起**弹菜单。
-        //   关键点在于 action 只挂 .leftMouseDown —— 按钮不消费 leftMouseUp，
-        //   拖拽期的局部 monitor 才能稳定收到松手事件（这是 2.1 能正常计时的根本原因）。
-        button.target = self
-        button.action = #selector(handleStatusClick(_:))
-        button.sendAction(on: [.leftMouseDown, .rightMouseUp])
-
-        NSLog("[Linger] Step 3 fix: status item configured (icon=%@, mouseDown intercept)",
-              buildMenuBarIcon() != nil ? "SF Symbol" : "text fallback")
+        NSLog("[Linger] status item configured (custom view, direct mouseUp)")
 
         // T7/T10: 图标风格实时刷新（设置窗口改变 linger_iconStyle 时通知）
         NotificationCenter.default.addObserver(
@@ -252,47 +249,25 @@ final class MenuBarManager: NSObject {
 
     /// Step 3 阶段：监听 timerStateChangedNotification —— 有计时时显示倒计时文字，无计时时清空
     private func refreshStatusItemTitle() {
-        guard let button = statusItem.button else { return }
-        // 兜底：保证图标永远存在
-        if button.image == nil {
-            button.image = buildMenuBarIcon()
-        }
         // 拖拽中菜单栏文字由 refreshStatusTextDuringDrag 独占，
         // 否则每秒的 timerTick 通知会把预览读数闪回成运行态读数。
         // （cleanupDrag 会在松手后主动调用本方法复位）
         if dragState == .dragging { return }
         if let earliest = TimerManager.shared.earliestEntry, earliest.remainingTime > 0 {
-            button.title = " " + earliest.displayTime
+            statusItemView.setTitle(" " + earliest.displayTime)
         } else {
-            button.title = ""
+            statusItemView.setTitle("")
         }
     }
 
     /// 拖拽过程中把菜单栏文字替换成实时预览时长（松手后由 refreshStatusItemTitle 复位）。
     /// 与运行态共用 TimerEntry.displayString，保证松手瞬间读数不跳格式。
     private func refreshStatusTextDuringDrag(seconds: TimeInterval) {
-        guard let button = statusItem.button else { return }
-        button.title = " " + TimerEntry.displayString(seconds: seconds,
-                                                      format: TimerEntry.currentTimeFormat)
-    }
-
-    // MARK: - 点击处理
-
-    /// 状态栏点击分发（2.1）：右键 / Ctrl+左键 → 菜单；左键按下 → 进拖拽状态机。
-    @objc private func handleStatusClick(_ sender: Any?) {
-        guard let event = NSApp.currentEvent else { return }
-
-        if event.type == .rightMouseUp || event.modifierFlags.contains(.control) {
-            showRightClickMenu()
-            return
-        }
-        if event.type == .leftMouseDown {
-            beginDrag()
-        }
+        statusItemView.setTitle(" " + TimerEntry.displayString(seconds: seconds,
+                                                               format: TimerEntry.currentTimeFormat))
     }
 
     private func showRightClickMenu() {
-        guard let button = statusItem.button else { return }
 
         // 每次右键时重建菜单，确保日历权限状态实时更新
         rightClickMenu.removeAllItems()
@@ -325,8 +300,8 @@ final class MenuBarManager: NSObject {
         quitItem.target = self
         rightClickMenu.addItem(quitItem)
 
-        let location = NSPoint(x: 0, y: button.bounds.height)
-        rightClickMenu.popUp(positioning: nil, at: location, in: button)
+        let location = NSPoint(x: 0, y: statusItemView.bounds.height)
+        rightClickMenu.popUp(positioning: nil, at: location, in: statusItemView)
     }
 
     // MARK: - 拖拽状态机（自 Linger2.1 打磨版移植：idle → pressed → dragging）
@@ -447,16 +422,19 @@ final class MenuBarManager: NSObject {
     }
 
     private func finishDrag() {
-        // 只按了一下没拖动 → 不建计时，直接收尾（点击提示由 cleanupDrag 关掉）
-        guard dragState == .dragging else {
+        let current = NSEvent.mouseLocation
+        let distance = max(0, dragStartLocation.y - current.y)
+
+        // 只要位移超过阈值即视为拖拽 —— 即使 30fps 轮询还没来得及把
+        // .pressed 升级成 .dragging，松手也要按当前距离创建计时（WYSIWYG）。
+        let isDrag = dragState == .dragging || (dragState == .pressed && distance > 4)
+        guard isDrag else {
             os_log("finishDrag: click only (state=%{public}@)",
                    log: log, type: .debug, String(describing: dragState))
             cleanupDrag()
             return
         }
 
-        let current = NSEvent.mouseLocation
-        let distance = max(0, dragStartLocation.y - current.y)
         let maxSeconds = maxDragDurationSeconds()
         let rawSeconds = TimerEntry.duration(fromDragDistance: Double(distance), maxSeconds: maxSeconds)
         // 与 pollDrag 用同一套曲线 + 同一次吸附 → 松手所得 == 松手前所见（WYSIWYG）
@@ -546,11 +524,11 @@ final class MenuBarManager: NSObject {
 
     /// 状态栏按钮在屏幕坐标系下的矩形（拖拽反馈 / 点击提示的锚点）。
     private func buttonScreenRect() -> NSRect {
-        guard let button = statusItem.button, let window = button.window else {
+        guard let window = statusItemView.window else {
             let y = NSScreen.main?.visibleFrame.maxY ?? 800
             return NSRect(x: 0, y: y, width: 24, height: 24)
         }
-        return window.convertToScreen(button.frame)
+        return window.convertToScreen(statusItemView.frame)
     }
 
     // MARK: - 拖拽反馈视图（单实例复用，show/hide 切换）
@@ -638,24 +616,10 @@ final class MenuBarManager: NSObject {
 
     // MARK: - Step 5: 悬停计时列表面板
 
-    /// 安装 NSTrackingArea —— 把透明 overlay 嵌到 statusItem.button 上
-    /// 鼠标进入 overlay 区域时弹面板，离开时延迟 0.3s 判定（防止从图标滑到面板时误关）
+    /// 悬停追踪由 LingerStatusItemView 内建的 NSTrackingArea 承担
+    /// （鼠标进入图标 → 弹面板；离开 → 0.3s 延迟判定）。
     private func installHoverTracking() {
-        guard let button = statusItem.button else { return }
-        // 防御性：清理旧的
-        hoverOverlay?.removeFromSuperview()
-
-        let overlay = HoverTrackingOverlay(frame: button.bounds)
-        overlay.autoresizingMask = [.width, .height]
-        overlay.onMouseEntered = { [weak self] in
-            self?.handleHoverEntered()
-        }
-        overlay.onMouseExited = { [weak self] in
-            self?.handleHoverExited()
-        }
-        button.addSubview(overlay)
-        hoverOverlay = overlay
-        os_log("Hover tracking installed on status item", log: log, type: .info)
+        statusItemView.updateTrackingAreas()
     }
 
     /// 鼠标进入图标 → 检查是否有计时器，有则弹面板
@@ -717,8 +681,7 @@ final class MenuBarManager: NSObject {
     }
 
     private func showHoverList() {
-        guard let button = statusItem.button,
-              let win = button.window else { return }
+        guard let win = statusItemView.window else { return }
 
         // 修复 1: 先过滤归零的 entry —— panelH 也要按过滤后的数量算
         //   之前的 bug: allDisplayEntries 包含归零的 entry, setEntries 内部又过滤
@@ -732,7 +695,7 @@ final class MenuBarManager: NSObject {
         let scCount = entries.filter { $0.isScheduled }.count
         let panelW = HoverListView.panelWidth
         let panelH = HoverListView.panelHeight3(runningCount: rCount, pausedCount: pCount, scheduledCount: scCount)
-        let buttonFrame = button.frame
+        let buttonFrame = statusItemView.frame
         let screenOrigin = win.convertPoint(toScreen: NSPoint(x: NSMinX(buttonFrame), y: NSMinY(buttonFrame)))
         let originX = screenOrigin.x + buttonFrame.width / 2 - panelW / 2
         // 面板从图标下沿向下延伸
