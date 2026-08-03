@@ -1,0 +1,434 @@
+{
+  "data": [
+    {
+      "id": "page-menubar-idle",
+      "title": "菜单栏 · 空闲",
+      "type": "page",
+      "version": 1,
+      "createdAt": 1785640917000,
+      "canvasData": {
+        "x": 0,
+        "y": 0,
+        "group": 0,
+        "layoutSnapshot": {
+          "version": 1,
+          "contentHeight": 900,
+          "viewportWidth": 1440,
+          "sourceHash": "fnv1a-1dda5e81",
+          "measuredAt": 1785642051053
+        }
+      },
+      "devMetadata": {
+        "htmlSrc": "pages/menubar-idle.html",
+        "interactions": [
+          {
+            "domId": "cta-drag",
+            "targetPageId": "page-menubar-drag",
+            "transitionLabel": "点击状态栏图标开始拖拽"
+          },
+          {
+            "domId": "shortcut-hover-list",
+            "targetPageId": "page-hover-list",
+            "hideEdge": true,
+            "transitionLabel": "悬停弹出计时列表"
+          }
+        ]
+      }
+    },
+    {
+      "id": "page-menubar-drag",
+      "title": "菜单栏 · 拖拽计时",
+      "type": "page",
+      "version": 1,
+      "createdAt": 1785640917000,
+      "canvasData": {
+        "x": 620,
+        "y": 0,
+        "group": 0,
+        "layoutSnapshot": {
+          "version": 1,
+          "contentHeight": 900,
+          "viewportWidth": 1440,
+          "sourceHash": "fnv1a-18706ef6",
+          "measuredAt": 1785642946758
+        }
+      },
+      "devMetadata": {
+        "htmlSrc": "pages/menubar-drag.html",
+        "interactions": [
+          {
+            "domId": "cta-hover-list",
+            "targetPageId": "page-hover-list",
+            "transitionLabel": "松手开始计时"
+          },
+          {
+            "domId": "cta-toast",
+            "targetPageId": "page-toast",
+            "transitionLabel": "拖拽溢出回弹反馈"
+          }
+        ]
+      }
+    },
+    {
+      "id": "page-hover-list",
+      "title": "悬停计时列表",
+      "type": "page",
+      "version": 1,
+      "createdAt": 1785640917000,
+      "canvasData": {
+        "x": 1240,
+        "y": 0,
+        "group": 1,
+        "layoutSnapshot": {
+          "version": 1,
+          "contentHeight": 900,
+          "viewportWidth": 1440,
+          "sourceHash": "fnv1a-50d07fbd",
+          "measuredAt": 1785642051053
+        }
+      },
+      "devMetadata": {
+        "htmlSrc": "pages/hover-list.html",
+        "interactions": [
+          {
+            "domId": "cta-notification-inline",
+            "targetPageId": "page-notification-inline",
+            "transitionLabel": "计时完成发送通知"
+          },
+          {
+            "domId": "cta-settings",
+            "targetPageId": "page-settings-operations",
+            "transitionLabel": "打开设置"
+          },
+          {
+            "domId": "shortcut-about",
+            "targetPageId": "page-about",
+            "hideEdge": true,
+            "transitionLabel": "右键菜单·关于"
+          },
+          {
+            "domId": "back-idle",
+            "targetPageId": "page-menubar-idle",
+            "hideEdge": true,
+            "transitionLabel": "列表消失返回空闲态"
+          },
+          {
+            "domId": "cta-schedule-timer",
+            "targetPageId": "page-schedule-timer",
+            "transitionLabel": "预约计时浮窗"
+          }
+        ]
+      }
+    },
+    {
+      "id": "page-toast",
+      "title": "Toast 提示",
+      "type": "page",
+      "version": 1,
+      "createdAt": 1785640917000,
+      "canvasData": {
+        "x": 1240,
+        "y": 377,
+        "group": 1,
+        "layoutSnapshot": {
+          "version": 1,
+          "contentHeight": 900,
+          "viewportWidth": 1440,
+          "sourceHash": "fnv1a-94fe4da9",
+          "measuredAt": 1785642051053
+        }
+      },
+      "devMetadata": {
+        "htmlSrc": "pages/toast.html",
+        "interactions": []
+      }
+    },
+    {
+      "id": "page-settings-operations",
+      "title": "设置 · 操作",
+      "type": "page",
+      "version": 1,
+      "createdAt": 1785640917000,
+      "canvasData": {
+        "x": -564,
+        "y": 754,
+        "group": 2,
+        "layoutSnapshot": {
+          "version": 1,
+          "contentHeight": 900,
+          "viewportWidth": 1440,
+          "sourceHash": "fnv1a-ad372cdc",
+          "measuredAt": 1785642051053
+        }
+      },
+      "devMetadata": {
+        "htmlSrc": "pages/settings-operations.html",
+        "interactions": [
+          {
+            "domId": "tab-notifications",
+            "targetPageId": "page-settings-notifications",
+            "hideEdge": true,
+            "transitionLabel": "设置面板切换"
+          },
+          {
+            "domId": "tab-calendar",
+            "targetPageId": "page-settings-calendar",
+            "hideEdge": true,
+            "transitionLabel": "设置面板切换"
+          },
+          {
+            "domId": "tab-general",
+            "targetPageId": "page-settings-general",
+            "hideEdge": true,
+            "transitionLabel": "设置面板切换"
+          }
+        ]
+      }
+    },
+    {
+      "id": "page-settings-notifications",
+      "title": "设置 · 通知",
+      "type": "page",
+      "version": 1,
+      "createdAt": 1785640917000,
+      "canvasData": {
+        "x": 0,
+        "y": 754,
+        "group": 2,
+        "layoutSnapshot": {
+          "version": 1,
+          "contentHeight": 900,
+          "viewportWidth": 1440,
+          "sourceHash": "fnv1a-87e2365a",
+          "measuredAt": 1785642051053
+        }
+      },
+      "devMetadata": {
+        "htmlSrc": "pages/settings-notifications.html",
+        "interactions": [
+          {
+            "domId": "tab-operations",
+            "targetPageId": "page-settings-operations",
+            "hideEdge": true,
+            "transitionLabel": "设置面板切换"
+          },
+          {
+            "domId": "tab-calendar",
+            "targetPageId": "page-settings-calendar",
+            "hideEdge": true,
+            "transitionLabel": "设置面板切换"
+          },
+          {
+            "domId": "tab-general",
+            "targetPageId": "page-settings-general",
+            "hideEdge": true,
+            "transitionLabel": "设置面板切换"
+          }
+        ]
+      }
+    },
+    {
+      "id": "page-settings-calendar",
+      "title": "设置 · 日历",
+      "type": "page",
+      "version": 1,
+      "createdAt": 1785640917000,
+      "canvasData": {
+        "x": 620,
+        "y": 754,
+        "group": 2,
+        "layoutSnapshot": {
+          "version": 1,
+          "contentHeight": 900,
+          "viewportWidth": 1440,
+          "sourceHash": "fnv1a-28dea33c",
+          "measuredAt": 1785642051053
+        }
+      },
+      "devMetadata": {
+        "htmlSrc": "pages/settings-calendar.html",
+        "interactions": [
+          {
+            "domId": "tab-operations",
+            "targetPageId": "page-settings-operations",
+            "hideEdge": true,
+            "transitionLabel": "设置面板切换"
+          },
+          {
+            "domId": "tab-notifications",
+            "targetPageId": "page-settings-notifications",
+            "hideEdge": true,
+            "transitionLabel": "设置面板切换"
+          },
+          {
+            "domId": "tab-general",
+            "targetPageId": "page-settings-general",
+            "hideEdge": true,
+            "transitionLabel": "设置面板切换"
+          }
+        ]
+      }
+    },
+    {
+      "id": "page-settings-general",
+      "title": "设置 · 通用",
+      "type": "page",
+      "version": 1,
+      "createdAt": 1785640917000,
+      "canvasData": {
+        "x": 1240,
+        "y": 754,
+        "group": 2,
+        "layoutSnapshot": {
+          "version": 1,
+          "contentHeight": 900,
+          "viewportWidth": 1440,
+          "sourceHash": "fnv1a-fbf50878",
+          "measuredAt": 1785642051053
+        }
+      },
+      "devMetadata": {
+        "htmlSrc": "pages/settings-general.html",
+        "interactions": [
+          {
+            "domId": "tab-operations",
+            "targetPageId": "page-settings-operations",
+            "hideEdge": true,
+            "transitionLabel": "设置面板切换"
+          },
+          {
+            "domId": "tab-notifications",
+            "targetPageId": "page-settings-notifications",
+            "hideEdge": true,
+            "transitionLabel": "设置面板切换"
+          },
+          {
+            "domId": "tab-calendar",
+            "targetPageId": "page-settings-calendar",
+            "hideEdge": true,
+            "transitionLabel": "设置面板切换"
+          }
+        ]
+      }
+    },
+    {
+      "id": "page-about",
+      "title": "关于窗口",
+      "type": "page",
+      "version": 1,
+      "createdAt": 1785640917000,
+      "canvasData": {
+        "x": 1860,
+        "y": 754,
+        "group": 3,
+        "layoutSnapshot": {
+          "version": 1,
+          "contentHeight": 900,
+          "viewportWidth": 1440,
+          "sourceHash": "fnv1a-346bfefb",
+          "measuredAt": 1785642051053
+        }
+      },
+      "devMetadata": {
+        "htmlSrc": "pages/about.html",
+        "interactions": []
+      }
+    },
+    {
+      "id": "page-notification-inline",
+      "title": "通知横幅 · 内联记录",
+      "type": "page",
+      "version": 1,
+      "createdAt": 1785640917000,
+      "canvasData": {
+        "x": 1860,
+        "y": 0,
+        "group": 1,
+        "layoutSnapshot": {
+          "version": 1,
+          "contentHeight": 900,
+          "viewportWidth": 1440,
+          "sourceHash": "fnv1a-7a3c2e9f",
+          "measuredAt": 1785642051053
+        }
+      },
+      "devMetadata": {
+        "htmlSrc": "pages/notification-inline.html",
+        "interactions": [
+          {
+            "domId": "cta-notification-original",
+            "targetPageId": "page-notification",
+            "hideEdge": true,
+            "transitionLabel": "对比原版通知横幅"
+          }
+        ]
+      }
+    },
+    {
+      "id": "page-schedule-timer",
+      "title": "预约计时浮窗",
+      "type": "page",
+      "version": 1,
+      "createdAt": 1785640917000,
+      "canvasData": {
+        "x": 2388,
+        "y": 0,
+        "group": 1,
+        "layoutSnapshot": {
+          "version": 1,
+          "contentHeight": 900,
+          "viewportWidth": 1440,
+          "sourceHash": "fnv1a-sched01",
+          "measuredAt": 1785642051053
+        }
+      },
+      "devMetadata": {
+        "htmlSrc": "pages/schedule-timer.html",
+        "interactions": [
+          {
+            "domId": "back-hover-list",
+            "targetPageId": "page-hover-list",
+            "hideEdge": true,
+            "transitionLabel": "返回计时列表"
+          }
+        ]
+      }
+    },
+    {
+      "id": "page-schedule-timer-expand",
+      "title": "预约计时 · 展开动画",
+      "type": "page",
+      "version": 1,
+      "createdAt": 1785640917000,
+      "canvasData": {
+        "x": 2856,
+        "y": 0,
+        "group": 1,
+        "layoutSnapshot": {
+          "version": 1,
+          "contentHeight": 900,
+          "viewportWidth": 1440,
+          "sourceHash": "fnv1a-sched02",
+          "measuredAt": 1785642051053
+        }
+      },
+      "devMetadata": {
+        "htmlSrc": "pages/schedule-timer-expand.html",
+        "interactions": [
+          {
+            "domId": "back-hover-list",
+            "targetPageId": "page-hover-list",
+            "hideEdge": true,
+            "transitionLabel": "返回计时列表"
+          }
+        ]
+      }
+    }
+  ],
+  "config": {
+    "autoLayout": false,
+    "deviceType": "desktop",
+    "projectName": "Linger 2.0 原型系列",
+    "visualEditorEnabled": false
+  }
+}

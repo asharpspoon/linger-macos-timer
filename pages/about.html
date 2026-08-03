@@ -1,0 +1,490 @@
+<!DOCTYPE html>
+<html lang="zh-CN" class="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>关于窗口</title>
+    <style id="theme-vars">
+/* ============================================================
+   Linger 2.0 Prototype Series — Brand CSS
+   设计语言：macOS 菜单栏工具 · 暗色毛玻璃 · 琥珀金单主色
+   令牌来源：PRD §8 颜色方案 + macOS HIG 控件语言
+   ============================================================ */
+
+:root {
+  /* ---- Brand Primary: Amber #F5A623（唯一品牌色相） ---- */
+  --linger-primary: #F5A623;
+  --linger-primary-light: #FFC966;
+  --linger-primary-lighter: #FFE0A8;
+  --linger-primary-dark: #D98E14;
+  --linger-primary-darker: #8F5A0D;
+  --linger-primary-soft: rgba(245, 166, 35, 0.14);
+  --linger-primary-glow: rgba(245, 166, 35, 0.40);
+
+  /* ---- Neutral Scale（暖调中性，暗色优先） ---- */
+  --linger-bg: #0C0C0E;                 /* 暗色面板背景 rgba(12,12,14,0.92) 之基 */
+  --linger-surface: #16161A;
+  --linger-surface-2: #1F1F25;
+  --linger-ink: #F5F5F3;
+  --linger-ink-2: #A6A6AA;
+  --linger-ink-3: #75757B;
+  --linger-line: rgba(255, 255, 255, 0.10);
+
+  /* ---- 亮色模式（自适应备用；本系列默认暗色） ---- */
+  --linger-bg-light: #F2F2F5;           /* 亮色面板背景 rgba(242,242,245,0.95) 之基 */
+  --linger-surface-light: #FFFFFF;
+  --linger-surface-2-light: #E9E9EE;
+  --linger-ink-light: #1C1C1E;
+  --linger-ink-2-light: #6B6B70;
+  --linger-ink-3-light: #9A9AA0;
+  --linger-line-light: rgba(0, 0, 0, 0.10);
+
+  /* ---- 语义别名（apply-html-head-contract 必需） ---- */
+  --linger-background: var(--linger-bg);
+  --linger-foreground: var(--linger-ink);
+  --linger-card: var(--linger-surface);
+  --linger-card-foreground: var(--linger-ink);
+  --linger-popover: #15151A;
+  --linger-popover-foreground: var(--linger-ink);
+  --linger-primary-foreground: #1A1406;   /* 琥珀填充上的文字 */
+  --linger-muted: #17171C;
+  --linger-muted-foreground: var(--linger-ink-2);
+  --linger-border: var(--linger-line);
+  --linger-input: rgba(255, 255, 255, 0.08);
+  --linger-ring: rgba(245, 166, 35, 0.55);
+
+  /* ---- 状态色（仅语义状态使用） ---- */
+  --state-success: #30D158;
+  --state-warning: #FF9F0A;
+  --state-error: #FF453A;
+  --state-info: #0A84FF;
+
+  /* ---- Radius（克制尺度，上限 16px） ---- */
+  --radius-sm: 4px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+  --radius-xl: 16px;
+  --radius-full: 9999px;
+  --linger-radius-small: var(--radius-sm);
+  --linger-radius-medium: var(--radius-md);
+  --linger-radius-large: var(--radius-lg);
+
+  /* ---- Shadow（静态 ≤0.05 alpha；浮层可用深阴影） ---- */
+  --shadow-1: 0 1px 2px rgba(0, 0, 0, 0.05);
+  --shadow-2: 0 8px 24px -8px rgba(0, 0, 0, 0.30);
+  --shadow-3: 0 24px 60px -20px rgba(0, 0, 0, 0.45);
+
+  /* ---- Spacing（8pt 网格） ---- */
+  --s-1: 4px;
+  --s-2: 8px;
+  --s-3: 12px;
+  --s-4: 16px;
+  --s-5: 24px;
+  --s-6: 32px;
+  --s-7: 48px;
+  --s-8: 80px;
+
+  /* ---- Typography（macOS 原生字体） ---- */
+  --font-sans: -apple-system, BlinkMacSystemFont, "SF Pro Text", "SF Pro Display", "PingFang SC", "Hiragino Sans GB", "Helvetica Neue", Arial, sans-serif;
+  --font-mono: "SF Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+
+  /* ---- Glass（毛玻璃 blur 16px，PRD §8） ---- */
+  --glass-blur: blur(16px) saturate(180%);
+  --glass-panel-bg: rgba(24, 24, 28, 0.72);
+  --glass-panel-bg-strong: rgba(12, 12, 14, 0.92);
+  --glass-light-bg: rgba(242, 242, 245, 0.72);
+
+  /* ---- 桌面舞台 ---- */
+  --wallpaper-base: #0B0B0D;
+  --wallpaper-glow-amber: rgba(245, 166, 35, 0.14);
+  --wallpaper-glow-warm: rgba(120, 90, 40, 0.16);
+  --menubar-bg: rgba(18, 18, 21, 0.78);
+}
+
+/* 暗色主题（本系列默认：暗色优先，明暗自适应） */
+.dark {
+  --linger-background: var(--linger-bg);
+  --linger-foreground: var(--linger-ink);
+  --linger-card: var(--linger-surface);
+  --linger-card-foreground: var(--linger-ink);
+  --linger-popover: #15151A;
+  --linger-popover-foreground: var(--linger-ink);
+  --linger-muted: #17171C;
+  --linger-muted-foreground: var(--linger-ink-2);
+  --linger-border: var(--linger-line);
+  --linger-input: rgba(255, 255, 255, 0.08);
+  --linger-surface: #16161A;
+  --linger-surface-2: #1F1F25;
+  --linger-ink: #F5F5F3;
+  --linger-ink-2: #A6A6AA;
+  --linger-ink-3: #75757B;
+  --glass-panel-bg: rgba(24, 24, 28, 0.72);
+  --glass-panel-bg-strong: rgba(12, 12, 14, 0.92);
+  --menubar-bg: rgba(18, 18, 21, 0.78);
+}
+
+/* 亮色主题覆盖（供自适应变体使用） */
+.light {
+  --linger-background: var(--linger-bg-light);
+  --linger-foreground: var(--linger-ink-light);
+  --linger-card: var(--linger-surface-light);
+  --linger-card-foreground: var(--linger-ink-light);
+  --linger-popover: #F7F7FA;
+  --linger-popover-foreground: var(--linger-ink-light);
+  --linger-muted: #EDEDF1;
+  --linger-muted-foreground: var(--linger-ink-2-light);
+  --linger-border: var(--linger-line-light);
+  --linger-input: rgba(0, 0, 0, 0.06);
+  --linger-surface: var(--linger-surface-light);
+  --linger-surface-2: var(--linger-surface-2-light);
+  --linger-ink: var(--linger-ink-light);
+  --linger-ink-2: var(--linger-ink-2-light);
+  --linger-ink-3: var(--linger-ink-3-light);
+  --glass-panel-bg: rgba(246, 246, 249, 0.74);
+  --glass-panel-bg-strong: rgba(242, 242, 245, 0.95);
+  --menubar-bg: rgba(246, 246, 249, 0.82);
+}
+
+/* ============ Base & Utilities ============ */
+html {
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+body {
+  margin: 0;
+  background-color: var(--wallpaper-base);
+  color: var(--linger-ink);
+}
+
+.font-sans { font-family: var(--font-sans); }
+.font-mono { font-family: var(--font-mono); }
+
+/* 计时数字统一等宽数字 */
+.tabular-nums {
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum";
+}
+
+/* 毛玻璃面板 */
+.glass-panel {
+  background: var(--glass-panel-bg);
+  -webkit-backdrop-filter: var(--glass-blur);
+  backdrop-filter: var(--glass-blur);
+  border: 1px solid var(--linger-line);
+}
+.glass-panel-strong {
+  background: var(--glass-panel-bg-strong);
+  -webkit-backdrop-filter: var(--glass-blur);
+  backdrop-filter: var(--glass-blur);
+  border: 1px solid var(--linger-line);
+}
+
+/* 桌面舞台背景 */
+.desktop-stage {
+  background-color: var(--wallpaper-base);
+  background-image:
+    radial-gradient(900px 520px at 68% -8%, var(--wallpaper-glow-amber), transparent 62%),
+    radial-gradient(760px 480px at 12% 108%, var(--wallpaper-glow-warm), transparent 60%),
+    radial-gradient(1200px 700px at 50% 45%, rgba(60, 50, 40, 0.10), transparent 70%);
+}
+
+/* 菜单栏 */
+.menubar {
+  background: var(--menubar-bg);
+  -webkit-backdrop-filter: blur(20px) saturate(180%);
+  backdrop-filter: blur(20px) saturate(180%);
+  border-bottom: 1px solid var(--linger-line);
+}
+
+/* macOS 窗口交通灯 */
+.traffic-light { width: 12px; height: 12px; border-radius: 9999px; }
+.traffic-close { background: #FF5F57; }
+.traffic-min { background: #FEBC2E; }
+.traffic-zoom { background: #28C840; }
+
+/* 原生开关（macOS style switch） */
+.switch {
+  position: relative;
+  width: 36px;
+  height: 20px;
+  border-radius: 9999px;
+  background: rgba(255, 255, 255, 0.16);
+  border: 1px solid var(--linger-line);
+  transition: background 160ms cubic-bezier(.2,.8,.2,1);
+}
+.switch::after {
+  content: "";
+  position: absolute;
+  top: 1px;
+  left: 1px;
+  width: 16px;
+  height: 16px;
+  border-radius: 9999px;
+  background: #FFFFFF;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.4);
+  transition: transform 160ms cubic-bezier(.3,0,0,1);
+}
+.switch.is-on {
+  background: var(--linger-primary);
+  border-color: var(--linger-primary);
+}
+.switch.is-on::after {
+  transform: translateX(16px);
+}
+
+/* 下拉控件（macOS style select） */
+.mac-select {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 22px;
+  padding: 0 8px;
+  font-size: 12px;
+  color: var(--linger-ink);
+  background: var(--linger-surface-2);
+  border: 1px solid var(--linger-line);
+  border-radius: var(--radius-sm);
+  cursor: default;
+}
+
+/* 侧栏项 */
+.sidebar-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 10px;
+  border-radius: var(--radius-md);
+  font-size: 13px;
+  color: var(--linger-ink-2);
+}
+.sidebar-item.is-active {
+  background: var(--linger-primary-soft);
+  color: var(--linger-ink);
+  font-weight: 600;
+}
+
+/* 呼吸动画：琥珀边框（倒计时浮窗） */
+@keyframes breathe-border {
+  0%, 100% { opacity: 0.40; }
+  50% { opacity: 0.15; }
+}
+@keyframes breathe-digits {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.6; }
+}
+.breathe-border { animation: breathe-border 1s ease-in-out infinite; }
+.breathe-digits { animation: breathe-digits 1s ease-in-out infinite; }
+
+/* 拖拽竖线发光 */
+.drag-line {
+  width: 4px;
+  border-radius: 9999px;
+  background: linear-gradient(to bottom, var(--linger-primary-darker), var(--linger-primary) 55%, var(--linger-primary-light));
+  box-shadow: 0 0 18px 2px var(--linger-primary-glow);
+}
+.drag-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 9999px;
+  background: var(--linger-primary-light);
+  box-shadow: 0 0 10px 2px var(--linger-primary-glow);
+}
+
+@keyframes drag-pulse {
+  0%, 100% { opacity: 0.85; }
+  50% { opacity: 1; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .breathe-border, .breathe-digits, .drag-pulse {
+    animation-duration: 0.01ms;
+    animation-iteration-count: 1;
+  }
+}
+
+    </style>
+    <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4.3.1/dist/index.global.js"></script>
+    <script src="https://unpkg.com/lucide@1.8.0/dist/umd/lucide.min.js"></script>
+    <style type="text/tailwindcss">
+  @theme inline {
+    --color-background: var(--linger-background);
+    --color-foreground: var(--linger-foreground);
+    --color-card: var(--linger-card);
+    --color-card-foreground: var(--linger-card-foreground);
+    --color-popover: var(--linger-popover);
+    --color-popover-foreground: var(--linger-popover-foreground);
+    --color-primary: var(--linger-primary);
+    --color-primary-foreground: var(--linger-primary-foreground);
+    --color-muted: var(--linger-muted);
+    --color-muted-foreground: var(--linger-muted-foreground);
+    --color-border: var(--linger-border);
+    --color-input: var(--linger-input);
+    --color-ring: var(--linger-ring);
+    --radius-sm: var(--linger-radius-small);
+    --radius-md: var(--linger-radius-medium);
+    --radius-lg: var(--linger-radius-large);
+  }
+  @layer base {
+    body { background: var(--linger-background); color: var(--linger-foreground); }
+    td, th { @apply break-words; word-break: break-all; word-break: auto-phrase; }
+    th { @apply whitespace-nowrap; }
+  }
+    </style>
+    <style id="semantic-token-fallback">
+      .bg-background { background-color: var(--linger-background); }
+      .text-background { color: var(--linger-background); }
+      .border-background { border-color: var(--linger-background); }
+      .ring-background { --tw-ring-color: var(--linger-background); }
+      .bg-foreground { background-color: var(--linger-foreground); }
+      .text-foreground { color: var(--linger-foreground); }
+      .border-foreground { border-color: var(--linger-foreground); }
+      .ring-foreground { --tw-ring-color: var(--linger-foreground); }
+      .bg-card { background-color: var(--linger-card); }
+      .text-card { color: var(--linger-card); }
+      .border-card { border-color: var(--linger-card); }
+      .ring-card { --tw-ring-color: var(--linger-card); }
+      .bg-card-foreground { background-color: var(--linger-card-foreground); }
+      .text-card-foreground { color: var(--linger-card-foreground); }
+      .border-card-foreground { border-color: var(--linger-card-foreground); }
+      .ring-card-foreground { --tw-ring-color: var(--linger-card-foreground); }
+      .bg-popover { background-color: var(--linger-popover); }
+      .text-popover { color: var(--linger-popover); }
+      .border-popover { border-color: var(--linger-popover); }
+      .ring-popover { --tw-ring-color: var(--linger-popover); }
+      .bg-popover-foreground { background-color: var(--linger-popover-foreground); }
+      .text-popover-foreground { color: var(--linger-popover-foreground); }
+      .border-popover-foreground { border-color: var(--linger-popover-foreground); }
+      .ring-popover-foreground { --tw-ring-color: var(--linger-popover-foreground); }
+      .bg-primary { background-color: var(--linger-primary); }
+      .text-primary { color: var(--linger-primary); }
+      .border-primary { border-color: var(--linger-primary); }
+      .ring-primary { --tw-ring-color: var(--linger-primary); }
+      .bg-primary-foreground { background-color: var(--linger-primary-foreground); }
+      .text-primary-foreground { color: var(--linger-primary-foreground); }
+      .border-primary-foreground { border-color: var(--linger-primary-foreground); }
+      .ring-primary-foreground { --tw-ring-color: var(--linger-primary-foreground); }
+      .bg-muted { background-color: var(--linger-muted); }
+      .text-muted { color: var(--linger-muted); }
+      .border-muted { border-color: var(--linger-muted); }
+      .ring-muted { --tw-ring-color: var(--linger-muted); }
+      .bg-muted-foreground { background-color: var(--linger-muted-foreground); }
+      .text-muted-foreground { color: var(--linger-muted-foreground); }
+      .border-muted-foreground { border-color: var(--linger-muted-foreground); }
+      .ring-muted-foreground { --tw-ring-color: var(--linger-muted-foreground); }
+      .bg-border { background-color: var(--linger-border); }
+      .text-border { color: var(--linger-border); }
+      .border-border { border-color: var(--linger-border); }
+      .ring-border { --tw-ring-color: var(--linger-border); }
+      .bg-input { background-color: var(--linger-input); }
+      .text-input { color: var(--linger-input); }
+      .border-input { border-color: var(--linger-input); }
+      .ring-input { --tw-ring-color: var(--linger-input); }
+      .bg-ring { background-color: var(--linger-ring); }
+      .text-ring { color: var(--linger-ring); }
+      .border-ring { border-color: var(--linger-ring); }
+      .ring-ring { --tw-ring-color: var(--linger-ring); }
+    </style>
+    <style>
+      .no-scrollbar::-webkit-scrollbar { display: none; }
+      .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+      [data-icon] {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        -webkit-mask-size: contain;
+        mask-size: contain;
+        -webkit-mask-repeat: no-repeat;
+        mask-repeat: no-repeat;
+        -webkit-mask-position: center;
+        mask-position: center;
+        background-color: currentColor;
+      }
+    </style>
+</head>
+<body class="min-h-screen font-sans antialiased">
+    <main>
+      <div class="desktop-stage relative flex min-h-screen w-full flex-col" data-shell="desktop-stage">
+        <style id="critical-layout">
+          [data-shell="desktop-stage"]{display:flex;min-height:100vh;width:100%;flex-direction:column;background-color:var(--wallpaper-base);}
+          .menubar{display:flex;height:28px;flex-shrink:0;align-items:center;justify-content:space-between;padding:0 12px;background:var(--menubar-bg);-webkit-backdrop-filter:blur(20px) saturate(180%);backdrop-filter:blur(20px) saturate(180%);border-bottom:1px solid var(--linger-line);}
+          [data-slot="page-scene"]{position:relative;flex:1;}
+          [data-slot="page-annotation"]{font-size:11px;letter-spacing:.02em;color:var(--linger-ink-2);}
+        </style>
+        <!-- 1) macOS 菜单栏 -->
+        <header class="menubar relative z-20 flex h-7 shrink-0 items-center justify-between px-3 select-none">
+          <!-- 左区：Apple logo + 应用名 + 应用菜单 -->
+          <div class="flex items-center gap-4">
+            <svg viewBox="0 0 24 24" fill="currentColor" class="h-[14px] w-[14px] text-[var(--linger-ink)]" aria-hidden="true">
+              <path d="M12.152 6.896c-.948 0-2.415-1.078-3.96-1.04-2.04.027-3.91 1.183-4.961 3.014-2.117 3.675-.546 9.103 1.519 12.09 1.013 1.454 2.208 3.09 3.792 3.039 1.52-.065 2.09-.987 3.935-.987 1.831 0 2.35.987 3.96.948 1.637-.026 2.676-1.48 3.676-2.948 1.156-1.688 1.636-3.325 1.662-3.415-.039-.013-3.182-1.221-3.22-4.857-.026-3.04 2.48-4.494 2.597-4.559-1.429-2.09-3.623-2.324-4.39-2.376-2-.156-3.675 1.09-4.61 1.09zM15.53 3.83c.843-1.012 1.4-2.427 1.245-3.83-1.207.052-2.662.805-3.532 1.818-.78.896-1.454 2.338-1.273 3.714 1.338.104 2.715-.688 3.559-1.701"/>
+            </svg>
+            <span class="ml-2 text-[13px] font-semibold text-[var(--linger-ink)]">Linger</span>
+            <span class="text-[13px] text-[var(--linger-ink-2)]">文件</span>
+            <span class="text-[13px] text-[var(--linger-ink-2)]">编辑</span>
+            <span class="text-[13px] text-[var(--linger-ink-2)]">视图</span>
+            <span class="text-[13px] text-[var(--linger-ink-2)]">窗口</span>
+            <span class="text-[13px] font-semibold text-[var(--linger-ink)]">帮助</span>
+          </div>
+          <!-- 右区：Linger 状态 + 系统状态图标 + 时钟 -->
+          <div class="flex items-center gap-4">
+            <span data-slot="linger-status" class="flex items-center gap-1.5">
+              <svg viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="2" class="h-[14px] w-[14px]" aria-hidden="true"><circle cx="12" cy="12" r="8.5"/><circle cx="12" cy="12" r="3" fill="#FFFFFF" stroke="none"/></svg>
+              <span class="font-mono text-[12px] tabular-nums text-[var(--linger-primary)]">12:34</span>
+            </span>
+            <span class="h-3.5 w-px bg-[var(--linger-line)]"></span>
+            <i data-lucide="search" class="h-[14px] w-[14px] text-[var(--linger-ink-2)]"></i>
+            <i data-lucide="sliders-horizontal" class="h-[14px] w-[14px] text-[var(--linger-ink-2)]"></i>
+            <i data-lucide="wifi" class="h-[14px] w-[14px] text-[var(--linger-ink-2)]"></i>
+            <i data-lucide="battery-full" class="h-[14px] w-[14px] text-[var(--linger-ink-2)]"></i>
+            <span class="text-[12px] tabular-nums text-[var(--linger-ink)]">8月2日 周日 11:24</span>
+          </div>
+        </header>
+
+        <!-- 2) 场景区：关于窗口（仅保留关闭按钮，最小化/缩放禁用）
+             产品逻辑：展示 App 信息 + 权限状态；权限卡片每 3 秒自动刷新授权状态；
+                       「管理…」跳转系统设置对应权限面板 -->
+        <div data-slot="page-scene" class="relative flex-1">
+          <div class="flex h-full items-center justify-center">
+            <div class="w-[480px] glass-panel-strong rounded-[12px] shadow-[var(--shadow-3)] overflow-hidden">
+              <div class="relative flex h-[38px] items-center justify-center border-b border-[var(--linger-line)]">
+                <div class="absolute left-3.5 flex items-center gap-2">
+                  <span class="traffic-light traffic-close"></span>
+                  <span class="traffic-light traffic-min opacity-0"></span>
+                  <span class="traffic-light traffic-zoom opacity-0"></span>
+                </div>
+                <span class="text-[13px] font-semibold text-[var(--linger-ink)]">关于 Linger</span>
+              </div>
+              <div class="flex flex-col items-center px-8 py-8">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" class="h-16 w-16 text-[var(--linger-primary)]"><circle cx="12" cy="12" r="8.5"/><circle cx="12" cy="12" r="3" fill="currentColor" stroke="none"/></svg>
+                <h1 class="mt-4 text-[24px] font-bold tracking-tight text-[var(--linger-ink)]">Linger</h1>
+                <p class="mt-1 text-[12px] text-[var(--linger-ink-2)]">版本 2.0</p>
+                <p class="mt-1.5 text-[11px] italic text-[var(--linger-ink-3)]">一拉即走，松手计时</p>
+                <div class="mt-7 flex items-center justify-center gap-3">
+                  <div class="flex w-[190px] flex-col items-center gap-1.5 rounded-[10px] border border-[var(--linger-line)] bg-[var(--linger-surface)] px-4 py-3.5">
+                    <i data-lucide="calendar" class="h-5 w-5 text-[var(--linger-primary)]"></i>
+                    <span class="text-[12px] font-medium text-[var(--linger-ink)]">日历</span>
+                    <span class="flex items-center gap-1 text-[11px] text-[var(--state-success)]"><span class="h-1 w-1 rounded-full bg-[var(--state-success)]"></span>已授权</span>
+                    <button class="text-[11px] text-[var(--state-info)] hover:opacity-80">管理…</button>
+                  </div>
+                  <div class="flex w-[190px] flex-col items-center gap-1.5 rounded-[10px] border border-[var(--linger-line)] bg-[var(--linger-surface)] px-4 py-3.5">
+                    <i data-lucide="bell" class="h-5 w-5 text-[var(--linger-primary)]"></i>
+                    <span class="text-[12px] font-medium text-[var(--linger-ink)]">通知</span>
+                    <span class="flex items-center gap-1 text-[11px] text-[var(--state-success)]"><span class="h-1 w-1 rounded-full bg-[var(--state-success)]"></span>已授权</span>
+                    <button class="text-[11px] text-[var(--state-info)] hover:opacity-80">管理…</button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- 3) 原型注释条 -->
+        <div class="pointer-events-none absolute bottom-4 left-4 z-40 flex items-center gap-2 rounded-[10px] glass-panel px-3 py-2 shadow-[var(--shadow-2)]">
+          <span data-slot="page-annotation" class="text-[11px] tracking-wide text-[var(--linger-ink-2)]">11 · 关于窗口 — 权限卡片每 3 秒自动刷新 · 仅保留关闭按钮</span>
+        </div>
+      </div>
+    </main>
+    <script>lucide.createIcons();</script>
+</body>
+</html>
