@@ -62,21 +62,30 @@ Linger2.5/
       - Esc 可取消拖拽（monitor 加 .keyDown，keyCode 53）
       - 橡皮筋延伸 40 → 10pt（一点点即有反馈）
       - 默认字号 22 → 18pt（设置滑块 14–26）；高亮侧字号 +4 / 对侧 -2 + 弹跳动画，反差明显
-- [x] **纯逻辑单测接入 `swift test`**（`DragPhysics` + `TimerEntry` 共 8 个，全绿）
-- [ ] **待真机验收 v2**：拖拽手感 / 发光效果 / 橡皮筋触顶 / 字号设置（用户实机确认中）
+- [x] **拖拽预览第四轮（用户反馈 + 2 bug）**：
+      - 触顶三段式：线长到顶几乎不动（橡皮筋 10pt）→ 线宽按公式连续变细
+        （`DragPhysics.lineWidth`：4 → 2，指数衰减）→ 数字冻结（触顶瞬间 til 冻结，两侧不再跳）
+      - **Esc 断线动画**：取消时线条从中间裂开、圆点下坠、淡出（0.28s），不再瞬间消失
+      - **修遮挡 bug**：`animateFontPop` 对侧动画值 1.15→0.98→1.0 是错的（本应变小的侧先放大 15%，
+        盖住前缀末字符 + 顶掉右缘秒数）；改为 0.92→0.97→1.0 + frame 留 padding，彻底不裁字
+      - 默认字号 18 → 16pt（滑块 12–24）
+- [x] **纯逻辑单测接入 `swift test`**（DragPhysics 变细公式 / TimerEntry 格式 / 布局防遮挡，共 11 个，全绿）
+- [ ] **待真机验收 v3**：触顶三段式手感、Esc 断线动画、遮挡是否消失、字号 16（用户实机确认中）
 - [ ] 按原型逐页对齐：hover-list（悬停列表）、toast、settings×4、about、schedule-timer、notification
 - [ ] 通知/日历权限、预约计时、图标三风格（Ring/Classic/timer）
 
-## 最近交接（2026-08-04 上午 · 拖拽预览第三轮微调）
+## 最近交接（2026-08-04 上午 · 拖拽预览第四轮）
 
 **本次完成**
-- 发光回归 2.0 紧致做法（参考 `Linger2.0/.../DragFeedbackView.swift`：线 glow radius 9 / 圆点 radius 5 / 实心亮金圆点）
-- Esc 取消拖拽；橡皮筋 40→10pt；字号默认 18（滑块 14–26）
-- 高亮侧 +4pt / 对侧 -2pt + 弹跳动画（切侧时 CAKeyframeAnimation scale 过冲回弹）
-- `swift build` 通过、`swift test` 8/8 绿
+- 触顶三段式：长度钳制（橡皮筋 10pt）→ 线宽公式连续变细（4→2）→ 数字冻结（til 触顶即冻结）
+- Esc 断线动画（线裂两段 + 圆点下坠 + 淡出，0.28s）；`DragState.cancelling` 防动画期间误创建
+- 遮挡 bug 根因：`animateFontPop` 对侧从 1.15 起跳（错误方向放大）→ 盖前缀末字/顶掉秒数；
+  改为 0.92 起跳 + label frame 留 padding，`DragLayoutTests` 强断言防回归
+- 默认字号 16（滑块 12–24）；高亮侧 +4 / 对侧 -2 + 弹跳
+- `swift build` 通过、`swift test` 11/11 绿
 
 **未完成 / 卡点**
-- 实机验收：发光观感（对照 2.0 记忆）、橡皮筋 10pt 是否合适、字号 18 是否合适、高亮弹跳是否明显、Esc 取消
+- 实机验收：触顶三段式、Esc 断线、遮挡是否消失、字号 16
 
 **下一步（按优先级）**
 1. 用户实机验收拖拽预览（`./script/build_and_run.sh`）
@@ -90,7 +99,10 @@ Linger2.5/
 
 **给下一位的提示**
 - 发光/光点在 `DragLineView.draw(_:)` 手绘（NSShadow 紧致 glow，对齐 2.0 观感）；圆点直径 `DragLineView.dotDiameter`（10pt）
-- 橡皮筋最大延伸 `DragFeedbackView.kRubberHeadroom`（现 10pt，数值小才「看得见」）
+- 橡皮筋最大延伸 `DragFeedbackView.kRubberHeadroom`（10pt）；线宽公式 `DragPhysics.lineWidth`（4→2）
+- **别再让字号弹跳动画的对侧从 >1 起跳**（会盖字），见 `animateFontPop`
+- label frame 留 padding（前缀 +2 / 数字 +4），文字不贴右缘
+- Esc 断线动画：`DragFeedbackView.animateBreak` + `MenuBarManager.cancelDrag(animated: true)`
 - 橡皮筋纯函数在 `DragPhysics.swift`（Foundation-only，可单测）；面板随溢出向下生长在
   `DragFeedbackView.update()`（顶部固定）
 - 提示次数计数在 `MenuBarManager.finishDrag(with:)` 成功后 +1；改阈值看 `LingerTheme.maxDragHintShownCount`
