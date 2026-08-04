@@ -272,10 +272,41 @@ final class MenuBarManager: NSObject {
         } else {
             statusItemView.setTitle("")
         }
+        // 最后 10s：菜单栏倒计时预览闪烁提醒
+        updateStatusUrgentBlink()
     }
 
     /// 拖拽过程中把菜单栏文字替换成实时预览时长（松手后由 refreshStatusItemTitle 复位）。
     /// 与运行态共用 TimerEntry.displayString，保证松手瞬间读数不跳格式。
+    /// 最后 10s：菜单栏倒计时预览琥珀闪烁提醒（与悬停列表同节奏 0.5s）
+    private var statusUrgentBlinkOn = false
+    private var statusUrgentTimer: Timer?
+
+    private func updateStatusUrgentBlink() {
+        let urgent = TimerManager.shared.allDisplayEntries.contains { $0.isRunning && $0.remainingTime <= 10 }
+        if urgent {
+            guard statusUrgentTimer == nil else { return }
+            statusUrgentBlinkOn = true
+            applyStatusUrgentColor()
+            let t = Timer(timeInterval: 0.5, repeats: true) { [weak self] _ in
+                guard let self else { return }
+                self.statusUrgentBlinkOn.toggle()
+                self.applyStatusUrgentColor()
+            }
+            RunLoop.main.add(t, forMode: .common)
+            statusUrgentTimer = t
+        } else {
+            statusUrgentTimer?.invalidate()
+            statusUrgentTimer = nil
+            statusUrgentBlinkOn = false
+            statusItemView.setTitleColor(nil)
+        }
+    }
+
+    private func applyStatusUrgentColor() {
+        statusItemView.setTitleColor(statusUrgentBlinkOn ? LingerTheme.amberGold : .secondaryLabelColor)
+    }
+
     private func refreshStatusTextDuringDrag(seconds: TimeInterval) {
         statusItemView.setTitle(" " + TimerEntry.displayString(seconds: seconds,
                                                                format: TimerEntry.currentTimeFormat))

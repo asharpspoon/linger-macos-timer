@@ -79,16 +79,24 @@ final class HoverProgressBar: NSView {
     enum Style { case running, paused, scheduled }
     var style: Style = .running { didSet { applyStyle() } }
 
-    /// 最后 10s 提醒：进度条琥珀闪烁（fillContainer opacity 脉冲）
+    /// 最后 10s 提醒：进度条琥珀闪烁。
+    /// 相位由 HoverListView 的 urgentBlinkTimer 统一驱动（applyUrgentBlinkPhase），
+    /// 与倒计时数字严格同步，不再各自跑 CAAnimation。
     var urgent: Bool = false {
         didSet {
             guard urgent != oldValue else { return }
             if urgent {
-                startUrgentBlink()
+                fillContainer.opacity = 1.0   // 进入提醒即亮
             } else {
-                stopUrgentBlink()
+                fillContainer.opacity = (style == .paused) ? 0.40 : 1.0
             }
         }
+    }
+
+    /// 由外部统一相位驱动：on=true 亮、false 暗（仅 urgent 时生效）
+    func applyUrgentBlinkPhase(_ on: Bool) {
+        guard urgent else { return }
+        fillContainer.opacity = on ? 1.0 : 0.30
     }
 
     private let fillContainer = CALayer()      // 进度容器（发光 + 圆角 + 裁剪）
@@ -209,24 +217,6 @@ final class HoverProgressBar: NSView {
         fillGradient.removeAnimation(forKey: "flow")
     }
 
-    // MARK: - 最后 10s 提醒（琥珀闪烁）
-
-    private func startUrgentBlink() {
-        if fillContainer.animation(forKey: "urgentBlink") != nil { return }
-        let anim = CABasicAnimation(keyPath: "opacity")
-        anim.fromValue = 1.0
-        anim.toValue = 0.30
-        anim.duration = 0.5
-        anim.autoreverses = true
-        anim.repeatCount = .greatestFiniteMagnitude
-        anim.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
-        fillContainer.add(anim, forKey: "urgentBlink")
-    }
-
-    private func stopUrgentBlink() {
-        fillContainer.removeAnimation(forKey: "urgentBlink")
-        fillContainer.opacity = (style == .paused) ? 0.40 : 1.0
-    }
 }
 
 // MARK: - HoverListView
@@ -491,6 +481,10 @@ final class HoverListView: NSView {
             let t = Timer(timeInterval: 0.5, repeats: true) { [weak self] _ in
                 guard let self else { return }
                 self.urgentBlinkOn.toggle()
+                // 进度条与倒计时数字用同一相位，严格同步
+                for entry in self.running where entry.remainingTime <= 10 {
+                    self.progressBars[entry.id]?.applyUrgentBlinkPhase(self.urgentBlinkOn)
+                }
                 self.needsDisplay = true
             }
             RunLoop.main.add(t, forMode: .common)

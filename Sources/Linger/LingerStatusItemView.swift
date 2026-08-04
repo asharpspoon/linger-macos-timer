@@ -59,6 +59,11 @@ final class LingerStatusItemView: NSView {
         invalidateIntrinsicContentSize()
     }
 
+    /// 设置标题文字颜色（nil 恢复默认 labelColor；最后 10s 闪烁提醒用）
+    func setTitleColor(_ color: NSColor?) {
+        titleLabel.textColor = color ?? .labelColor
+    }
+
     override var intrinsicContentSize: NSSize {
         var width: CGFloat = 4
         if hasIcon { width += 16 + 2 }
