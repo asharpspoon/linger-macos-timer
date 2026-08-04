@@ -9,6 +9,13 @@ macOS 菜单栏计时器 app「Linger」：从菜单栏图标**向下拖拽**设
 s=d² 曲线 + 整分钟吸附），松手即开始计时。AppKit 原生、暗色毛玻璃、琥珀金 #F5A623 单主色。
 代号 **2.5**（2.0 / 2.1 均已失败存档，勿再回改）。
 
+## 最近交接
+
+> 每次交接/里程碑后在此**顶部**追加一段（最新在上），格式见 `.agents/skills/linger-handoff/`。
+> 上次交接见 git 历史；当前状态以「最新进度」为准。
+
+- _（暂无交接记录，2026-08-04 由 Codex 建立项目）_
+
 ## 准绳（source of truth）
 
 | 文件 | 作用 |
@@ -78,6 +85,9 @@ cd /Users/dawang/Downloads/vibecoding/Linger2.5
 
 ## 接手协议
 
+0. **接力工具**：使用本仓库 `.agents/skills/linger-handoff/` skill（全局副本在
+   `~/.codex/skills/linger-handoff/`）。Trae 等 agent 安装：把该 skill 文件夹放入其
+   skills 目录（或按 Trae 导入说明），即可按 skill 的接手/跟进/交接流程执行。
 1. 先读：本文件 → `pages/` 相关页 → `linger2_prd.md` 对应章节
 2. UI 改动以 HTML 原型为准；引擎改动保持叶子模块纯净（可单测）
 3. 改完必须能 `swift build`（`--disable-sandbox` + `DEVELOPER_DIR`），GUI 改动需实机验收
