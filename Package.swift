@@ -13,6 +13,11 @@ let package = Package(
                 .linkedFramework("EventKit"),
                 .linkedFramework("UserNotifications")
             ]
+        ),
+        .testTarget(
+            name: "LingerTests",
+            dependencies: ["Linger"],
+            path: "Tests/LingerTests"
         )
     ]
 )

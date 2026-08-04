@@ -184,6 +184,10 @@ enum LingerTheme {
         case timeFormat = "linger_timeFormat"
         /// T12: 拖拽双轨模式（both/countdown/endTime，默认 both）
         case dualRailMode = "linger_dualRailMode"
+        /// 2026-08-04: 拖拽预览计时字号（18–30pt，默认 22）
+        case dragPreviewFontSize = "linger_dragPreviewFontSize"
+        /// 2026-08-04: 拖拽引导提示已显示次数（前 3 次显示，之后永久隐藏）
+        case dragHintUsageCount = "linger_dragHintUsageCount"
 
         // MARK: - T8 通知面板
 
@@ -225,4 +229,8 @@ enum LingerTheme {
     static let defaultDualRailMode: String = "both"
     /// 时间格式，默认 hms
     static let defaultTimeFormat: String = "hms"
+    /// 拖拽预览计时字号，默认 22pt
+    static let defaultDragPreviewFontSize: Double = 22
+    /// 拖拽引导提示最多显示次数，默认 3
+    static let maxDragHintShownCount: Int = 3
 }

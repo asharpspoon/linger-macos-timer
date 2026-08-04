@@ -42,6 +42,8 @@ final class SettingsWindow: NSWindow {
     // 通知面板实时引用
     private var dragLineSlider: NSSlider?
     private var dragLineValueLabel: NSTextField?
+    private var previewFontSizeSlider: NSSlider?
+    private var previewFontSizeValueLabel: NSTextField?
     private var soundPopup: NSPopUpButton?
     private var defaultTitleField: NSTextField?
     private var notifAuthLabel: NSTextField?
@@ -373,7 +375,8 @@ final class SettingsWindow: NSWindow {
             buildDragLineRow(),
             buildMaxDurationRow(),
             buildDualRailRow(),
-            buildTimeFormatRow()
+            buildTimeFormatRow(),
+            buildPreviewFontSizeRow()
         ], in: panel, below: title, gap: 14)
         return panel
     }
@@ -431,6 +434,34 @@ final class SettingsWindow: NSWindow {
         popup.target = self
         popup.action = #selector(timeFormatChanged(_:))
         return rowWithTitle("时间格式", control: popup)
+    }
+
+    private func buildPreviewFontSizeRow() -> NSView {
+        let slider = NSSlider(value: currentPreviewFontSize(), minValue: 18, maxValue: 30,
+                              target: self, action: #selector(previewFontSizeChanged(_:)))
+        slider.widthAnchor.constraint(equalToConstant: 160).isActive = true
+        let valueLabel = NSTextField(labelWithString: "\(Int(currentPreviewFontSize()))pt")
+        valueLabel.alignment = .right
+        valueLabel.font = LingerTheme.timeFont(size: 12)
+        valueLabel.widthAnchor.constraint(equalToConstant: 44).isActive = true
+        let group = NSStackView(views: [slider, valueLabel])
+        group.orientation = .horizontal
+        group.spacing = 8
+        group.alignment = .centerY
+        previewFontSizeSlider = slider
+        previewFontSizeValueLabel = valueLabel
+        return rowWithTitle("计时字号", control: group)
+    }
+
+    private func currentPreviewFontSize() -> Double {
+        let v = UserDefaults.standard.double(forKey: LingerTheme.UserDefaultsKey.dragPreviewFontSize.rawValue)
+        return v > 0 ? v : LingerTheme.defaultDragPreviewFontSize
+    }
+
+    @objc private func previewFontSizeChanged(_ sender: NSSlider) {
+        let v = Double(sender.integerValue)
+        UserDefaults.standard.set(v, forKey: LingerTheme.UserDefaultsKey.dragPreviewFontSize.rawValue)
+        previewFontSizeValueLabel?.stringValue = "\(Int(v))pt"
     }
 
     // MARK: - 面板 1：通知

@@ -1,11 +1,11 @@
 //  DragFeedbackView.swift
-//  拖拽反馈视图 —— 严格按 menubar-drag.html 原型实现：
-//    - 4pt 琥珀金渐变竖线（上深铜 → 中琥珀 55% → 下亮金）+ 18px glow
-//    - 竖线末端 10pt 亮金圆点 + 10px glow
-//    - 竖线下方水平双轨：左「for + 倒计时」| 右「til + 结束时刻」
-//      双轨等大 24pt 等宽数字（原型注释明确「两轨字号一致 24pt」），
-//      鼠标偏左 → for 亮琥珀金、til 变暗 0.3；偏右反之，0.35s 过渡
-//    - 最下方 11pt 提示文案「从菜单栏图标向下拖拽 · 松手开始计时」
+//  拖拽反馈面板（窗口级）：
+//    - 竖线 + 末端光点由 DragLineView 手绘（发光重构，2026-08-04）
+//    - 双轨：左「for + 倒计时」| 右「til + 结束时刻（HH:mm:ss）」
+//    - 高亮侧：琥珀金 + 不透明度 1 + 字号 +2pt；对侧变暗
+//    - 字号可设置（linger_dragPreviewFontSize，缺省 22），面板宽度自适应
+//    - 提示文案只在前 3 次拖拽显示（linger_dragHintUsageCount）
+//    - 越过最大长度：橡皮筋阻尼延伸（DragPhysics.dampedOvershoot），面板向下生长
 //  铁律：无硬编码 #F5A623，全部走 LingerTheme。
 
 import Cocoa
@@ -25,8 +25,7 @@ final class DragFeedbackView: NSView {
 
     // MARK: - 子视图
 
-    private let lineView = NSView()
-    private let dotView = NSView()
+    private let lineView = DragLineView()
     private let separatorView = NSView()
     private let forPrefix = NSTextField(labelWithString: "for")
     private let forTime = NSTextField(labelWithString: "00:00")
@@ -34,30 +33,39 @@ final class DragFeedbackView: NSView {
     private let tilTime = NSTextField(labelWithString: "00:00")
     private let hintLabel = NSTextField(labelWithString: "从菜单栏图标向下拖拽 · 松手开始计时")
 
-    // MARK: - 布局常量（原型：窗宽 280，起点紧贴菜单栏 topY=12）
+    // MARK: - 布局常量
 
-    private static let kContentWidth: CGFloat = 280
+    private static let kContentWidthMin: CGFloat = 280
     private static let kTopY: CGFloat = 12
     private static let kDefaultMaxLineHeight: CGFloat = 360
     private static let kBottomBlockHeight: CGFloat = 124   // 双轨 + 提示 + 边距
+    private static let kRubberHeadroom: CGFloat = 40       // 橡皮筋最大延伸
+    private static let kHighlightFontBump: CGFloat = 2     // 高亮侧字号增量
 
-    private let contentWidth = DragFeedbackView.kContentWidth
     private let topY = DragFeedbackView.kTopY
-    private let lineWidthNormal: CGFloat = 4
-    private let lineWidthOverflow: CGFloat = 2.5
-    private let dotDiameter: CGFloat = 10
     private let minLineHeight: CGFloat = 40
-
-    /// 竖线最长长度（由 `linger_maxDragLinePercent` 推导，show(at:) 时刷新）
+    private var contentWidth: CGFloat = DragFeedbackView.kContentWidthMin
     private var maxLineHeight: CGFloat = DragFeedbackView.kDefaultMaxLineHeight
+    private var rubberHeight: CGFloat = 0                  // 橡皮筋延伸量（面板增高）
 
-    /// 面板总高 = 顶部留白 + 竖线最长长度 + 底部标签区
-    private var contentHeight: CGFloat { topY + maxLineHeight + DragFeedbackView.kBottomBlockHeight }
+    private var currentHighlight: HighlightSide = .forSide
 
-    /// til 时刻格式化器（30fps 更新，缓存避免每帧新建 DateFormatter）
+    /// 当前预览字号（UserDefaults `linger_dragPreviewFontSize`，缺省 22，范围 18–30）
+    private var previewFontSize: CGFloat {
+        let raw = UserDefaults.standard.double(forKey: LingerTheme.UserDefaultsKey.dragPreviewFontSize.rawValue)
+        let v = raw > 0 ? raw : LingerTheme.defaultDragPreviewFontSize
+        return CGFloat(min(max(v, 18), 30))
+    }
+
+    /// 面板总高（含橡皮筋延伸）
+    private var contentHeight: CGFloat {
+        topY + maxLineHeight + DragFeedbackView.kBottomBlockHeight + rubberHeight
+    }
+
+    /// til 时刻格式化器（HH:mm:ss；30fps 更新，缓存避免每帧新建 DateFormatter）
     private static let tilFormatter: DateFormatter = {
         let f = DateFormatter()
-        f.dateFormat = "HH:mm"
+        f.dateFormat = "HH:mm:ss"
         return f
     }()
 
@@ -65,7 +73,7 @@ final class DragFeedbackView: NSView {
 
     override init(frame frameRect: NSRect) {
         super.init(frame: NSRect(x: 0, y: 0,
-                                 width: DragFeedbackView.kContentWidth,
+                                 width: DragFeedbackView.kContentWidthMin,
                                  height: DragFeedbackView.kTopY
                                     + DragFeedbackView.kDefaultMaxLineHeight
                                     + DragFeedbackView.kBottomBlockHeight))
@@ -85,49 +93,32 @@ final class DragFeedbackView: NSView {
         wantsLayer = true
         layer?.backgroundColor = NSColor.clear.cgColor
 
-        // 竖线：渐变 + glow（原型 .drag-line：4px 圆角、darker→amber 55%→light、glow 18px）
-        lineView.wantsLayer = true
-        let gradient = CAGradientLayer()
-        gradient.colors = [
-            LingerTheme.nsColor(LingerTheme.Color.amberDarker).cgColor,
-            LingerTheme.nsColor(LingerTheme.Color.amber).cgColor,
-            LingerTheme.nsColor(LingerTheme.Color.amberLight).cgColor
-        ]
-        gradient.locations = [0.0, 0.55, 1.0]
-        lineView.layer = gradient
-        lineView.layer?.cornerRadius = lineWidthNormal / 2
-        lineView.layer?.shadowColor = LingerTheme.nsColor(LingerTheme.Color.amberGlow).cgColor
-        lineView.layer?.shadowOpacity = 1
-        lineView.layer?.shadowRadius = 18
-        lineView.layer?.shadowOffset = .zero
+        // 竖线 + 光点（自定义绘制）
+        lineView.frame = NSRect(x: 0, y: 0,
+                                width: DragFeedbackView.kContentWidthMin,
+                                height: DragFeedbackView.kTopY
+                                    + DragFeedbackView.kDefaultMaxLineHeight
+                                    + DragFeedbackView.kBottomBlockHeight)
         addSubview(lineView)
-
-        // 末端圆点（原型 .drag-dot：10pt 亮金圆 + glow 10px）
-        dotView.wantsLayer = true
-        dotView.layer?.backgroundColor = LingerTheme.nsColor(LingerTheme.Color.amberLight).cgColor
-        dotView.layer?.cornerRadius = dotDiameter / 2
-        dotView.layer?.shadowColor = LingerTheme.nsColor(LingerTheme.Color.amberGlow).cgColor
-        dotView.layer?.shadowOpacity = 1
-        dotView.layer?.shadowRadius = 10
-        dotView.layer?.shadowOffset = .zero
-        addSubview(dotView)
 
         // 双轨分隔线（原型 .dual-separator：1px × 18px）
         separatorView.wantsLayer = true
         separatorView.layer?.backgroundColor = LingerTheme.nsColor(LingerTheme.Color.line).cgColor
         addSubview(separatorView)
 
-        // 双轨标签（原型 .dual-track：label 13pt、value 24pt 等宽 semibold，两轨等大）
-        func styleTrack(_ prefix: NSTextField, _ time: NSTextField) {
-            prefix.font = LingerTheme.labelFont(size: 13)
-            prefix.textColor = LingerTheme.nsColor(LingerTheme.Color.ink3)
-            time.font = LingerTheme.timeFont(size: 24, weight: .semibold)
-            time.textColor = LingerTheme.nsColor(LingerTheme.Color.ink3)
-            addSubview(prefix)
-            addSubview(time)
-        }
-        styleTrack(forPrefix, forTime)
-        styleTrack(tilPrefix, tilTime)
+        // 双轨标签（label 13pt、value 等宽 semibold，两轨等大；字号可设置）
+        forPrefix.font = LingerTheme.labelFont(size: 13)
+        forPrefix.textColor = LingerTheme.nsColor(LingerTheme.Color.ink3)
+        forTime.font = LingerTheme.timeFont(size: previewFontSize, weight: .semibold)
+        forTime.textColor = LingerTheme.nsColor(LingerTheme.Color.ink3)
+        tilPrefix.font = LingerTheme.labelFont(size: 13)
+        tilPrefix.textColor = LingerTheme.nsColor(LingerTheme.Color.ink3)
+        tilTime.font = LingerTheme.timeFont(size: previewFontSize, weight: .semibold)
+        tilTime.textColor = LingerTheme.nsColor(LingerTheme.Color.ink3)
+        addSubview(forPrefix)
+        addSubview(forTime)
+        addSubview(tilPrefix)
+        addSubview(tilTime)
 
         // 提示文案（原型 #drag-hint：11pt ink3）
         hintLabel.font = LingerTheme.labelFont(size: 11)
@@ -140,10 +131,20 @@ final class DragFeedbackView: NSView {
     // MARK: - 显示 / 隐藏
 
     func show(at anchorRect: NSRect) {
+        // 由 linger_maxDragLinePercent 推导竖线最长长度（25–75%，默认 50）
+        let percent = UserDefaults.standard.double(forKey: LingerTheme.UserDefaultsKey.maxDragLinePercent.rawValue)
+        let p = (percent >= 25 && percent <= 75) ? percent : LingerTheme.defaultMaxDragLinePercent
+        maxLineHeight = DragFeedbackView.kDefaultMaxLineHeight * CGFloat(p / 50)
+        rubberHeight = 0
+
+        // 面板宽度按字号自适应（两轨都按「高亮侧 +2pt」的最宽值算，避免切换时挤破）
+        contentWidth = max(DragFeedbackView.kContentWidthMin, requiredPanelWidth())
+        let height = contentHeight
+
         if panelWindow == nil {
             let win = NSWindow(contentRect: NSRect(x: 0, y: 0,
                                                    width: contentWidth,
-                                                   height: contentHeight),
+                                                   height: height),
                                styleMask: [.borderless],
                                backing: .buffered,
                                defer: false)
@@ -158,12 +159,6 @@ final class DragFeedbackView: NSView {
             panelWindow = win
         }
 
-        // 由 linger_maxDragLinePercent 推导竖线最长长度（25–75%，默认 50）
-        let percent = UserDefaults.standard.double(forKey: LingerTheme.UserDefaultsKey.maxDragLinePercent.rawValue)
-        let p = (percent >= 25 && percent <= 75) ? percent : LingerTheme.defaultMaxDragLinePercent
-        maxLineHeight = DragFeedbackView.kDefaultMaxLineHeight * CGFloat(p / 50)
-        let height = contentHeight
-
         // 水平居中于图标，边界不出主屏幕
         var x = anchorRect.midX - contentWidth / 2
         if let visible = NSScreen.main?.visibleFrame {
@@ -174,13 +169,35 @@ final class DragFeedbackView: NSView {
 
         panelWindow?.setFrame(NSRect(x: x, y: y, width: contentWidth, height: height), display: false)
         frame = NSRect(x: 0, y: 0, width: contentWidth, height: height)
+        lineView.frame = bounds
         panelWindow?.alphaValue = 1
         // accessory 应用未激活时 orderFront(nil) 可能不生效，用 Regardless 版本。
         panelWindow?.orderFrontRegardless()
+
+        startBreathing()
     }
 
     func hide() {
+        stopBreathing()
         panelWindow?.orderOut(nil)
+    }
+
+    // MARK: - 呼吸微动画（柔和的 opacity 脉动）
+
+    private func startBreathing() {
+        let breath = CABasicAnimation(keyPath: "opacity")
+        breath.fromValue = 0.9
+        breath.toValue = 1.0
+        breath.duration = 1.5
+        breath.autoreverses = true
+        breath.repeatCount = .infinity
+        breath.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
+        lineView.layer?.add(breath, forKey: "breath")
+    }
+
+    private func stopBreathing() {
+        lineView.layer?.removeAnimation(forKey: "breath")
+        lineView.layer?.opacity = 1
     }
 
     // MARK: - 每帧更新（30fps 由 MenuBarManager.pollDrag 驱动）
@@ -192,29 +209,41 @@ final class DragFeedbackView: NSView {
                 highlight: HighlightSide,
                 overflow: Bool,
                 title: String?) {
+        // 1) 竖线：正常拉到 maxLineHeight；越过则按 iOS 橡皮筋阻尼继续延伸（阻力渐增）
+        let baseLine = min(maxLineHeight, max(minLineHeight, distance))
+        let overshoot = max(0, distance - maxLineHeight)
+        let damped = CGFloat(DragPhysics.dampedOvershoot(Double(overshoot),
+                                                        headroom: Double(DragFeedbackView.kRubberHeadroom)))
+        rubberHeight = damped
+        let lineHeight = baseLine + damped
+
+        // 2) 面板随橡皮筋向下生长（顶部固定），避免线条压到双轨
+        let neededHeight = topY + lineHeight + DragFeedbackView.kBottomBlockHeight
+        if abs(neededHeight - bounds.height) > 0.5, let w = panelWindow {
+            var wf = w.frame
+            let oldHeight = wf.height
+            wf.size.height = neededHeight
+            wf.origin.y += (oldHeight - neededHeight)   // 顶部固定，下沿生长
+            w.setFrame(wf, display: false)
+            frame = NSRect(x: 0, y: 0, width: contentWidth, height: neededHeight)
+            lineView.frame = bounds
+        }
         let panelHeight = bounds.height
 
-        // 1) 竖线：从 topY 向下延伸，溢出时线宽变细（弹簧反馈）
-        let lineHeight = min(maxLineHeight, max(minLineHeight, distance))
-        let width = overflow ? lineWidthOverflow : lineWidthNormal
-        let lineX = contentWidth / 2 - width / 2
+        // 3) 竖线 + 光点绘制参数
         let lineY = panelHeight - topY - lineHeight
-        lineView.frame = NSRect(x: lineX, y: lineY, width: width, height: lineHeight)
-        lineView.layer?.cornerRadius = width / 2
+        lineView.lineHeight = lineHeight
+        lineView.topY = topY
+        lineView.isOverflowing = overflow
+        lineView.rubberOvershoot = damped
 
-        // 2) 末端圆点
-        dotView.frame = NSRect(x: contentWidth / 2 - dotDiameter / 2,
-                               y: lineY - dotDiameter,
-                               width: dotDiameter,
-                               height: dotDiameter)
-
-        // 3) 双轨文本
+        // 4) 双轨文本：for = 倒计时（走 linger_timeFormat），til = 结束时刻 HH:mm:ss
         let format = UserDefaults.standard.string(forKey: LingerTheme.UserDefaultsKey.timeFormat.rawValue)
             ?? LingerTheme.defaultTimeFormat
         forTime.stringValue = TimerEntry.displayString(seconds: seconds, format: format)
         tilTime.stringValue = DragFeedbackView.tilFormatter.string(from: til)
 
-        // 4) 双轨显隐（单轨模式）
+        // 5) 双轨显隐（单轨模式）
         let showFor = (mode == .both || mode == .countdown)
         let showTil = (mode == .both || mode == .endTime)
         forPrefix.isHidden = !showFor
@@ -222,19 +251,48 @@ final class DragFeedbackView: NSView {
         tilPrefix.isHidden = !showTil
         tilTime.isHidden = !showTil
 
-        // 5) 布局（水平双轨 + 分隔线 + 提示）
-        layoutDualTrack(dotMinY: dotView.frame.minY, showFor: showFor, showTil: showTil)
+        // 6) 提示文案：只在前 3 次拖拽显示
+        let usage = UserDefaults.standard.integer(forKey: LingerTheme.UserDefaultsKey.dragHintUsageCount.rawValue)
+        hintLabel.isHidden = usage >= LingerTheme.maxDragHintShownCount
 
-        // 6) 左右半区高亮联动（0.35s 过渡）
+        // 7) 高亮（字号 +2 在这步设好）→ 布局
         applyHighlight(highlight)
+        let dotRadius = (overflow ? DragLineView.dotDiameter + 2 : DragLineView.dotDiameter) / 2
+        layoutDualTrack(dotMinY: lineY - dotRadius, showFor: showFor, showTil: showTil)
     }
 
-    /// 水平双轨：左组 + 分隔线 + 右组，整体居中于 280pt 窗宽。
+    // MARK: - 布局
+
+    /// 按当前字号 + 高亮增量，计算两轨并排所需最小宽度。
+    /// for 侧按最大时长决定占位：≥60 分钟才可能是 8 字符（HH:MM:SS），否则 5 字符（MM:SS）；
+    /// til 侧固定 8 字符（HH:mm:ss）。
+    private func requiredPanelWidth() -> CGFloat {
+        let activeSize = previewFontSize + DragFeedbackView.kHighlightFontBump
+        let timeFont = LingerTheme.timeFont(size: activeSize, weight: .semibold)
+        let maxDur = UserDefaults.standard.double(forKey: LingerTheme.UserDefaultsKey.maxDurationMinutes.rawValue)
+        let forPlaceholder = (maxDur >= 60 ? "00:00:00" : "00:00") as NSString
+        let tilPlaceholder = "00:00:00" as NSString
+        let prefixW = max(forPrefix.intrinsicContentSize.width,
+                          tilPrefix.intrinsicContentSize.width)
+        let forTrackW = prefixW + 6 + forPlaceholder.size(withAttributes: [.font: timeFont]).width
+        let tilTrackW = prefixW + 6 + tilPlaceholder.size(withAttributes: [.font: timeFont]).width
+        let both = forTrackW + tilTrackW + 16 * 2 + 1
+        return both + 32   // 左右留白
+    }
+
+    /// 水平双轨：左组 + 分隔线 + 右组，整体居中。
     private func layoutDualTrack(dotMinY: CGFloat, showFor: Bool, showTil: Bool) {
         let gapFromDot: CGFloat = 24     // 原型 #time-preview mt-6
         let innerGap: CGFloat = 16       // 原型 gap-4
         let labelGap: CGFloat = 6        // 原型 .dual-track gap 6px
         let separatorHeight: CGFloat = 18
+        let base = previewFontSize
+        let activeSize = base + DragFeedbackView.kHighlightFontBump
+
+        forTime.font = LingerTheme.timeFont(size: currentHighlight == .forSide ? activeSize : base,
+                                            weight: .semibold)
+        tilTime.font = LingerTheme.timeFont(size: currentHighlight == .tilSide ? activeSize : base,
+                                            weight: .semibold)
 
         func trackWidth(_ prefix: NSTextField, _ time: NSTextField) -> CGFloat {
             prefix.intrinsicContentSize.width + labelGap + time.intrinsicContentSize.width
@@ -275,8 +333,11 @@ final class DragFeedbackView: NSView {
                                  width: contentWidth, height: 14)
     }
 
-    /// 悬停高亮：高亮侧琥珀金 + 不透明度 1，对侧 ink3 + 0.3，0.35s 过渡。
+    // MARK: - 高亮
+
+    /// 悬停高亮：高亮侧琥珀金 + 不透明度 1 + 字号 +2pt，对侧 ink3 + 0.3，0.35s 过渡。
     private func applyHighlight(_ side: HighlightSide) {
+        currentHighlight = side
         let forActive = (side == .forSide)
         let amber = LingerTheme.nsColor(LingerTheme.Color.amber)
         let ink3 = LingerTheme.nsColor(LingerTheme.Color.ink3)

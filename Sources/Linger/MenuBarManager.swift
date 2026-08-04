@@ -33,6 +33,8 @@ final class MenuBarManager: NSObject {
 
     // 拖拽反馈视图（复用同一实例 + 同一窗口，show/hide 切换）
     private var dragFeedback: DragFeedbackView?
+    /// 上一帧是否已触顶（用于触顶时只触发一次轻触反馈）
+    private var wasOverflowing = false
 
     // T3: 倒计时面板（CountdownPillPanel / CountdownFloater）已移除；计时归零改用 Toast 占位。
     // T5: 日历预约面板（ScheduleTimerView）承载于独立窗口 schedulePanel。
@@ -394,6 +396,12 @@ final class MenuBarManager: NSObject {
         let til = Date().addingTimeInterval(seconds)
         let overflow = rawSeconds >= maxSeconds - 0.5
 
+        // 刚触顶：trackpad 轻触反馈（类似 iPhone 拉到页面最下方）
+        if overflow && !wasOverflowing {
+            NSHapticFeedbackManager.defaultPerformer.perform(.alignment, performanceTime: .now)
+        }
+        wasOverflowing = overflow
+
         dragFeedback?.update(distance: distance,
                              seconds: seconds,
                              til: til,
@@ -463,6 +471,7 @@ final class MenuBarManager: NSObject {
         dragFeedback?.hide()
         hideClickHint()
         dragState = .idle
+        wasOverflowing = false
         pendingTitle = nil
         refreshStatusItemTitle()
     }
@@ -473,6 +482,7 @@ final class MenuBarManager: NSObject {
         let title = pendingTitle ?? currentPresetTitle(for: NSEvent.modifierFlags)
 
         if let entry = TimerManager.shared.addTimer(duration: seconds, predefinedTitle: title) {
+            bumpDragHintUsage()
             os_log("Created timer entry %{public}@ for %.1fs",
                    log: log, type: .info, entry.id.uuidString, seconds)
         } else {
@@ -506,6 +516,13 @@ final class MenuBarManager: NSObject {
         let mins = UserDefaults.standard.double(forKey: LingerTheme.UserDefaultsKey.maxDurationMinutes.rawValue)
         let m = mins > 0 ? mins : LingerTheme.defaultMaxDurationMinutes
         return TimeInterval(m) * 60
+    }
+
+    /// 拖拽引导提示计数：每次成功创建计时 +1；前 3 次拖拽显示提示文案，之后永久隐藏（见 DragFeedbackView）。
+    private func bumpDragHintUsage() {
+        let key = LingerTheme.UserDefaultsKey.dragHintUsageCount.rawValue
+        let count = UserDefaults.standard.integer(forKey: key)
+        UserDefaults.standard.set(count + 1, forKey: key)
     }
 
     /// 双轨模式（T12 `linger_dualRailMode`，缺省 both）
