@@ -78,28 +78,26 @@ Linger2.5/
       - 触顶反馈更明显：橡皮筋延伸 10 → 24pt（微微拉长可见），线宽衰减常数 k 40 → 60（变细过程平滑可见）
       - Esc 断线特效两阶段：先从中部裂开（缝扩大）→ 上段缩回菜单栏、下段带圆点重力下坠淡出（0.4s）
       - 修「闪一帧完整绳子的影子」：`isBreaking` 锁让断线期间忽略一切拖拽帧更新 + 首帧即 0.05 裂开
-- [x] **拖拽预览第七轮（Esc 断线改为「灯绳拉断」物理感特效）**：
-      - 搜 GitHub 无现成 macOS 灯绳断裂动画（只有通用动画/物理引擎，引入过重）→ 按物理原理自绘
-      - 特效：张力高频颤动 → 断口颈缩 1pt 细丝 + 纤维毛刺 → 啪断 → 上段弹回菜单栏、
-        下段带圆点重力坠出 + 尾部钟摆甩动 + 碎屑飞散，0.55s 后淡出
-      - 修坠落方向 bug（原来画成向上掉）；时长 0.4 → 0.55s
+- [x] **拖拽预览第八轮（Esc 取消动画改为用户分镜「收回」特效）**：
+      1. 圆球从外向内收缩消失（0–22%，easeOut）
+      2. 线变到最细（当前宽→1pt）+ 颜色变暗（alpha 1→0.45）（22–52%）
+      3. 整体向上收缩回菜单栏 icon（52–100%，easeOut 收尾加速），末端 15% 淡出；0.5s
 - [x] **纯逻辑单测接入 `swift test`**（DragPhysics 变细/同步公式、TimerEntry 格式、布局防遮挡，共 12 个，全绿）
-- [ ] **待真机验收 v6**：灯绳拉断特效观感（张力颤动/颈缩/啪断/坠出/碎屑）、触顶拉长变细、是否还闪帧（用户实机确认中）
+- [ ] **待真机验收 v7**：Esc「收回」三步观感（圆球收缩→变细变暗→上收回 icon）、触顶拉长变细、是否还闪帧（用户实机确认中）
 - [ ] 按原型逐页对齐：hover-list（悬停列表）、toast、settings×4、about、schedule-timer、notification
 - [ ] 通知/日历权限、预约计时、图标三风格（Ring/Classic/timer）
 
-## 最近交接（2026-08-04 下午 · 拖拽预览第七轮）
+## 最近交接（2026-08-04 下午 · 拖拽预览第八轮）
 
 **本次完成**
-- Esc 断线 → 「灯绳拉断」物理特效（`DragLineView.draw`，breakProgress 驱动）：
-  张力颤动（sin 高频、振幅衰减）→ 断口颈缩细丝 + 纤维 → 啪断（上弹 6pt/下坠 6pt）→
-  上段 easeOut 缩回菜单栏、下段平方加速坠出 + 钟摆甩尾 + 3 颗碎屑飞散 → 55% 后淡出
-- 时长 0.55s；防闪帧 `isBreaking` 锁保留
-- GitHub 检索结论：无现成 macOS 灯绳断裂动画库，物理元素均为自绘
+- Esc 取消动画 = 用户分镜三步（`DragLineView.draw`，breakProgress 驱动，0.5s）：
+  圆球收缩（0–22%）→ 线最细+变暗（22–52%）→ 向上收回 icon（52–100% + 末端淡出）
+- 防闪帧 `isBreaking` 锁保留；动画时长 0.5s
+- 之前第七轮「灯绳拉断」特效已被本版替换（用户嫌 PPT 感，此版更克制）
 - `swift build` 通过、`swift test` 12/12 绿
 
 **未完成 / 卡点**
-- 实机验收：灯绳拉断观感（重点看颤动/颈缩/啪断节奏）、触顶拉长变细、闪帧
+- 实机验收：Esc「收回」三步节奏与观感、触顶拉长变细、闪帧
 
 **下一步（按优先级）**
 1. 用户实机验收拖拽预览（`./script/build_and_run.sh`）
@@ -115,8 +113,8 @@ Linger2.5/
 - 发光/光点在 `DragLineView.draw(_:)` 手绘（NSShadow 紧致 glow，对齐 2.0 观感）；圆点直径 `DragLineView.dotDiameter`（10pt）
 - 线长上限在 `DragFeedbackView.show()`：`max(100, min(40·√maxMinutes, percentLimit))`；橡皮筋 `kRubberHeadroom`（24pt）
 - Esc 用 Carbon 热键（`installEscHotKey`/`uninstallEscHotKey`，拖拽期注册）——别再用 localMonitor 等 keyDown（未激活收不到）
-- 灯绳断裂特效在 `DragLineView.draw`：breakProgress 分段（0.15 前张力颤动+颈缩、之后啪断坠落+碎屑+钟摆）；`isBreaking` 锁防拖拽帧干扰
-- 断线时长 `DragFeedbackView.animateBreak`（0.55s）；坠落方向是 y 减小（向下），别写反
+- Esc「收回」三步动画在 `DragLineView.draw`：breakProgress 分段（0–0.22 圆球收缩 / 0.22–0.52 变细变暗 / 0.52–1 向上收回）；`isBreaking` 锁防拖拽帧干扰
+- 动画时长 `DragFeedbackView.animateBreak`（0.5s）；首帧从 0.05 起防闪帧
 - **别再让字号弹跳动画的对侧从 >1 起跳**（会盖字），见 `animateFontPop`
 - label frame 留 padding（前缀 +2 / 数字 +4），文字不贴右缘
 - 断线动画：`DragFeedbackView.animateBreak` + `MenuBarManager.cancelDrag(animated: true)`
