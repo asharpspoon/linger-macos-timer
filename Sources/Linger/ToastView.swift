@@ -1,32 +1,60 @@
-import Cocoa
+//  ToastView.swift
+//  Toast 轻提示（非模态）—— 对齐 toast.html 原型：
+//    - 毛玻璃胶囊（NSVisualEffectView hudWindow）+ 1px 边框 + 圆角 10
+//    - 文案 13px ink；内边距 px-5(20) / py-3(12)，尺寸内容自适应
+//    - 淡入 0.4s → 停留 2.5s → 淡出 0.4s（由 MenuBarManager.showToast 驱动）
+//  铁律：无硬编码 #F5A623，颜色走 LingerTheme。
 
-// MARK: - ToastView（内联）
-//
-// 从 MenuBarManager.swift 逐字抽取（逻辑不变）。
-// 计时归零时的轻提示占位（T3 用 Toast 替代原 CountdownFloater "zero expression"）。
+import Cocoa
 
 final class ToastView: NSView {
 
     private let message: String
+    private let effectView = NSVisualEffectView()
+
+    static let cornerRadius: CGFloat = 10
+    static let horizontalPadding: CGFloat = 20   // px-5
+    static let verticalPadding: CGFloat = 12     // py-3
 
     init(frame frameRect: NSRect, message: String) {
         self.message = message
         super.init(frame: frameRect)
+        setup()
     }
 
     required init?(coder: NSCoder) {
         self.message = ""
         super.init(coder: coder)
+        setup()
+    }
+
+    private func setup() {
+        wantsLayer = true
+        layer?.cornerRadius = ToastView.cornerRadius
+        layer?.masksToBounds = true
+        layer?.borderColor = LingerTheme.nsColor(LingerTheme.Color.line).cgColor
+        layer?.borderWidth = 1
+
+        effectView.material = .hudWindow
+        effectView.blendingMode = .withinWindow
+        effectView.state = .active
+        effectView.frame = bounds
+        effectView.autoresizingMask = [.width, .height]
+        addSubview(effectView)
+    }
+
+    /// 按文案计算自适应尺寸（文字 + 内边距）
+    static func size(for message: String) -> NSSize {
+        let attr: [NSAttributedString.Key: Any] = [.font: NSFont.systemFont(ofSize: 13)]
+        let textSize = (message as NSString).size(withAttributes: attr)
+        return NSSize(width: textSize.width + horizontalPadding * 2,
+                      height: textSize.height + verticalPadding * 2)
     }
 
     override func draw(_ dirtyRect: NSRect) {
-        let bg = NSBezierPath(roundedRect: bounds.insetBy(dx: 2, dy: 2), xRadius: 10, yRadius: 10)
-        NSColor.black.withAlphaComponent(0.7).setFill()
-        bg.fill()
-
         let attr: [NSAttributedString.Key: Any] = [
-            .font: NSFont.systemFont(ofSize: 13, weight: .medium),
-            .foregroundColor: NSColor.white
+            .font: NSFont.systemFont(ofSize: 13),
+            .foregroundColor: LingerTheme.nsColor(LingerTheme.Color.ink)
         ]
         let size = (message as NSString).size(withAttributes: attr)
         let textRect = NSRect(x: bounds.midX - size.width / 2,

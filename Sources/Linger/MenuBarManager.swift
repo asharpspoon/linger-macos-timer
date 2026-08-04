@@ -598,7 +598,7 @@ final class MenuBarManager: NSObject {
             //（B2 的 reclaimFinishedEntries 回收逻辑已在 addTimer 内先跑过一轮）
             os_log("finishDrag rejected by TimerManager (limit reached) for %.1fs",
                    log: log, type: .error, seconds)
-            showToast(message: "已达上限 (最多 \(TimerManager.maxConcurrentEntries) 个)")
+            showToast(message: "已达 \(TimerManager.maxConcurrentEntries) 个计时上限")
         }
     }
 
@@ -713,11 +713,11 @@ final class MenuBarManager: NSObject {
 
     private func showToast(message: String) {
         let screenFrame = NSScreen.main?.visibleFrame ?? NSRect(x: 0, y: 0, width: 1280, height: 800)
-        let width: CGFloat = 260
-        let height: CGFloat = 44
-        let rect = NSRect(x: screenFrame.midX - width / 2,
-                          y: screenFrame.midY - height / 2,
-                          width: width, height: height)
+        // 尺寸内容自适应（对齐 toast.html：px-5 py-3 毛玻璃胶囊）
+        let size = ToastView.size(for: message)
+        let rect = NSRect(x: screenFrame.midX - size.width / 2,
+                          y: screenFrame.midY - size.height / 2,
+                          width: size.width, height: size.height)
         let win = NSWindow(contentRect: rect,
                            styleMask: [.borderless],
                            backing: .buffered,
@@ -730,12 +730,24 @@ final class MenuBarManager: NSObject {
         win.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
         win.isReleasedWhenClosed = false
 
-        let view = ToastView(frame: rect, message: message)
+        let view = ToastView(frame: NSRect(x: 0, y: 0, width: size.width, height: size.height),
+                             message: message)
         win.contentView = view
-        win.orderFrontRegardless()
 
-        DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {
-            win.orderOut(nil)
+        // 动画：淡入 0.4s → 停留 2.5s → 淡出 0.4s（对齐原型注释）
+        win.alphaValue = 0
+        win.orderFrontRegardless()
+        NSAnimationContext.runAnimationGroup { ctx in
+            ctx.duration = 0.4
+            win.animator().alphaValue = 1
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 2.5) {
+            NSAnimationContext.runAnimationGroup({ ctx in
+                ctx.duration = 0.4
+                win.animator().alphaValue = 0
+            }, completionHandler: {
+                win.orderOut(nil)
+            })
         }
     }
 
