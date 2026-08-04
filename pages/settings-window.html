@@ -1,0 +1,629 @@
+<!DOCTYPE html>
+<html lang="zh-CN" class="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Linger 2.0 — 设置窗口原型</title>
+    <style id="theme-vars">
+:root {
+  --linger-primary: #F5A623;
+  --linger-primary-light: #FFC966;
+  --linger-primary-lighter: #FFE0A8;
+  --linger-primary-dark: #D98E14;
+  --linger-primary-darker: #8F5A0D;
+  --linger-primary-soft: rgba(245, 166, 35, 0.14);
+  --linger-primary-glow: rgba(245, 166, 35, 0.40);
+  --linger-bg: #0C0C0E;
+  --linger-surface: #16161A;
+  --linger-surface-2: #1F1F25;
+  --linger-ink: #F5F5F3;
+  --linger-ink-2: #A6A6AA;
+  --linger-ink-3: #75757B;
+  --linger-line: rgba(255, 255, 255, 0.10);
+  --linger-background: var(--linger-bg);
+  --linger-foreground: var(--linger-ink);
+  --linger-card: var(--linger-surface);
+  --linger-card-foreground: var(--linger-ink);
+  --linger-popover: #15151A;
+  --linger-popover-foreground: var(--linger-ink);
+  --linger-primary-foreground: #1A1406;
+  --linger-muted: #17171C;
+  --linger-muted-foreground: var(--linger-ink-2);
+  --linger-border: var(--linger-line);
+  --linger-input: rgba(255, 255, 255, 0.08);
+  --linger-ring: rgba(245, 166, 35, 0.55);
+  --state-success: #30D158;
+  --state-warning: #FF9F0A;
+  --state-error: #FF453A;
+  --state-info: #0A84FF;
+  --radius-sm: 4px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+  --radius-xl: 16px;
+  --radius-full: 9999px;
+  --linger-radius-small: var(--radius-sm);
+  --linger-radius-medium: var(--radius-md);
+  --linger-radius-large: var(--radius-lg);
+  --shadow-1: 0 1px 2px rgba(0, 0, 0, 0.05);
+  --shadow-2: 0 8px 24px -8px rgba(0, 0, 0, 0.30);
+  --shadow-3: 0 24px 60px -20px rgba(0, 0, 0, 0.45);
+  --font-sans: -apple-system, BlinkMacSystemFont, "SF Pro Text", "SF Pro Display", "PingFang SC", "Hiragino Sans GB", "Helvetica Neue", Arial, sans-serif;
+  --font-mono: "SF Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+  --glass-blur: blur(16px) saturate(180%);
+  --glass-panel-bg: rgba(24, 24, 28, 0.72);
+  --glass-panel-bg-strong: rgba(12, 12, 14, 0.92);
+  --wallpaper-base: #0B0B0D;
+  --wallpaper-glow-amber: rgba(245, 166, 35, 0.14);
+  --wallpaper-glow-warm: rgba(120, 90, 40, 0.16);
+  --menubar-bg: rgba(18, 18, 21, 0.78);
+}
+.dark {
+  --linger-background: var(--linger-bg);
+  --linger-foreground: var(--linger-ink);
+  --linger-card: var(--linger-surface);
+  --linger-card-foreground: var(--linger-ink);
+  --linger-popover: #15151A;
+  --linger-popover-foreground: var(--linger-ink);
+  --linger-muted: #17171C;
+  --linger-muted-foreground: var(--linger-ink-2);
+  --linger-border: var(--linger-line);
+  --linger-input: rgba(255, 255, 255, 0.08);
+}
+html { font-family: var(--font-sans); -webkit-font-smoothing: antialiased; text-rendering: optimizeLegibility; }
+body { margin: 0; background-color: var(--wallpaper-base); color: var(--linger-ink); }
+.font-sans { font-family: var(--font-sans); }
+.font-mono { font-family: var(--font-mono); }
+.tabular-nums { font-variant-numeric: tabular-nums; font-feature-settings: "tnum"; }
+.glass-panel { background: var(--glass-panel-bg); -webkit-backdrop-filter: var(--glass-blur); backdrop-filter: var(--glass-blur); border: 1px solid var(--linger-line); }
+.glass-panel-strong { background: var(--glass-panel-bg-strong); -webkit-backdrop-filter: var(--glass-blur); backdrop-filter: var(--glass-blur); border: 1px solid var(--linger-line); }
+.desktop-stage {
+  background-color: var(--wallpaper-base);
+  background-image:
+    radial-gradient(900px 520px at 68% -8%, var(--wallpaper-glow-amber), transparent 62%),
+    radial-gradient(760px 480px at 12% 108%, var(--wallpaper-glow-warm), transparent 60%),
+    radial-gradient(1200px 700px at 50% 45%, rgba(60, 50, 40, 0.10), transparent 70%);
+}
+.menubar { background: var(--menubar-bg); -webkit-backdrop-filter: blur(20px) saturate(180%); backdrop-filter: blur(20px) saturate(180%); border-bottom: 1px solid var(--linger-line); }
+.traffic-light { width: 12px; height: 12px; border-radius: 9999px; }
+.traffic-close { background: #FF5F57; }
+.traffic-min { background: #FEBC2E; }
+.traffic-zoom { background: #28C840; }
+.switch { position: relative; width: 36px; height: 20px; border-radius: 9999px; background: rgba(255,255,255,0.16); border: 1px solid var(--linger-line); transition: background 160ms cubic-bezier(.2,.8,.2,1); }
+.switch::after { content: ""; position: absolute; top: 1px; left: 1px; width: 16px; height: 16px; border-radius: 9999px; background: #FFFFFF; box-shadow: 0 1px 3px rgba(0,0,0,0.4); transition: transform 160ms cubic-bezier(.3,0,0,1); }
+.switch.is-on { background: var(--linger-primary); border-color: var(--linger-primary); }
+.switch.is-on::after { transform: translateX(16px); }
+.mac-select { display: inline-flex; align-items: center; gap: 6px; height: 22px; padding: 0 8px; font-size: 12px; color: var(--linger-ink); background: var(--linger-surface-2); border: 1px solid var(--linger-line); border-radius: var(--radius-sm); cursor: default; }
+    </style>
+    <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4.3.1/dist/index.global.js"></script>
+    <style type="text/tailwindcss">
+  @theme inline {
+    --color-background: var(--linger-background);
+    --color-foreground: var(--linger-foreground);
+    --color-card: var(--linger-card);
+    --color-card-foreground: var(--linger-card-foreground);
+    --color-popover: var(--linger-popover);
+    --color-popover-foreground: var(--linger-popover-foreground);
+    --color-primary: var(--linger-primary);
+    --color-primary-foreground: var(--linger-primary-foreground);
+    --color-muted: var(--linger-muted);
+    --color-muted-foreground: var(--linger-muted-foreground);
+    --color-border: var(--linger-border);
+    --color-input: var(--linger-input);
+    --color-ring: var(--linger-ring);
+    --radius-sm: var(--linger-radius-small);
+    --radius-md: var(--linger-radius-medium);
+    --radius-lg: var(--linger-radius-large);
+  }
+    </style>
+    <style id="liquid-glass-tabs">
+      .lg-tabs {
+        display: flex; align-items: center; justify-content: center; gap: 0;
+        border-bottom: 1px solid var(--linger-line);
+        padding: 0;
+      }
+      .lg-tab {
+        position: relative; display: flex; flex-direction: column; align-items: center; gap: 3px;
+        padding: 8px 16px; cursor: pointer; border: none; background: none;
+        transition: background 200ms ease;
+      }
+      .lg-tab:hover { background: rgba(255,255,255,0.04); }
+      .lg-tab.is-active { background: rgba(245,166,35,0.08); }
+      .lg-tab.is-active::after {
+        content: ""; position: absolute; bottom: -1px; left: 0; right: 0; height: 2px;
+        background: var(--linger-primary); border-radius: 1px;
+      }
+      .lg-tab .lg-tab-icon { width: 18px; height: 18px; color: var(--linger-ink-3); transition: color 200ms ease; }
+      .lg-tab.is-active .lg-tab-icon { color: var(--linger-primary); }
+      .lg-tab .lg-tab-label { font-size: 10px; color: var(--linger-ink-3); white-space: nowrap; transition: color 200ms ease; }
+      .lg-tab.is-active .lg-tab-label { color: var(--linger-primary); font-weight: 600; }
+      .lg-content { overflow: hidden; transition: height 400ms cubic-bezier(0.32,0.72,0,1); }
+      .tab-panel { display: none; }
+      .tab-panel.is-visible { display: block; }
+
+      /* ========== 统一设置面板设计规范 ========== */
+      .panel-body { padding: 18px 20px 22px; }
+      .section { margin-bottom: 18px; }
+      .section:last-child { margin-bottom: 0; }
+      .section-title { font-size: 11px; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; color: var(--linger-ink-3); margin-bottom: 2px; }
+      .section-rows { display: flex; flex-direction: column; }
+      .row { display: flex; align-items: center; justify-content: space-between; min-height: 34px; padding: 6px 0; border-bottom: 1px solid var(--linger-line); }
+      .row:last-child { border-bottom: none; }
+      .row-label { font-size: 13px; color: var(--linger-ink); }
+      .row-hint { font-size: 11px; color: var(--linger-ink-3); margin-top: 2px; }
+
+      /* ========== 票据风格「关于」面板（白底纸张纹理） ========== */
+      .ticket {
+        position: relative;
+        margin: 20px;
+        background: #faf9f6;
+        background-image:
+          radial-gradient(rgba(0,0,0,0.015) 1px, transparent 1px),
+          radial-gradient(rgba(0,0,0,0.01) 1px, transparent 1px);
+        background-size: 3px 3px, 7px 7px;
+        background-position: 0 0, 1px 2px;
+        border-radius: 10px;
+        overflow: hidden;
+        box-shadow: 0 2px 12px rgba(0,0,0,0.25), inset 0 0 0 0.5px rgba(0,0,0,0.06);
+      }
+      /* 票据顶部锯齿边 */
+      .ticket::before {
+        content: ""; position: absolute; top: -1px; left: 0; right: 0; height: 10px;
+        background: radial-gradient(circle at 8px 0, var(--linger-bg) 5px, transparent 5.5px);
+        background-size: 16px 10px; background-repeat: repeat-x;
+      }
+      /* 票据底部锯齿边 */
+      .ticket::after {
+        content: ""; position: absolute; bottom: -1px; left: 0; right: 0; height: 10px;
+        background: radial-gradient(circle at 8px 10px, var(--linger-bg) 5px, transparent 5.5px);
+        background-size: 16px 10px; background-repeat: repeat-x;
+      }
+      .ticket-inner { padding: 24px 24px 20px; }
+      .ticket-header { display: flex; flex-direction: column; align-items: center; text-align: center; }
+      .ticket-app-icon {
+        width: 48px; height: 48px; border-radius: 12px;
+        background: linear-gradient(135deg, rgba(245,166,35,0.20), rgba(245,166,35,0.08));
+        border: 1px solid rgba(245,166,35,0.25);
+        display: flex; align-items: center; justify-content: center;
+      }
+      .ticket-divider {
+        position: relative; height: 1px; margin: 18px 0;
+        background-image: linear-gradient(to right, transparent, rgba(0,0,0,0.10) 12%, rgba(0,0,0,0.10) 88%, transparent);
+      }
+      /* 票据虚线分割（带剪刀口质感） */
+      .ticket-dashed {
+        position: relative; height: 1px; margin: 16px 0;
+        background-image: repeating-linear-gradient(to right, rgba(0,0,0,0.12) 0, rgba(0,0,0,0.12) 4px, transparent 4px, transparent 9px);
+      }
+      .ticket-dashed::before, .ticket-dashed::after {
+        content: ""; position: absolute; top: 50%; width: 10px; height: 10px;
+        background: var(--linger-bg); border-radius: 50%; transform: translateY(-50%);
+      }
+      .ticket-dashed::before { left: -5px; }
+      .ticket-dashed::after { right: -5px; }
+      .ticket-field { display: flex; align-items: baseline; justify-content: space-between; padding: 5px 0; }
+      .ticket-field-label { font-family: var(--font-mono); font-size: 10px; letter-spacing: 0.05em; text-transform: uppercase; color: #8e8e93; }
+      .ticket-field-value { font-size: 12px; color: #1d1d1f; text-align: right; }
+      .ticket-field-value.mono { font-family: var(--font-mono); font-size: 11px; }
+      .ticket-footer { text-align: center; }
+      .ticket-footer p { color: #8e8e93 !important; }
+      .ticket-footer .font-mono { color: #aeaeb2 !important; }
+      .ticket-header h1 { color: #1d1d1f !important; }
+      .ticket-header p { color: #6e6e73 !important; }
+
+      @media (prefers-reduced-motion: reduce) {
+        .lg-tabs, .lg-tab, .lg-content { transition: none !important; }
+      }
+    </style>
+</head>
+<body class="min-h-screen font-sans antialiased">
+    <main>
+    <div class="desktop-stage relative flex min-h-screen w-full flex-col" data-shell="desktop-stage">
+  <style id="critical-layout">
+    [data-shell="desktop-stage"]{display:flex;min-height:100vh;width:100%;flex-direction:column;background-color:var(--wallpaper-base);}
+    .menubar{display:flex;height:28px;flex-shrink:0;align-items:center;justify-content:space-between;padding:0 12px;background:var(--menubar-bg);-webkit-backdrop-filter:blur(20px) saturate(180%);backdrop-filter:blur(20px) saturate(180%);border-bottom:1px solid var(--linger-line);}
+    [data-slot="page-scene"]{position:relative;flex:1;}
+    [data-slot="page-annotation"]{font-size:11px;letter-spacing:.02em;color:var(--linger-ink-2);}
+  </style>
+  <header class="menubar relative z-20 flex h-7 shrink-0 items-center justify-between px-3 select-none">
+    <div class="flex items-center gap-4">
+      <svg viewBox="0 0 24 24" fill="currentColor" class="h-[14px] w-[14px] text-[var(--linger-ink)]" aria-hidden="true">
+        <path d="M12.152 6.896c-.948 0-2.415-1.078-3.96-1.04-2.04.027-3.91 1.183-4.961 3.014-2.117 3.675-.546 9.103 1.519 12.09 1.013 1.454 2.208 3.09 3.792 3.039 1.52-.065 2.09-.987 3.935-.987 1.831 0 2.35.987 3.96.948 1.637-.026 2.676-1.48 3.676-2.948 1.156-1.688 1.636-3.325 1.662-3.415-.039-.013-3.182-1.221-3.22-4.857-.026-3.04 2.48-4.494 2.597-4.559-1.429-2.09-3.623-2.324-4.39-2.376-2-.156-3.675 1.09-4.61 1.09zM15.53 3.83c.843-1.012 1.4-2.427 1.245-3.83-1.207.052-2.662.805-3.532 1.818-.78.896-1.454 2.338-1.273 3.714 1.338.104 2.715-.688 3.559-1.701"/>
+      </svg>
+      <span class="ml-2 text-[13px] font-semibold text-[var(--linger-ink)]">Linger</span>
+      <span class="text-[13px] text-[var(--linger-ink-2)]">文件</span>
+      <span class="text-[13px] text-[var(--linger-ink-2)]">编辑</span>
+      <span class="text-[13px] text-[var(--linger-ink-2)]">视图</span>
+      <span class="text-[13px] text-[var(--linger-ink-2)]">窗口</span>
+      <span class="text-[13px] font-semibold text-[var(--linger-ink)]">帮助</span>
+    </div>
+    <div class="flex items-center gap-4">
+      <span data-slot="linger-status" class="flex items-center gap-1.5"><span class="flex items-center gap-1.5"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="h-[17px] w-[17px] text-[var(--linger-ink)]"><circle cx="12" cy="12" r="8.5"/><circle cx="12" cy="12" r="3" fill="currentColor" stroke="none"/></svg><span class="font-mono text-[12px] tabular-nums text-[var(--linger-primary)]">12:34</span></span></span>
+      <span class="h-3.5 w-px bg-[var(--linger-line)]"></span>
+      <span class="text-[12px] tabular-nums text-[var(--linger-ink)]">8月2日 周日 11:24</span>
+    </div>
+  </header>
+
+  <div data-slot="page-scene" class="relative flex-1"><div class="flex h-full items-center justify-center">
+    <div class="glass-panel-strong flex w-[520px] flex-col overflow-hidden rounded-[12px] shadow-[var(--shadow-3)]" id="settingsWindow">
+      <div class="relative flex h-[38px] shrink-0 items-center justify-center border-b border-[var(--linger-line)]">
+        <div class="absolute left-3.5 flex items-center gap-2">
+          <span class="traffic-light traffic-close"></span>
+          <span class="traffic-light traffic-min opacity-40"></span>
+          <span class="traffic-light traffic-zoom opacity-40"></span>
+        </div>
+        <span id="windowTitle" class="text-[13px] font-semibold text-[var(--linger-ink)]">操作</span>
+      </div>
+
+      <nav class="lg-tabs" id="lgTabs">
+        <button class="lg-tab is-active" data-tab="operations">
+          <i data-lucide="sliders-horizontal" class="lg-tab-icon"></i>
+          <span class="lg-tab-label">操作</span>
+        </button>
+        <button class="lg-tab" data-tab="notifications">
+          <i data-lucide="bell" class="lg-tab-icon"></i>
+          <span class="lg-tab-label">通知</span>
+        </button>
+        <button class="lg-tab" data-tab="calendar">
+          <i data-lucide="calendar" class="lg-tab-icon"></i>
+          <span class="lg-tab-label">日历</span>
+        </button>
+        <button class="lg-tab" data-tab="general">
+          <i data-lucide="settings" class="lg-tab-icon"></i>
+          <span class="lg-tab-label">通用</span>
+        </button>
+        <button class="lg-tab" data-tab="about">
+          <i data-lucide="info" class="lg-tab-icon"></i>
+          <span class="lg-tab-label">关于</span>
+        </button>
+      </nav>
+
+      <div class="lg-content" id="lgContent">
+
+        <!-- ========== 面板 1：操作 ========== -->
+        <div class="tab-panel is-visible" data-panel="operations">
+          <div class="panel-body">
+            <div class="section">
+              <p class="section-title">拖拽计时</p>
+              <div class="section-rows">
+                <div class="row">
+                  <span class="row-label">下拉线最大长度</span>
+                  <div class="flex items-center gap-2.5">
+                    <input type="range" min="25" max="75" value="50" class="h-1 w-36 accent-[var(--linger-primary)]" aria-label="下拉线最大长度"/>
+                    <span class="w-9 text-right text-[12px] tabular-nums text-[var(--linger-ink-2)]">50%</span>
+                  </div>
+                </div>
+                <div class="row">
+                  <span class="row-label">最大计时时长</span>
+                  <div class="flex items-center gap-1.5">
+                    <span class="flex h-[22px] w-14 items-center justify-center rounded-[4px] border border-[var(--linger-line)] bg-[var(--linger-surface-2)] text-[12px] tabular-nums text-[var(--linger-ink)]">30</span>
+                    <span class="flex flex-col">
+                      <i data-lucide="chevron-up" class="h-3 w-3 text-[var(--linger-ink-3)]"></i>
+                      <i data-lucide="chevron-down" class="h-3 w-3 text-[var(--linger-ink-3)]"></i>
+                    </span>
+                    <span class="text-[12px] text-[var(--linger-ink-2)]">分钟</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div class="section">
+              <p class="section-title">显示</p>
+              <div class="section-rows">
+                <div class="row">
+                  <span class="row-label">双轨显示</span>
+                  <span class="mac-select"><span>倒计时 + 结束时间</span><i data-lucide="chevron-down" class="h-3 w-3 text-[var(--linger-ink-3)]"></i></span>
+                </div>
+                <div class="row">
+                  <span class="row-label">时间格式</span>
+                  <span class="mac-select"><span class="font-mono">HH:MM:SS</span><i data-lucide="chevron-down" class="h-3 w-3 text-[var(--linger-ink-3)]"></i></span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- ========== 面板 2：通知（去掉卡片框，标题+分割线） ========== -->
+        <div class="tab-panel" data-panel="notifications">
+          <div class="panel-body">
+            <div class="section">
+              <p class="section-title">授权</p>
+              <div class="section-rows">
+                <div class="row">
+                  <span class="row-label">通知授权</span>
+                  <div class="flex items-center gap-2">
+                    <span class="flex items-center gap-1.5 text-[12px] text-[var(--state-success)]"><span class="h-1.5 w-1.5 rounded-full bg-[var(--state-success)]"></span>已授权</span>
+                    <button class="text-[12px] text-[var(--state-info)] hover:opacity-80">管理…</button>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div class="section">
+              <p class="section-title">提醒方式</p>
+              <div class="section-rows">
+                <div class="row">
+                  <span class="row-label">计时完成时通知</span>
+                  <span class="switch is-on"></span>
+                </div>
+                <div class="row">
+                  <span class="row-label">播放提示音</span>
+                  <div class="flex items-center gap-2">
+                    <span class="mac-select"><span>Ping</span><i data-lucide="chevron-down" class="h-3 w-3 text-[var(--linger-ink-3)]"></i></span>
+                    <span class="switch is-on"></span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- ========== 面板 3：日历（去掉卡片框，标题+分割线） ========== -->
+        <div class="tab-panel" data-panel="calendar">
+          <div class="panel-body">
+            <div class="section">
+              <p class="section-title">授权</p>
+              <div class="section-rows">
+                <div class="row">
+                  <span class="row-label">日历授权</span>
+                  <div class="flex items-center gap-2">
+                    <span class="flex items-center gap-1.5 text-[12px] text-[var(--state-success)]"><span class="h-1.5 w-1.5 rounded-full bg-[var(--state-success)]"></span>已授权</span>
+                    <button class="text-[12px] text-[var(--state-info)] hover:opacity-80">管理…</button>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div class="section">
+              <p class="section-title">写入设置</p>
+              <div class="section-rows">
+                <div class="row">
+                  <span class="row-label">目标日历</span>
+                  <span class="mac-select"><span>Linger</span><i data-lucide="chevron-down" class="h-3 w-3 text-[var(--linger-ink-3)]"></i></span>
+                </div>
+                <div class="row">
+                  <span class="row-label">写入方式</span>
+                  <span class="mac-select"><span>每次询问</span><i data-lucide="chevron-down" class="h-3 w-3 text-[var(--linger-ink-3)]"></i></span>
+                </div>
+                <div class="row">
+                  <div>
+                    <span class="row-label">默认标题</span>
+                    <p class="row-hint">仅在「自动写入」模式下使用</p>
+                  </div>
+                  <span class="flex h-[22px] w-36 items-center rounded-[4px] border border-[var(--linger-line)] bg-[var(--linger-surface-2)] px-2 text-[12px] text-[var(--linger-ink)]">专注</span>
+                </div>
+              </div>
+            </div>
+            <div class="section">
+              <p class="section-title">快捷预设标题</p>
+              <div class="section-rows">
+                <div class="row">
+                  <div class="flex items-center gap-2">
+                    <kbd class="rounded-[5px] border border-[var(--linger-line)] bg-[var(--linger-surface-2)] px-1.5 py-0.5 font-mono text-[10px] text-[var(--linger-ink-2)]">fn</kbd>
+                    <span class="flex h-[22px] w-32 items-center rounded-[4px] border border-[var(--linger-line)] bg-[var(--linger-surface-2)] px-2 text-[12px] text-[var(--linger-ink)]">开会</span>
+                  </div>
+                  <span class="text-[11px] text-[var(--linger-ink-3)]">留空则不激活</span>
+                </div>
+                <div class="row">
+                  <div class="flex items-center gap-2">
+                    <kbd class="rounded-[5px] border border-[var(--linger-line)] bg-[var(--linger-surface-2)] px-1.5 py-0.5 font-mono text-[10px] text-[var(--linger-ink-2)]">⌃</kbd>
+                    <span class="flex h-[22px] w-32 items-center rounded-[4px] border border-[var(--linger-line)] bg-[var(--linger-surface-2)] px-2 text-[12px] text-[var(--linger-ink)]">写代码</span>
+                  </div>
+                  <span class="text-[11px] text-[var(--linger-ink-3)]">留空则不激活</span>
+                </div>
+                <div class="row">
+                  <div class="flex items-center gap-2">
+                    <kbd class="rounded-[5px] border border-[var(--linger-line)] bg-[var(--linger-surface-2)] px-1.5 py-0.5 font-mono text-[10px] text-[var(--linger-ink-2)]">⌥</kbd>
+                    <span class="flex h-[22px] w-32 items-center rounded-[4px] border border-[var(--linger-line)] bg-[var(--linger-surface-2)] px-2 text-[12px] text-[var(--linger-ink)]">休息</span>
+                  </div>
+                  <span class="text-[11px] text-[var(--linger-ink-3)]">留空则不激活</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- ========== 面板 4：通用 ========== -->
+        <div class="tab-panel" data-panel="general">
+          <div class="panel-body">
+            <div class="section">
+              <p class="section-title">启动</p>
+              <div class="section-rows">
+                <div class="row">
+                  <span class="row-label">开机自启</span>
+                  <span class="switch"></span>
+                </div>
+              </div>
+            </div>
+            <div class="section">
+              <p class="section-title">维护</p>
+              <div class="section-rows">
+                <div class="row">
+                  <span class="row-label">自动清理</span>
+                  <span class="mac-select"><span>每周</span><i data-lucide="chevron-down" class="h-3 w-3 text-[var(--linger-ink-3)]"></i></span>
+                </div>
+              </div>
+            </div>
+            <div class="section">
+              <p class="section-title">菜单栏图标</p>
+              <div class="section-rows">
+                <div class="row">
+                  <span class="row-label">图标风格</span>
+                  <span class="mac-select"><span>Ring</span><i data-lucide="chevron-down" class="h-3 w-3 text-[var(--linger-ink-3)]"></i></span>
+                </div>
+                <div class="row">
+                  <div class="flex items-center gap-4">
+                    <span class="flex items-center gap-1.5 rounded-[6px] border border-[var(--linger-primary)] px-2 py-1.5"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="h-4 w-4 text-[var(--linger-primary)]"><circle cx="12" cy="12" r="8.5"/><circle cx="12" cy="12" r="3" fill="currentColor" stroke="none"/></svg><span class="text-[11px] text-[var(--linger-primary)]">Ring</span></span>
+                    <span class="flex items-center gap-1.5 rounded-[6px] border border-[var(--linger-line)] px-2 py-1.5 opacity-70"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="h-4 w-4 text-[var(--linger-ink-2)]"><circle cx="12" cy="12" r="8.5" stroke-dasharray="4 3"/></svg><span class="text-[11px] text-[var(--linger-ink-2)]">Classic</span></span>
+                    <span class="flex items-center gap-1.5 rounded-[6px] border border-[var(--linger-line)] px-2 py-1.5 opacity-70"><i data-lucide="timer" class="h-4 w-4 text-[var(--linger-ink-2)]"></i><span class="text-[11px] text-[var(--linger-ink-2)]">SF Symbol</span></span>
+                  </div>
+                  <span></span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- ========== 面板 5：关于（票据风格） ========== -->
+        <div class="tab-panel" data-panel="about">
+          <div class="ticket">
+            <div class="ticket-inner">
+              <!-- 票据头部：App 图标 + 名称 + 版本 + Slogan -->
+              <div class="ticket-header">
+                <div class="ticket-app-icon">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" class="h-7 w-7 text-[var(--linger-primary)]"><circle cx="12" cy="12" r="8.5"/><circle cx="12" cy="12" r="3" fill="currentColor" stroke="none"/></svg>
+                </div>
+                <h1 class="mt-3 text-[20px] font-bold tracking-tight text-[var(--linger-ink)]">Linger</h1>
+                <p class="mt-0.5 font-mono text-[11px] text-[var(--linger-ink-2)]">Version 2.0.0</p>
+                <p class="mt-2 text-[12px] italic text-[var(--linger-ink-3)]">一拉即走，松手计时</p>
+              </div>
+
+              <!-- 票据虚线分割 -->
+              <div class="ticket-dashed"></div>
+
+              <!-- 票据正文：键值对字段 -->
+              <div class="ticket-fields">
+                <div class="ticket-field">
+                  <span class="ticket-field-label">Developer</span>
+                  <span class="ticket-field-value">你的名字</span>
+                </div>
+                <div class="ticket-field">
+                  <span class="ticket-field-label">Blog</span>
+                  <span class="ticket-field-value mono">https://your.blog</span>
+                </div>
+                <div class="ticket-field">
+                  <span class="ticket-field-label">Email</span>
+                  <span class="ticket-field-value mono">hello@example.com</span>
+                </div>
+                <div class="ticket-field">
+                  <span class="ticket-field-label">Build</span>
+                  <span class="ticket-field-value mono">2026.08.02</span>
+                </div>
+                <div class="ticket-field">
+                  <span class="ticket-field-label">License</span>
+                  <span class="ticket-field-value">MIT</span>
+                </div>
+              </div>
+
+              <!-- 票据虚线分割 -->
+              <div class="ticket-dashed"></div>
+
+              <!-- 票据底部：感谢语 -->
+              <div class="ticket-footer">
+                <p class="text-[11px] text-[var(--linger-ink-3)]">Made with care · 感谢使用 Linger</p>
+                <p class="mt-1 font-mono text-[9px] tracking-wider text-[var(--linger-ink-3)] opacity-60">— LINGER · 2026 —</p>
+              </div>
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </div></div>
+
+  <div class="pointer-events-none absolute bottom-4 left-4 z-40 flex items-center gap-2 rounded-[10px] glass-panel px-3 py-2 shadow-[var(--shadow-2)]">
+    <span data-slot="page-annotation" class="text-[11px] tracking-wide text-[var(--linger-ink-2)]" id="annotationText">设置窗口 · 操作 — 下拉灵敏度 · 最大时长 · 双轨模式 · 时间格式</span>
+  </div>
+</div>
+    </main>
+    <script>
+    var LUCIDE_ICONS = {
+      'sliders-horizontal': '<line x1="21" x2="14" y1="4" y2="4"/><line x1="10" x2="3" y1="4" y2="4"/><line x1="21" x2="12" y1="12" y2="12"/><line x1="8" x2="3" y1="12" y2="12"/><line x1="21" x2="16" y1="20" y2="20"/><line x1="12" x2="3" y1="20" y2="20"/><line x1="14" x2="14" y1="2" y2="6"/><line x1="8" x2="8" y1="10" y2="14"/><line x1="16" x2="16" y1="18" y2="22"/>',
+      'bell': '<path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/>',
+      'calendar': '<rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" x2="16" y1="2" y2="6"/><line x1="8" x2="8" y1="2" y2="6"/><line x1="3" x2="21" y1="10" y2="10"/>',
+      'settings': '<path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/>',
+      'info': '<circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/>',
+      'chevron-down': '<path d="m6 9 6 6 6-6"/>',
+      'chevron-up': '<path d="m18 15-6-6-6 6"/>',
+      'timer': '<line x1="10" x2="14" y1="2" y2="2"/><line x1="12" x2="15" y1="14" y2="11"/><circle cx="12" cy="14" r="8"/>'
+    };
+    function createIcons() {
+      document.querySelectorAll('[data-lucide]').forEach(function (el) {
+        var name = el.getAttribute('data-lucide');
+        var inner = LUCIDE_ICONS[name];
+        if (!inner) return;
+        var svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+        svg.setAttribute('viewBox', '0 0 24 24');
+        svg.setAttribute('fill', 'none');
+        svg.setAttribute('stroke', 'currentColor');
+        svg.setAttribute('stroke-width', '2');
+        svg.setAttribute('stroke-linecap', 'round');
+        svg.setAttribute('stroke-linejoin', 'round');
+        svg.setAttribute('class', el.getAttribute('class') || '');
+        svg.innerHTML = inner;
+        el.parentNode.replaceChild(svg, el);
+      });
+    }
+    createIcons();
+    </script>
+    <script>
+    (function () {
+      'use strict';
+
+      var tabs = document.querySelectorAll('.lg-tab');
+      var panels = document.querySelectorAll('.tab-panel');
+      var content = document.getElementById('lgContent');
+      var titleEl = document.getElementById('windowTitle');
+      var annotationEl = document.getElementById('annotationText');
+
+      var tabMeta = {
+        operations:    { title: '操作', annotation: '设置窗口 · 操作 — 下拉灵敏度 · 最大时长 · 双轨模式 · 时间格式' },
+        notifications: { title: '通知', annotation: '设置窗口 · 通知 — 授权状态 · 通知/提示音开关 · 音效选择' },
+        calendar:      { title: '日历', annotation: '设置窗口 · 日历 — 授权状态 · 目标日历/写入方式 · 默认标题 · Fn/Ctrl/⌥ 预设' },
+        general:       { title: '通用', annotation: '设置窗口 · 通用 — 开机自启 · 自动清理 · 菜单栏图标风格' },
+        about:         { title: '关于', annotation: '关于 Linger — 开发者 · 博客 · 邮箱 · 版本 · Slogan' }
+      };
+
+      var isAnimating = false;
+
+      function switchTab(tabKey) {
+        if (isAnimating) return;
+        var currentVisible = document.querySelector('.tab-panel.is-visible');
+        if (currentVisible && currentVisible.dataset.panel === tabKey) return;
+
+        isAnimating = true;
+
+        tabs.forEach(function (t) {
+          t.classList.toggle('is-active', t.dataset.tab === tabKey);
+        });
+
+        var meta = tabMeta[tabKey];
+        if (meta) {
+          titleEl.textContent = meta.title;
+          annotationEl.textContent = meta.annotation;
+        }
+
+        var oldHeight = content.offsetHeight;
+
+        panels.forEach(function (p) {
+          p.classList.toggle('is-visible', p.dataset.panel === tabKey);
+        });
+
+        content.style.height = 'auto';
+        var newHeight = content.offsetHeight;
+
+        content.style.height = oldHeight + 'px';
+        content.offsetHeight;
+        content.style.transition = 'height 400ms cubic-bezier(0.32, 0.72, 0, 1)';
+        content.style.height = newHeight + 'px';
+
+        function onEnd(e) {
+          if (e.propertyName !== 'height') return;
+          content.removeEventListener('transitionend', onEnd);
+          content.style.height = '';
+          content.style.transition = '';
+          isAnimating = false;
+        }
+        content.addEventListener('transitionend', onEnd);
+
+        createIcons();
+      }
+
+      tabs.forEach(function (tab) {
+        tab.addEventListener('click', function (e) {
+          e.preventDefault();
+          switchTab(tab.dataset.tab);
+        });
+      });
+
+      content.style.height = 'auto';
+    })();
+    </script>
+</body>
+</html>

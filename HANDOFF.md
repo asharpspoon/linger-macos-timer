@@ -14,7 +14,13 @@ s=d² 曲线 + 整分钟吸附），松手即开始计时。AppKit 原生、暗�
 > 每次交接/里程碑后在此**顶部**追加一段（最新在上），格式见 `.agents/skills/linger-handoff/`。
 > 上次交接见 git 历史；当前状态以「最新进度」为准。
 
-- _（暂无交接记录，2026-08-04 由 Codex 建立项目）_
+- **2026-08-04 下午 · 设置窗口统一原型落地（Trae）**
+  - 本次完成：新增 `pages/settings-window.html` 统一原型（5 tab 合一：操作/通知/日历/通用/关于），含「关于」票据风格面板；Tab 栏改为贴底分割线 + 底部琥珀指示线（弃用液态玻璃容器）
+  - 在本文件新增「设置窗口开发指引」章节（设计规范 + 原型架构/功能关联 + Codex 实现步骤），Codex 读完即可开发
+  - 未完成/卡点：`SettingsWindow.swift` 尚未按新原型重构（4→5 tab breaking、Tab 栏样式重写、关于票据面板全新）
+  - 下一步：按「设置窗口开发指引」第 8 节实现步骤重构 `SettingsWindow.swift`，编译 + 实机验收
+  - 如何验证：`./script/build_and_run.sh` → 打开设置 → 切 5 个 tab → 看关于页票据白底锯齿/深色文字
+  - 给下一位：现有 4 元素数组是 PRD §6.3 P2 越界防护，扩 5 个时同步所有数组 + switch + 保留 guard；系统标题栏勿回退透明（关闭按钮会消失）
 
 ## 准绳（source of truth）
 
@@ -113,6 +119,8 @@ Linger2.5/
 - [ ] 剩余页面对齐：about、schedule-timer、notification
 - [ ] 按原型逐页对齐：hover-list（悬停列表）、toast、settings×4、about、schedule-timer、notification
 - [ ] 通知/日历权限、预约计时、图标三风格（Ring/Classic/timer）
+- [x] **设置窗口统一原型 `settings-window.html` 落地**（2026-08-04 下午，Trae）：5 tab 合一（操作/通知/日历/通用/关于），Tab 栏改贴底分割线+琥珀指示线，新增「关于」票据白底面板；同步在 HANDOFF 新增「设置窗口开发指引」章节
+- [ ] 按 `settings-window.html` 重构 `SettingsWindow.swift`：4→5 tab、Tab 栏样式重写、关于票据面板、面板统一 section/row 范式
 
 ## 最近交接（2026-08-04 下午 · 悬停列表原型对齐）
 
@@ -153,6 +161,94 @@ Linger2.5/
 - 提示次数计数在 `MenuBarManager.finishDrag(with:)` 成功后 +1；改阈值看 `LingerTheme.maxDragHintShownCount`
 - 字号设置键 `linger_dragPreviewFontSize`（18–30，默认 22）；面板宽度 `requiredPanelWidth()` 自适应
 - 状态栏 `statusItem.view` deprecation 警告是刻意为之，勿改
+
+## 设置窗口开发指引（settings-window.html）
+
+> 本节为 `pages/settings-window.html` 原型的开发交接。Codex 读完本节即可开始实现/重构 `SettingsWindow.swift`。
+> **原型是 UI 唯一准绳**；与旧代码冲突时以本原型为准。
+
+### 1. 设计规范（Design Tokens）
+
+所有颜色/圆角/字体必须走 `LingerTheme`，**禁止硬编码** `#F5A623` / 裸 NSColor。
+
+色板（原型 CSS 变量 → LingerTheme 对应）：
+- 主色琥珀金：`#F5A623`（primary）/ 浅 `#FFC966` / 深 `#D98E14` / 软底 `rgba(245,166,35,0.14)` / 发光 `rgba(245,166,35,0.40)`
+- 背景：bg `#0C0C0E` / surface `#16161A` / surface-2 `#1F1F25`
+- 文字：ink `#F5F5F3` / ink-2 `#A6A6AA` / ink-3 `#75757B`
+- 分割线：`rgba(255,255,255,0.10)`
+- 状态色：success `#30D158` / warning `#FF9F0A` / error `#FF453A` / info `#0A84FF`
+- 圆角：sm 4 / md 8 / lg 12 / xl 16
+- 玻璃面板：`rgba(24,24,28,0.72)` + `blur(16px) saturate(180%)`；强玻璃 `rgba(12,12,14,0.92)`
+- 字体：正文 SF Pro Text/Display + PingFang SC；等宽 SF Mono
+
+### 2. 窗口外壳
+
+- 宽 520pt，高度随面板内容自适应（顶部固定，向下伸缩）
+- 标题栏：**保持系统标题栏**（`.titled + .closable`，隐藏最小化/缩放）—— 关闭按钮原生可用（曾因 `titlebarAppearsTransparent` 导致关闭按钮不渲染，**勿回退**）。标题文字随当前 tab 变化（操作/通知/日历/通用/关于）
+- 背景毛玻璃：`NSVisualEffectView` material `.hudWindow`，blending `.withinWindow`
+- Tab 栏与内容之间：1px 分割线（`NSColor.separatorColor`）
+
+### 3. Tab 栏（重点改动）
+
+原型从「液态玻璃容器 + 玻璃激活态」改为「贴底分割线 + 底部指示线」：
+
+- **5 个 tab**（原 4 个，新增「关于」）：操作 `sliders-horizontal` / 通知 `bell` / 日历 `calendar` / 通用 `settings` / 关于 `info`
+- 每个 tab：图标 18pt + 文字 10pt，竖排居中
+- 激活态：底部 2pt 琥珀金指示线 + 图标/文字琥珀金 + 背景 `rgba(245,166,35,0.08)`
+- hover：`rgba(255,255,255,0.04)`
+- 切换：高度 0.4s `cubic-bezier(0.32,0.72,0,1)`
+
+⚠️ **Breaking**：现有 `tabTitles`/`tabIcons`/`builtPanels` 均为 4 元素数组（PRD §6.3 P2 越界防护）。扩到 5 个时必须同步更新所有数组与 `panelView(at:)` switch，`guard index < count` 边界检查保留。
+
+### 4. 面板内容统一范式
+
+所有设置面板（除「关于」）遵循 section/row 结构，**去掉卡片外框**：
+
+- `panel-body`：padding 18/20/22
+- `section`：margin-bottom 18px
+- `section-title`：11px semibold，大写，字距 0.04em，ink-3 色
+- `row`：flex 两端对齐，min-height 34px，padding 6px 0，底部 1px 分隔线（末行无）
+- `row-label`：13px ink；`row-hint`：11px ink-3
+
+### 5. 控件样式
+
+- switch：36×20，圆角 full，关 `rgba(255,255,255,0.16)`，开琥珀金，滑块 16px 白
+- select：高 22px，surface-2 底，1px 线边框，圆角 4px，12px 字
+- stepper：22×56 数字框 + chevron-up/down
+- slider：accent 琥珀金
+- kbd 键帽：圆角 5px，surface-2 底，10px mono
+
+### 6. 五个面板内容与功能关联
+
+1. **操作**：下拉线最大长度（slider 25-75%）、最大计时时长（数字+stepper，分钟）、双轨显示（select）、时间格式（select）
+2. **通知**：通知授权（绿点+管理按钮）、计时完成通知（switch）、提示音（select+switch）
+3. **日历**：日历授权（绿点+管理）、目标日历（select）、写入方式（select）、默认标题（输入框+hint）、快捷预设 fn/⌃/⌥（kbd+输入框）
+4. **通用**：开机自启（switch）、自动清理（select）、图标风格（select + Ring/Classic/SF Symbol 三选一选择器，选中琥珀边框）
+5. **关于**：票据风格（见下）
+
+### 7. 「关于」票据面板（全新）
+
+暗色窗口里的白色纸张票据，视觉强对比：
+
+- 白底 `#faf9f6` + 双层圆点纸张纹理
+- 上下锯齿边：`radial-gradient` 圆形挖空，16px 间隔
+- 圆角 10px，外阴影 + 内描边 0.5px
+- 头部：48px 琥珀金渐变图标（圆角12）+ 「Linger」20px bold + 版本 mono 11px + slogan 12px 斜体
+- 虚线分割：`repeating-linear-gradient` 4px 虚线 + 两端圆形剪刀口（挖空背景色）
+- 字段键值对：label mono 10px 大写 / value 12px 深色（mono 变体 11px）
+  - Developer / Blog / Email / Build / License
+- 底部：感谢语 11px + mono 9px tracking
+- ⚠️ 票据内文字用深色（`#1d1d1f`/`#6e6e73`/`#8e8e93`），与暗色窗口对比；锯齿/剪刀口要挖空成窗口背景色
+
+### 8. Codex 实现步骤
+
+1. 扩容 4→5：`tabTitles`/`tabIcons`/`builtPanels` 加第 5 元素（`"关于"` / `"info"`），`panelView(at:)` switch 加 `case 4: buildAboutPanel()`，保留边界 guard
+2. 重写 `updateTabStyles()`：去掉液态玻璃激活态（`addGlassHighlight` / 玻璃底 / 高光边），改为底部 2pt 琥珀指示线 + 琥珀 `contentTintColor` + 微琥珀底；可给 tab button 加底部 indicator 子视图
+3. 统一面板为 section/row 范式（去卡片框）：抽 `makeSection(title:)` / `makeRow(label:control:)` 通用助手
+4. 实现 `buildAboutPanel()`：白底票据 NSView（layer 背景 + 锯齿 mask / 纹理绘制）+ 键值字段
+5. 标题随 tab 切换：`selectTab` 里 `title = tabTitles[index]`
+6. 所有颜色走 `LingerTheme`；票据深色文字可加 `LingerTheme.Color.ticketInk` 等令牌
+7. 编译：`swift build --disable-sandbox`（`DEVELOPER_DIR` 指向 Xcode）；GUI 实机验收
 
 ## 构建与运行
 
