@@ -742,6 +742,10 @@ final class HoverListView: NSView {
     /// 左区标题：running = 铅笔 + 文本(placeholder「日程」) + 回车图标（视觉 = 原型输入框）；
     /// paused/scheduled = 名称文本。
     private func drawLeftTitle(entry: TimerEntry, contentX: CGFloat, centerY: CGFloat, maxWidth: CGFloat) {
+        // 该行正在编辑时，左区完全交给输入框，不再绘制铅笔/文本/回车
+        //（否则占位文本与 NSTextField 叠加成重影，且每次重绘闪烁）
+        if editingEntryID == entry.id { return }
+
         let hasTitle = !(entry.predefinedTitle ?? "").isEmpty
         var x = contentX
 
@@ -1091,9 +1095,9 @@ final class HoverListView: NSView {
         field.cell?.wraps = false
         field.cell?.isScrollable = true
         field.delegate = self
-        field.sizeToFit()
-        field.setFrameOrigin(NSPoint(x: contentX, y: centerY - fieldHeight / 2))
-        field.setFrameSize(NSSize(width: max(40, fieldWidth), height: field.frame.height))
+        // 固定 frame（不 sizeToFit），避免输入框创建瞬间高度跳动
+        field.frame = NSRect(x: contentX, y: centerY - fieldHeight / 2,
+                             width: max(40, fieldWidth), height: fieldHeight + 4)
 
         addSubview(field)
         editingField = field
