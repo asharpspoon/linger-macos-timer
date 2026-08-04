@@ -86,21 +86,31 @@ Linger2.5/
       - revert 圆心中锚点方案；回到第八轮：线从 **icon 中心正下方**延伸
       - 锚点 = 状态栏按钮（`buttonScreenRect`），窗口顶对齐按钮底边，线顶 = 按钮底边下方 12pt，水平居中按钮中心
       - 已删除 `iconCenterInScreen()` / `iconAnchorRect()` / `kIconLineGap`
+- [x] **悬停列表按 hover-list.html 原型对齐（2026-08-04 下午）**：
+      - 面板 240→300pt、圆角 16、玻璃半透明背景 rgba(24,24,28,0.72)
+      - 行范式：卡片+色条+大数字 → **平铺行**（行高 52、行间 1px 分隔、hover 淡高亮）
+      - 行内容：左标题（running 行 = 铅笔+文本+回车图标，视觉即原型输入框）+ 右时间 13pt 等宽 semibold + 按钮
+      - 进度条：3px 纯色 → **2px 琥珀渐变 + 发光 + running 渐变流动动画**（paused 降透明 / scheduled 灰色）
+      - 底栏：日历改圆形按钮（hover 琥珀软底）；「全部暂停/继续」对齐
+      - 编辑交互：运行中行始终可点击改名（位置已适配单行 13pt 标题）
 - [x] **纯逻辑单测接入 `swift test`**（DragPhysics 变细/同步公式、TimerEntry 格式、布局防遮挡，共 12 个，全绿）
-- [ ] **待真机验收 v9**：线从 icon 中心正下方延伸、Esc「收回」三步、触顶拉长变细、是否还闪帧（用户实机确认中）
+- [ ] **待真机验收 v10**：悬停列表平铺行/进度条发光流动/底栏圆形按钮/运行中行改名；拖拽预览回归（用户实机确认中）
+- [ ] 剩余页面对齐：toast、settings×4、about、schedule-timer、notification
 - [ ] 按原型逐页对齐：hover-list（悬停列表）、toast、settings×4、about、schedule-timer、notification
 - [ ] 通知/日历权限、预约计时、图标三风格（Ring/Classic/timer）
 
-## 最近交接（2026-08-04 下午 · 第九轮回退）
+## 最近交接（2026-08-04 下午 · 悬停列表原型对齐）
 
 **本次完成**
-- revert 第九轮「圆圈内部穿出」锚点方案（用户实测效果不好）
-- 线回到 **icon 中心正下方**延伸：锚点 = 状态栏按钮 frame，窗口顶对齐按钮底边，
-  线顶 = 按钮底边下方 12pt，水平居中按钮中心（第八轮方式）
+- 悬停列表视觉全面对齐 `hover-list.html`（300pt / 圆角16 / 玻璃底 / 平铺行 / 13pt 时间 /
+  2px 渐变发光流动进度条 / 底栏圆形日历按钮 / 运行中行铅笔+文本+回车输入框样式）
+- 保留既有能力：FLIP 动画、hover 高亮、三组排序、空态、按钮 hit 区、点击改名
+- 拖拽预览仍为第八轮状态（icon 中心正下方 + Esc 收回三步）
 - `swift build` 通过、`swift test` 12/12 绿
 
 **未完成 / 卡点**
-- 实机验收：线从 icon 中心正下方延伸、Esc 收回三步、触顶反馈、闪帧
+- 实机验收悬停列表（重点：平铺行间距、进度条发光/流动、底栏圆钮 hover、运行中行点击改名）
+- 剩余页面对齐：toast、settings×4、about、schedule-timer、notification
 
 **下一步（按优先级）**
 1. 用户实机验收拖拽预览（`./script/build_and_run.sh`）
