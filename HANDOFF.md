@@ -94,8 +94,12 @@ Linger2.5/
       - 底栏：日历改圆形按钮（hover 琥珀软底）；「全部暂停/继续」对齐
       - 编辑交互：运行中行始终可点击改名（位置已适配单行 13pt 标题）
 - [x] **纯逻辑单测接入 `swift test`**（DragPhysics 变细/同步公式、TimerEntry 格式、布局防遮挡，共 12 个，全绿）
-- [ ] **待真机验收 v10**：悬停列表平铺行/进度条发光流动/底栏圆形按钮/运行中行改名；拖拽预览回归（用户实机确认中）
-- [ ] 剩余页面对齐：toast、settings×4、about、schedule-timer、notification
+- [ ] **待真机验收 v10**：悬停列表（用户已确认暂 OK，UI 统一性最后统一改）；拖拽预览回归
+- [x] **toast 对齐 toast.html（2026-08-04 下午）**：
+      - 毛玻璃胶囊（NSVisualEffectView hudWindow）+ 1px 边框 + 圆角 10，内容自适应（px-5/py-3）
+      - 文案 13px ink，对齐原型「已达 N 个计时上限」
+      - 动画：淡入 0.4s → 停留 2.5s → 淡出 0.4s（原 2s 直接消失）
+- [ ] 剩余页面对齐：settings×4、about、schedule-timer、notification
 - [ ] 按原型逐页对齐：hover-list（悬停列表）、toast、settings×4、about、schedule-timer、notification
 - [ ] 通知/日历权限、预约计时、图标三风格（Ring/Classic/timer）
 
