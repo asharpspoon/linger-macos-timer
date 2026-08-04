@@ -427,7 +427,7 @@ final class MenuBarManager: NSObject {
             clickHintTimer?.invalidate()
             clickHintTimer = nil
             hideClickHint()
-            dragFeedback?.show(at: buttonScreenRect())
+            dragFeedback?.show(at: iconAnchorRect())
             os_log("pollDrag: upgraded to dragging (d=%.1f)", log: log, type: .debug, distance)
         }
 
@@ -616,7 +616,17 @@ final class MenuBarManager: NSObject {
         return NSEvent.mouseLocation.x < w.frame.midX ? .forSide : .tilSide
     }
 
-    /// 状态栏按钮在屏幕坐标系下的矩形（拖拽反馈 / 点击提示的锚点）。
+    /// 拖拽线锚点：以图标圆圈中心为基准的 0 尺寸矩形（midX/midY = 圆心）。
+    /// 取圆圈中心而非按钮中心/底边，保证线始终从圆圈上延伸（icon 宽度自适应）。
+    private func iconAnchorRect() -> NSRect {
+        if let c = statusItemView.iconCenterInScreen() {
+            return NSRect(x: c.x, y: c.y, width: 0, height: 0)
+        }
+        let r = buttonScreenRect()
+        return NSRect(x: r.midX, y: r.midY, width: 0, height: 0)
+    }
+
+    /// 状态栏按钮在屏幕坐标系下的矩形（点击提示的锚点）。
     private func buttonScreenRect() -> NSRect {
         guard let window = statusItemView.window else {
             let y = NSScreen.main?.visibleFrame.maxY ?? 800
