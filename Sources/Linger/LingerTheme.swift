@@ -229,8 +229,8 @@ enum LingerTheme {
     static let defaultDualRailMode: String = "both"
     /// 时间格式，默认 hms
     static let defaultTimeFormat: String = "hms"
-    /// 拖拽预览计时字号，默认 22pt
-    static let defaultDragPreviewFontSize: Double = 22
+    /// 拖拽预览计时字号，默认 18pt（2026-08-04 第三轮：用户嫌大，再调小）
+    static let defaultDragPreviewFontSize: Double = 18
     /// 拖拽引导提示最多显示次数，默认 3
     static let maxDragHintShownCount: Int = 3
 }

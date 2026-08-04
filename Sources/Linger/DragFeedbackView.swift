@@ -39,8 +39,9 @@ final class DragFeedbackView: NSView {
     private static let kTopY: CGFloat = 12
     private static let kDefaultMaxLineHeight: CGFloat = 360
     private static let kBottomBlockHeight: CGFloat = 124   // 双轨 + 提示 + 边距
-    private static let kRubberHeadroom: CGFloat = 40       // 橡皮筋最大延伸
-    private static let kHighlightFontBump: CGFloat = 2     // 高亮侧字号增量
+    private static let kRubberHeadroom: CGFloat = 10       // 橡皮筋最大延伸（一点点即可，太大以为没生效）
+    private static let kHighlightFontBump: CGFloat = 4     // 高亮侧字号增量（要明显）
+    private static let kHighlightFontShrink: CGFloat = 2   // 对侧字号减量（反差越大越明显）
 
     private let topY = DragFeedbackView.kTopY
     private let minLineHeight: CGFloat = 40
@@ -54,7 +55,7 @@ final class DragFeedbackView: NSView {
     private var previewFontSize: CGFloat {
         let raw = UserDefaults.standard.double(forKey: LingerTheme.UserDefaultsKey.dragPreviewFontSize.rawValue)
         let v = raw > 0 ? raw : LingerTheme.defaultDragPreviewFontSize
-        return CGFloat(min(max(v, 18), 30))
+        return CGFloat(min(max(v, 14), 26))
     }
 
     /// 面板总高（含橡皮筋延伸）
@@ -111,10 +112,12 @@ final class DragFeedbackView: NSView {
         forPrefix.textColor = LingerTheme.nsColor(LingerTheme.Color.ink3)
         forTime.font = LingerTheme.timeFont(size: previewFontSize, weight: .semibold)
         forTime.textColor = LingerTheme.nsColor(LingerTheme.Color.ink3)
+        forTime.wantsLayer = true   // 高亮「变大」弹跳动画需要 layer transform
         tilPrefix.font = LingerTheme.labelFont(size: 13)
         tilPrefix.textColor = LingerTheme.nsColor(LingerTheme.Color.ink3)
         tilTime.font = LingerTheme.timeFont(size: previewFontSize, weight: .semibold)
         tilTime.textColor = LingerTheme.nsColor(LingerTheme.Color.ink3)
+        tilTime.wantsLayer = true   // 高亮「变大」弹跳动画需要 layer transform
         addSubview(forPrefix)
         addSubview(forTime)
         addSubview(tilPrefix)
@@ -186,9 +189,9 @@ final class DragFeedbackView: NSView {
 
     private func startBreathing() {
         let breath = CABasicAnimation(keyPath: "opacity")
-        breath.fromValue = 0.9
+        breath.fromValue = 0.85
         breath.toValue = 1.0
-        breath.duration = 1.5
+        breath.duration = LingerTheme.durBreath
         breath.autoreverses = true
         breath.repeatCount = .infinity
         breath.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
@@ -235,7 +238,6 @@ final class DragFeedbackView: NSView {
         lineView.lineHeight = lineHeight
         lineView.topY = topY
         lineView.isOverflowing = overflow
-        lineView.rubberOvershoot = damped
 
         // 4) 双轨文本：for = 倒计时（走 linger_timeFormat），til = 结束时刻 HH:mm:ss
         let format = UserDefaults.standard.string(forKey: LingerTheme.UserDefaultsKey.timeFormat.rawValue)
@@ -288,10 +290,11 @@ final class DragFeedbackView: NSView {
         let separatorHeight: CGFloat = 18
         let base = previewFontSize
         let activeSize = base + DragFeedbackView.kHighlightFontBump
+        let inactiveSize = base - DragFeedbackView.kHighlightFontShrink
 
-        forTime.font = LingerTheme.timeFont(size: currentHighlight == .forSide ? activeSize : base,
+        forTime.font = LingerTheme.timeFont(size: currentHighlight == .forSide ? activeSize : inactiveSize,
                                             weight: .semibold)
-        tilTime.font = LingerTheme.timeFont(size: currentHighlight == .tilSide ? activeSize : base,
+        tilTime.font = LingerTheme.timeFont(size: currentHighlight == .tilSide ? activeSize : inactiveSize,
                                             weight: .semibold)
 
         func trackWidth(_ prefix: NSTextField, _ time: NSTextField) -> CGFloat {
@@ -335,8 +338,10 @@ final class DragFeedbackView: NSView {
 
     // MARK: - 高亮
 
-    /// 悬停高亮：高亮侧琥珀金 + 不透明度 1 + 字号 +2pt，对侧 ink3 + 0.3，0.35s 过渡。
+    /// 悬停高亮：高亮侧琥珀金 + 不透明度 1 + 字号 +4pt（弹跳放大），
+    /// 对侧 ink3 + 0.3 + 字号 -2pt，0.35s 过渡 —— 反差够大才「看得见」。
     private func applyHighlight(_ side: HighlightSide) {
+        let sideChanged = (currentHighlight != side)
         currentHighlight = side
         let forActive = (side == .forSide)
         let amber = LingerTheme.nsColor(LingerTheme.Color.amber)
@@ -355,5 +360,21 @@ final class DragFeedbackView: NSView {
         forPrefix.textColor = forActive ? amber : ink3
         tilTime.textColor = forActive ? ink3 : amber
         tilPrefix.textColor = forActive ? ink3 : amber
+
+        // 切换侧的瞬间给一个「变大」弹跳，让字号变化一眼可见（仅切侧时触发一次）
+        if sideChanged {
+            animateFontPop(forTime, growing: forActive)
+            animateFontPop(tilTime, growing: !forActive)
+        }
+    }
+
+    /// 字号弹跳：growing 侧从 0.85 → 1.08 → 1.0（过冲回弹），对侧 1.15 → 0.98 → 1.0。
+    private func animateFontPop(_ field: NSTextField, growing: Bool) {
+        let anim = CAKeyframeAnimation(keyPath: "transform.scale")
+        anim.values = growing ? [0.85, 1.08, 1.0] : [1.15, 0.98, 1.0]
+        anim.keyTimes = [0, 0.6, 1]
+        anim.duration = 0.35
+        anim.timingFunctions = [CAMediaTimingFunction(name: .easeOut)]
+        field.layer?.add(anim, forKey: "fontPop")
     }
 }

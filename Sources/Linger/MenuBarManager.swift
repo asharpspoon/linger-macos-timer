@@ -356,7 +356,7 @@ final class MenuBarManager: NSObject {
             NSEvent.removeMonitor(m)
             localMonitor = nil
         }
-        localMonitor = NSEvent.addLocalMonitorForEvents(matching: [.leftMouseUp, .flagsChanged]) { [weak self] event in
+        localMonitor = NSEvent.addLocalMonitorForEvents(matching: [.leftMouseUp, .flagsChanged, .keyDown]) { [weak self] event in
             self?.handleDragEvent(event)
             return event
         }
@@ -416,6 +416,12 @@ final class MenuBarManager: NSObject {
         switch event.type {
         case .leftMouseUp:
             finishDrag()
+        case .keyDown:
+            // Esc 取消拖拽（keyCode 53 = Esc）
+            if event.keyCode == 53 || event.charactersIgnoringModifiers == "\u{1b}" {
+                os_log("Drag cancelled by Esc", log: log, type: .debug)
+                cancelDrag()
+            }
         case .flagsChanged:
             if event.modifierFlags.contains(.command) {
                 os_log("Drag cancelled by Command", log: log, type: .debug)
