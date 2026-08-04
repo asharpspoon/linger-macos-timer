@@ -48,6 +48,11 @@ final class SettingsWindow: NSWindow {
     private var defaultTitleField: NSTextField?
     private var notifAuthLabel: NSTextField?
     private var calAuthLabel: NSTextField?
+    private var notifAuthDot: NSView?
+    private var calAuthDot: NSView?
+    private var maxDurationStepper: NSStepper?
+    private var iconPopup: NSPopUpButton?
+    private var iconStyleButtons: [NSButton] = []
 
     private var currentIndex: Int = 0
     private let log = OSLog(subsystem: "com.linger.settings", category: "SettingsWindow")
@@ -299,6 +304,13 @@ final class SettingsWindow: NSWindow {
         return f
     }
 
+    private func makeHint(_ text: String) -> NSTextField {
+        let f = NSTextField(labelWithString: text)
+        f.font = NSFont.systemFont(ofSize: 11)
+        f.textColor = .tertiaryLabelColor
+        return f
+    }
+
     private func makeSectionTitle(_ text: String) -> NSTextField {
         let f = NSTextField(labelWithString: text)
         f.font = NSFont.systemFont(ofSize: 12, weight: .semibold)
@@ -343,6 +355,124 @@ final class SettingsWindow: NSWindow {
         f.allowsFloats = false
         f.minimumIntegerDigits = 1
         return f
+    }
+
+    /// 设置卡片容器：圆角 10 + surface 底 + 1px 边框 + p-4 内边距，行间 14。
+    private func makeCard(rows: [NSView]) -> NSView {
+        let card = NSView()
+        card.wantsLayer = true
+        card.layer?.backgroundColor = LingerTheme.nsColor(LingerTheme.Color.surface).cgColor
+        card.layer?.cornerRadius = 10
+        card.layer?.borderColor = LingerTheme.nsColor(LingerTheme.Color.line).cgColor
+        card.layer?.borderWidth = 1
+        var prev: NSLayoutYAxisAnchor = card.topAnchor
+        for (i, row) in rows.enumerated() {
+            card.addSubview(row)
+            row.translatesAutoresizingMaskIntoConstraints = false
+            row.leadingAnchor.constraint(equalTo: card.leadingAnchor, constant: 16).isActive = true
+            row.trailingAnchor.constraint(equalTo: card.trailingAnchor, constant: -16).isActive = true
+            row.topAnchor.constraint(equalTo: prev, constant: (i == 0 ? 16 : 14)).isActive = true
+            prev = row.bottomAnchor
+            if i == rows.count - 1 {
+                row.bottomAnchor.constraint(equalTo: card.bottomAnchor, constant: -16).isActive = true
+            }
+        }
+        return card
+    }
+
+    /// 多个卡片竖直堆叠（首卡在 topAnchor 下，末卡贴 panel 底）
+    private func layoutCards(_ cards: [NSView], in panel: NSView, below topAnchor: NSLayoutYAxisAnchor, gap: CGFloat) {
+        var prev: NSLayoutYAxisAnchor = topAnchor
+        for (i, card) in cards.enumerated() {
+            panel.addSubview(card)
+            card.translatesAutoresizingMaskIntoConstraints = false
+            card.leadingAnchor.constraint(equalTo: panel.leadingAnchor).isActive = true
+            card.trailingAnchor.constraint(equalTo: panel.trailingAnchor).isActive = true
+            card.topAnchor.constraint(equalTo: prev, constant: gap).isActive = true
+            prev = card.bottomAnchor
+            if i == cards.count - 1 {
+                card.bottomAnchor.constraint(equalTo: panel.bottomAnchor).isActive = true
+            }
+        }
+    }
+
+    /// kbd 键帽（快捷预设标题）：10px 等宽 + surface2 底 + 圆角 5 + 边框
+    private func makeKbd(_ text: String) -> NSView {
+        let label = NSTextField(labelWithString: text)
+        label.font = NSFont.monospacedSystemFont(ofSize: 10, weight: .regular)
+        label.textColor = .secondaryLabelColor
+        label.alignment = .center
+        let box = NSView()
+        box.wantsLayer = true
+        box.layer?.backgroundColor = LingerTheme.nsColor(LingerTheme.Color.surface2).cgColor
+        box.layer?.cornerRadius = 5
+        box.layer?.borderColor = LingerTheme.nsColor(LingerTheme.Color.line).cgColor
+        box.layer?.borderWidth = 1
+        label.translatesAutoresizingMaskIntoConstraints = false
+        box.addSubview(label)
+        NSLayoutConstraint.activate([
+            label.centerXAnchor.constraint(equalTo: box.centerXAnchor),
+            label.centerYAnchor.constraint(equalTo: box.centerYAnchor),
+            box.widthAnchor.constraint(equalToConstant: 28),
+            box.heightAnchor.constraint(equalToConstant: 18)
+        ])
+        return box
+    }
+
+    /// 授权状态绿点（6×6 圆）
+    private func makeStatusDot() -> NSView {
+        let dot = NSView()
+        dot.wantsLayer = true
+        dot.layer?.cornerRadius = 3
+        dot.translatesAutoresizingMaskIntoConstraints = false
+        dot.widthAnchor.constraint(equalToConstant: 6).isActive = true
+        dot.heightAnchor.constraint(equalToConstant: 6).isActive = true
+        dot.layer?.backgroundColor = LingerTheme.stateSuccess.cgColor
+        return dot
+    }
+
+    /// 授权状态视图：绿点 + 文字
+    private func makeAuthStatusView(label: NSTextField, dot: NSView) -> NSStackView {
+        let stack = NSStackView(views: [dot, label])
+        stack.orientation = .horizontal
+        stack.spacing = 5
+        stack.alignment = .centerY
+        return stack
+    }
+
+    /// 通用页：图标三风格选择器（Ring / Classic / SF Symbol，选中琥珀边框）
+    private func buildIconStylePicker() -> NSView {
+        let container = NSStackView()
+        container.orientation = .horizontal
+        container.spacing = 8
+        container.alignment = .centerY
+        let styles = [("ring", "Ring"), ("classic", "Classic"), ("timer", "SF Symbol")]
+        for (i, st) in styles.enumerated() {
+            let btn = NSButton(title: st.1, target: self, action: #selector(iconStylePicked(_:)))
+            btn.setButtonType(NSButton.ButtonType.toggle)
+            btn.tag = i
+            btn.bezelStyle = .rounded
+            btn.font = NSFont.systemFont(ofSize: 11)
+            btn.wantsLayer = true
+            btn.layer?.cornerRadius = 6
+            btn.layer?.borderWidth = 1
+            iconStyleButtons.append(btn)
+            container.addArrangedSubview(btn)
+        }
+        updateIconStyleButtonStates()
+        return container
+    }
+
+    private func updateIconStyleButtonStates() {
+        let current = UserDefaults.standard.string(forKey: LingerTheme.UserDefaultsKey.iconStyle.rawValue) ?? "ring"
+        let raws = ["ring", "classic", "timer"]
+        guard let idx = raws.firstIndex(of: current) else { return }
+        for (i, btn) in iconStyleButtons.enumerated() {
+            let on = (i == idx)
+            btn.state = on ? .on : .off
+            btn.layer?.borderColor = on ? LingerTheme.amberGold.cgColor : LingerTheme.nsColor(LingerTheme.Color.line).cgColor
+            btn.contentTintColor = on ? LingerTheme.amberGold : .secondaryLabelColor
+        }
     }
 
     /// 把若干行竖直排布进 panel（首行在 title 之下，末行贴 panel 底）
@@ -404,10 +534,19 @@ final class SettingsWindow: NSWindow {
         field.integerValue = currentMaxDurationMinutes()
         field.target = self
         field.action = #selector(maxDurationChanged(_:))
-        field.widthAnchor.constraint(equalToConstant: 60).isActive = true
+        field.widthAnchor.constraint(equalToConstant: 52).isActive = true
+        // 带上下箭头的数字框（对齐 settings-operations 原型）
+        let stepper = NSStepper()
+        stepper.minValue = 5
+        stepper.maxValue = 1440
+        stepper.increment = 1
+        stepper.integerValue = currentMaxDurationMinutes()
+        stepper.target = self
+        stepper.action = #selector(maxDurationStepperChanged(_:))
+        maxDurationStepper = stepper
         let unit = makeLabel("分钟")
         unit.textColor = .secondaryLabelColor
-        let group = NSStackView(views: [field, unit])
+        let group = NSStackView(views: [field, stepper, unit])
         group.orientation = .horizontal
         group.spacing = 6
         group.alignment = .centerY
@@ -474,26 +613,28 @@ final class SettingsWindow: NSWindow {
         title.topAnchor.constraint(equalTo: panel.topAnchor).isActive = true
         title.leadingAnchor.constraint(equalTo: panel.leadingAnchor).isActive = true
 
-        // 授权状态行
-        let authLabel = makeLabel("通知权限")
+        // 授权状态行（绿点 + 状态 + 管理…）
         let authStatus = NSTextField(labelWithString: "检查中…")
         authStatus.font = NSFont.systemFont(ofSize: 12)
         authStatus.textColor = .secondaryLabelColor
         notifAuthLabel = authStatus
-        let authBtn = NSButton(title: "前往系统设置", target: self, action: #selector(openNotifSettings(_:)))
+        let authDot = makeStatusDot()
+        notifAuthDot = authDot
+        let authBtn = NSButton(title: "管理…", target: self, action: #selector(openNotifSettings(_:)))
         authBtn.bezelStyle = .rounded
         authBtn.controlSize = .small
-        let authRow = NSStackView(views: [authLabel, spacerView(), authStatus, authBtn])
+        let authRow = NSStackView(views: [makeLabel("通知授权"), spacerView(),
+                                          makeAuthStatusView(label: authStatus, dot: authDot), authBtn])
         authRow.orientation = .horizontal
         authRow.spacing = 8
         authRow.alignment = .centerY
 
-        let notifySwitch = makeSwitch(initial: currentNotifyOnComplete(), action: #selector(notifyChanged(_:)))
-        let notifyRow = rowWithTitle("计时完成时通知", control: notifySwitch)
+        let notifyRow = rowWithTitle("计时完成时通知",
+                                     control: makeSwitch(initial: currentNotifyOnComplete(),
+                                                        action: #selector(notifyChanged(_:))))
 
+        // 播放提示音：select + switch
         let playSwitch = makeSwitch(initial: currentPlaySound(), action: #selector(playSoundChanged(_:)))
-        let playRow = rowWithTitle("播放提示音", control: playSwitch)
-
         let soundPopup = NSPopUpButton()
         let sounds = ["Ping", "Basso", "Blow", "Bottle", "Frog", "Funk",
                       "Glass", "Heroine", "Morse", "Pop", "Purr", "Sosumi", "Submarine", "Tink"]
@@ -504,37 +645,15 @@ final class SettingsWindow: NSWindow {
         soundPopup.action = #selector(soundNameChanged(_:))
         soundPopup.isEnabled = currentPlaySound()
         self.soundPopup = soundPopup
-        let soundRow = rowWithTitle("提示音", control: soundPopup)
+        let soundControl = NSStackView(views: [soundPopup, playSwitch])
+        soundControl.orientation = .horizontal
+        soundControl.spacing = 8
+        soundControl.alignment = .centerY
+        let soundRow = rowWithTitle("播放提示音", control: soundControl)
 
-        let floaterRow = buildDeprecatedFloaterRow()
-
-        layoutRows([authRow, notifyRow, playRow, soundRow, floaterRow], in: panel, below: title, gap: 14)
+        let card = makeCard(rows: [authRow, notifyRow, soundRow])
+        layoutCards([card], in: panel, below: title.bottomAnchor, gap: 14)
         return panel
-    }
-
-    /// 倒计时浮窗：PRD §3.6.3 已废弃（2026-08-02），删除线置灰、不实现
-    private func buildDeprecatedFloaterRow() -> NSView {
-        let label = makeLabel("倒计时浮窗")
-        label.textColor = .tertiaryLabelColor
-
-        let attr = NSMutableAttributedString(string: "显示倒计时浮窗")
-        attr.addAttribute(.strikethroughStyle,
-                          value: NSUnderlineStyle.single.rawValue,
-                          range: NSRange(location: 0, length: attr.length))
-        let titleField = NSTextField(labelWithAttributedString: attr)
-        titleField.textColor = .tertiaryLabelColor
-
-        let sw = NSButton()
-        sw.setButtonType(.switch)
-        sw.state = .off
-        sw.isEnabled = false
-        sw.title = ""
-
-        let row = NSStackView(views: [label, spacerView(), titleField, sw])
-        row.orientation = .horizontal
-        row.spacing = 8
-        row.alignment = .centerY
-        return row
     }
 
     // MARK: - 面板 2：日历
@@ -547,29 +666,39 @@ final class SettingsWindow: NSWindow {
         title.topAnchor.constraint(equalTo: panel.topAnchor).isActive = true
         title.leadingAnchor.constraint(equalTo: panel.leadingAnchor).isActive = true
 
-        // 授权状态行
-        let authLabel = makeLabel("日历权限")
+        // 授权状态行（绿点 + 状态 + 管理…，平铺在卡片外）
         let authStatus = NSTextField(labelWithString: "检查中…")
         authStatus.font = NSFont.systemFont(ofSize: 12)
         authStatus.textColor = .secondaryLabelColor
         calAuthLabel = authStatus
-        let authBtn = NSButton(title: "前往系统设置", target: self, action: #selector(openCalSettings(_:)))
+        let authDot = makeStatusDot()
+        calAuthDot = authDot
+        let authBtn = NSButton(title: "管理…", target: self, action: #selector(openCalSettings(_:)))
         authBtn.bezelStyle = .rounded
         authBtn.controlSize = .small
-        let authRow = NSStackView(views: [authLabel, spacerView(), authStatus, authBtn])
+        let authRow = NSStackView(views: [makeLabel("日历授权"), spacerView(),
+                                          makeAuthStatusView(label: authStatus, dot: authDot), authBtn])
         authRow.orientation = .horizontal
         authRow.spacing = 8
         authRow.alignment = .centerY
+        panel.addSubview(authRow)
+        authRow.translatesAutoresizingMaskIntoConstraints = false
+        authRow.leadingAnchor.constraint(equalTo: panel.leadingAnchor).isActive = true
+        authRow.trailingAnchor.constraint(equalTo: panel.trailingAnchor).isActive = true
+        authRow.topAnchor.constraint(equalTo: title.bottomAnchor, constant: 14).isActive = true
 
-        layoutRows([
-            authRow,
-            buildTargetCalendarRow(),
-            buildWriteModeRow(),
-            buildDefaultTitleRow(),
-            buildPresetRow(key: .fnTitle, label: "Fn 预设"),
-            buildPresetRow(key: .ctrlTitle, label: "Ctrl 预设"),
-            buildPresetRow(key: .optTitle, label: "Opt 预设")
-        ], in: panel, below: title, gap: 14)
+        // 卡片1：目标日历 / 写入方式 / 默认标题 + 注释
+        let defaultTitleRow = buildDefaultTitleRow()
+        let hint1 = makeHint("默认标题仅在「自动」模式下使用")
+        let card1 = makeCard(rows: [buildTargetCalendarRow(), buildWriteModeRow(), defaultTitleRow, hint1])
+
+        // 卡片2：快捷预设标题（fn/ctrl/opt，带 kbd 键帽）
+        let card2 = makeCard(rows: [makeSectionTitle("快捷预设标题"),
+                                    buildPresetCardRow(key: .fnTitle, kbd: "fn"),
+                                    buildPresetCardRow(key: .ctrlTitle, kbd: "⌃"),
+                                    buildPresetCardRow(key: .optTitle, kbd: "⌥")])
+
+        layoutCards([card1, card2], in: panel, below: authRow.bottomAnchor, gap: 14)
         return panel
     }
 
@@ -609,15 +738,23 @@ final class SettingsWindow: NSWindow {
         return rowWithTitle("默认标题", control: field)
     }
 
-    private func buildPresetRow(key: LingerTheme.UserDefaultsKey, label: String) -> NSView {
+    private func buildPresetCardRow(key: LingerTheme.UserDefaultsKey, kbd: String) -> NSView {
         let field = NSTextField()
         field.placeholderString = "（留空不激活）"
         field.stringValue = UserDefaults.standard.string(forKey: key.rawValue) ?? ""
         field.target = self
         field.action = #selector(presetChanged(_:))
-        field.widthAnchor.constraint(equalToConstant: 200).isActive = true
+        field.widthAnchor.constraint(equalToConstant: 140).isActive = true
         field.identifier = NSUserInterfaceItemIdentifier(rawValue: key.rawValue)
-        return rowWithTitle(label, control: field)
+        let left = NSStackView(views: [makeKbd(kbd), field])
+        left.orientation = .horizontal
+        left.spacing = 8
+        left.alignment = .centerY
+        let row = NSStackView(views: [left, spacerView(), makeHint("留空则不激活")])
+        row.orientation = .horizontal
+        row.alignment = .centerY
+        row.spacing = 12
+        return row
     }
 
     // MARK: - 面板 3：通用
@@ -649,9 +786,13 @@ final class SettingsWindow: NSWindow {
         if let idx = iconRaws.firstIndex(of: icon) { iconPopup.selectItem(at: idx) }
         iconPopup.target = self
         iconPopup.action = #selector(iconStyleChanged(_:))
+        self.iconPopup = iconPopup
         let iconRow = rowWithTitle("菜单栏图标", control: iconPopup)
 
-        layoutRows([launchRow, cleanupRow, iconRow], in: panel, below: title, gap: 14)
+        // 图标三风格选择器（Ring / Classic / SF Symbol，选中琥珀边框）
+        let pickerRow = buildIconStylePicker()
+
+        layoutRows([launchRow, cleanupRow, iconRow, pickerRow], in: panel, below: title, gap: 14)
         return panel
     }
 
@@ -667,6 +808,12 @@ final class SettingsWindow: NSWindow {
         var v = sender.integerValue
         v = max(5, min(1440, v))
         sender.integerValue = v
+        maxDurationStepper?.integerValue = v
+        UserDefaults.standard.set(v, forKey: LingerTheme.UserDefaultsKey.maxDurationMinutes.rawValue)
+    }
+
+    @objc private func maxDurationStepperChanged(_ sender: NSStepper) {
+        let v = Int(sender.integerValue)
         UserDefaults.standard.set(v, forKey: LingerTheme.UserDefaultsKey.maxDurationMinutes.rawValue)
     }
 
@@ -731,6 +878,17 @@ final class SettingsWindow: NSWindow {
 
     // MARK: - 动作：通用面板
 
+    @objc private func iconStylePicked(_ sender: NSButton) {
+        let raws = ["ring", "classic", "timer"]
+        guard raws.indices.contains(sender.tag) else { return }
+        UserDefaults.standard.set(raws[sender.tag], forKey: LingerTheme.UserDefaultsKey.iconStyle.rawValue)
+        NotificationCenter.default.post(name: Notification.Name("linger.iconStyleChanged"), object: nil)
+        updateIconStyleButtonStates()
+        if let popup = iconPopup, popup.indexOfSelectedItem != sender.tag {
+            popup.selectItem(at: sender.tag)
+        }
+    }
+
     @objc private func launchChanged(_ sender: NSButton) {
         let on = sender.state == .on
         UserDefaults.standard.set(on, forKey: LingerTheme.UserDefaultsKey.launchAtLogin.rawValue)
@@ -759,6 +917,7 @@ final class SettingsWindow: NSWindow {
                                   forKey: LingerTheme.UserDefaultsKey.iconStyle.rawValue)
         // 通知 MenuBarManager 立即刷新菜单栏图标（复用其 linger.iconStyleChanged 观察）
         NotificationCenter.default.post(name: Notification.Name("linger.iconStyleChanged"), object: nil)
+        updateIconStyleButtonStates()
     }
 
     // MARK: - 跳转系统设置
@@ -781,6 +940,7 @@ final class SettingsWindow: NSWindow {
             let ok = CalendarManager.shared.isAuthorized
             cal.stringValue = ok ? "已授权" : "未授权"
             cal.textColor = ok ? LingerTheme.stateSuccess : .secondaryLabelColor
+            calAuthDot?.layer?.backgroundColor = (ok ? LingerTheme.stateSuccess : NSColor.tertiaryLabelColor).cgColor
         }
         // 通知（异步）
         NotificationManager.shared.fetchAuthorizationStatus { [weak self] status in
@@ -790,6 +950,7 @@ final class SettingsWindow: NSWindow {
                 if let nf = self.notifAuthLabel {
                     nf.stringValue = ok ? "已授权" : "未授权"
                     nf.textColor = ok ? LingerTheme.stateSuccess : .secondaryLabelColor
+                    self.notifAuthDot?.layer?.backgroundColor = (ok ? LingerTheme.stateSuccess : NSColor.tertiaryLabelColor).cgColor
                 }
             }
         }

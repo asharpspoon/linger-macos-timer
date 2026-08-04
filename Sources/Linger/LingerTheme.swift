@@ -58,6 +58,9 @@ enum LingerTheme {
         // 面板背景
         static let panelBgDark  = RGBA(12, 12, 14, 0.92)
         static let panelBgLight = RGBA(242, 242, 245, 0.95)
+        // 设置卡片面（settings 原型 --linger-surface / --linger-surface-2）
+        static let surface  = RGBA(22, 22, 26)    // #16161A
+        static let surface2 = RGBA(31, 31, 37)    // #1F1F25
 
         // 中性文字（暗色优先）
         static let ink  = RGBA(245, 245, 243)
