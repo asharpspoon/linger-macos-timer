@@ -3,45 +3,47 @@ import Cocoa
 // MARK: - 设计 token
 
 private enum HoverDesign {
-    // 颜色：暗色毛玻璃，暖橙主色（仅 running）
-    static let panelBg = NSColor(calibratedWhite: 0.08, alpha: 0.92)
-    static let cardBg = NSColor(calibratedWhite: 1.0, alpha: 0.06)
-    static let cardBgActive = NSColor(calibratedWhite: 1.0, alpha: 0.09)   // running 卡片稍亮
-    static let groupSeparator = NSColor(calibratedWhite: 0.5, alpha: 0.25)
+    // 颜色：暗色毛玻璃（对齐 hover-list.html glass-panel），暖橙主色（仅 running）
+    static let panelBg = NSColor(calibratedRed: 24/255.0, green: 24/255.0, blue: 28/255.0, alpha: 0.72)
+    static let rowHover = NSColor(calibratedWhite: 1.0, alpha: 0.06)       // hover 行淡高亮
+    static let rowDivider = NSColor(calibratedWhite: 1.0, alpha: 0.10)     // 行间 1px 分隔线
+    static let groupSeparator = NSColor(calibratedWhite: 1.0, alpha: 0.10)
     static let bottomSeparator = NSColor(calibratedWhite: 1.0, alpha: 0.10)
-    static let progressTrack = NSColor(calibratedWhite: 1.0, alpha: 0.10)
+    static let progressTrack = NSColor(calibratedWhite: 1.0, alpha: 0.06)  // 原型 timer-progress
 
     static let amber = NSColor(calibratedRed: 0.961, green: 0.651, blue: 0.137, alpha: 1.0)
+    static let amberSoft = NSColor(calibratedRed: 0.961, green: 0.651, blue: 0.137, alpha: 0.14)
+    static let amberDim = NSColor(calibratedRed: 0.961, green: 0.651, blue: 0.137, alpha: 0.45)
     static let textPrimary = NSColor.white
     static let textSecondary = NSColor(calibratedWhite: 1.0, alpha: 0.55)
     static let textTertiary = NSColor(calibratedWhite: 1.0, alpha: 0.42)
 
-    // 尺寸：紧凑
-    static let panelCornerRadius: CGFloat = 12
+    // 尺寸：紧凑平铺列表（对齐 hover-list.html：300pt、圆角 16、行间 1px 分隔）
+    static let panelCornerRadius: CGFloat = 16
     static let cardCornerRadius: CGFloat = 8
-    static let cardPaddingX: CGFloat = 8
-    static let cardPaddingY: CGFloat = 6
-    static let cardGap: CGFloat = 4
-    static let colorBarWidth: CGFloat = 3
-    static let cardHeight: CGFloat = 56
-    static let progressBarHeight: CGFloat = 3
+    static let cardPaddingX: CGFloat = 14          // px-3.5
+    static let cardPaddingY: CGFloat = 8
+    static let cardGap: CGFloat = 0                // 平铺，行间用分隔线
+    static let colorBarWidth: CGFloat = 0          // 去掉左色条
+    static let cardHeight: CGFloat = 52
+    static let progressBarHeight: CGFloat = 2      // 原型 timer-progress 2px
     static let topPadding: CGFloat = 8
     static let bottomAreaHeight: CGFloat = 36
     static let bottomPadding: CGFloat = 8
     static let groupSeparatorHeight: CGFloat = 14
 
-    // 字体
+    // 字体（对齐原型：时间 13px 等宽 semibold、标题 13px）
     static func timeFontSize() -> CGFloat {
         let v = CGFloat(UserDefaults.standard.float(forKey: "linger_hoverListFontSize"))
-        return v > 0 ? v : 20
+        return v > 0 ? v : 13
     }
     static let subtitleFontSize: CGFloat = 11
     static let bottomFontSize: CGFloat = 12
     static let badgeFontSize: CGFloat = 11
-    static let symbolPointSize: CGFloat = 11   // 按钮 icon
+    static let symbolPointSize: CGFloat = 11
     static let bottomSymbolPointSize: CGFloat = 13
 
-    static let panelWidth: CGFloat = 240
+    static let panelWidth: CGFloat = 300
 }
 
 // MARK: - HoverListWindow
@@ -69,30 +71,43 @@ final class HoverListWindow: NSWindow {
 
 // MARK: - HoverProgressBar（CALayer 动画进度条）
 
-/// 3px 高圆角进度条，setProgress(_:animated:) 触发 0.3s 平滑动画
+/// 2px 高圆角进度条（对齐 hover-list.html .timer-progress）：
+/// 琥珀渐变 fill + 发光 glow；running 时渐变流动动画；paused 降透明；scheduled 灰色。
 final class HoverProgressBar: NSView {
 
-    var accentColor: NSColor = HoverDesign.amber {
-        didSet { fillLayer.backgroundColor = accentColor.cgColor }
-    }
+    /// 进度条状态（决定渐变/发光/流动/透明度）
+    enum Style { case running, paused, scheduled }
+    var style: Style = .running { didSet { applyStyle() } }
 
-    private let fillLayer = CALayer()
+    private let fillContainer = CALayer()      // 进度容器（发光 + 圆角 + 裁剪）
+    private let fillGradient = CAGradientLayer()
     private var currentProgress: CGFloat = 0
     /// 标记是否已完成首次布局（首次无动画直接从当前进度开始）
     var hasInitialProgress: Bool = false
 
+    private static let glowColor = NSColor(calibratedRed: 0.961, green: 0.651, blue: 0.137, alpha: 0.40)
+
     override init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
         wantsLayer = true
-        layer?.masksToBounds = false
-        // 轨道层（静态）：通过 layer.backgroundColor 即可
         layer?.backgroundColor = HoverDesign.progressTrack.cgColor
         layer?.cornerRadius = frameRect.height / 2
 
-        // 填充层
-        fillLayer.backgroundColor = accentColor.cgColor
-        fillLayer.cornerRadius = frameRect.height / 2
-        layer?.addSublayer(fillLayer)
+        fillContainer.cornerRadius = frameRect.height / 2
+        fillContainer.masksToBounds = true
+        fillContainer.shadowColor = Self.glowColor.cgColor
+        fillContainer.shadowRadius = 3
+        fillContainer.shadowOpacity = 1
+        fillContainer.shadowOffset = .zero
+
+        fillGradient.colors = [
+            HoverDesign.amber.withAlphaComponent(0.70).cgColor,
+            HoverDesign.amber.cgColor,
+            NSColor(calibratedRed: 1.0, green: 0.78, blue: 0.42, alpha: 1.0).cgColor
+        ]
+        fillGradient.locations = [0.0, 0.55, 1.0]
+        fillContainer.addSublayer(fillGradient)
+        layer?.addSublayer(fillContainer)
     }
 
     required init?(coder: NSCoder) { fatalError() }
@@ -100,33 +115,86 @@ final class HoverProgressBar: NSView {
     override func layout() {
         super.layout()
         layer?.cornerRadius = bounds.height / 2
-        fillLayer.cornerRadius = bounds.height / 2
-        // 不在 layout 里改 fillLayer.frame —— 那是 setProgress 的活
+        fillContainer.cornerRadius = bounds.height / 2
+        // 同步当前进度下的 frame（layout 不触发进度动画）
+        updateFillFrame(animated: false)
     }
 
     func setProgress(_ p: CGFloat, animated: Bool) {
-        let target = max(0, min(1, p))
-        let targetRect = fillRect(for: target)
+        currentProgress = max(0, min(1, p))
+        updateFillFrame(animated: animated)
+    }
+
+    private func updateFillFrame(animated: Bool) {
+        let targetRect = NSRect(x: 0, y: 0,
+                                width: max(bounds.height, bounds.width * currentProgress),
+                                height: bounds.height)
         if !animated {
             CATransaction.begin()
             CATransaction.setDisableActions(true)
-            fillLayer.frame = targetRect
+            fillContainer.frame = targetRect
             CATransaction.commit()
         } else {
             let anim = CABasicAnimation(keyPath: "frame")
-            anim.fromValue = NSValue(rect: fillLayer.frame)
+            anim.fromValue = NSValue(rect: fillContainer.frame)
             anim.toValue = NSValue(rect: targetRect)
             anim.duration = 0.3
-            anim.timingFunction = CAMediaTimingFunction(name: .linear)  // v5 修复：匀速插值，避免 easeOut 在 1s tick 间隔下跳变明显
-            fillLayer.add(anim, forKey: "progressAnim")
-            fillLayer.frame = targetRect
+            anim.timingFunction = CAMediaTimingFunction(name: .linear)
+            fillContainer.add(anim, forKey: "progressAnim")
+            fillContainer.frame = targetRect
         }
-        currentProgress = target
+        syncGradientFrame()
     }
 
-    private func fillRect(for progress: CGFloat) -> NSRect {
-        let w = max(bounds.height, bounds.width * progress)
-        return NSRect(x: 0, y: 0, width: w, height: bounds.height)
+    /// 渐变层宽度 = 容器 2 倍，供流动动画平移
+    private func syncGradientFrame() {
+        fillGradient.frame = NSRect(x: 0, y: 0,
+                                    width: max(1, fillContainer.bounds.width * 2),
+                                    height: fillContainer.bounds.height)
+    }
+
+    private func applyStyle() {
+        switch style {
+        case .running:
+            fillContainer.opacity = 1
+            fillContainer.shadowOpacity = 1
+            fillGradient.colors = [
+                HoverDesign.amber.withAlphaComponent(0.70).cgColor,
+                HoverDesign.amber.cgColor,
+                NSColor(calibratedRed: 1.0, green: 0.78, blue: 0.42, alpha: 1.0).cgColor
+            ]
+            startFlowIfNeeded()
+        case .paused:
+            fillContainer.opacity = 0.40
+            fillContainer.shadowOpacity = 0.4
+            fillGradient.colors = [
+                HoverDesign.amber.withAlphaComponent(0.28).cgColor,
+                HoverDesign.amber.withAlphaComponent(0.45).cgColor,
+                HoverDesign.amber.withAlphaComponent(0.60).cgColor
+            ]
+            stopFlow()
+        case .scheduled:
+            fillContainer.opacity = 0.30
+            fillContainer.shadowOpacity = 0
+            fillGradient.colors = [NSColor(calibratedWhite: 1.0, alpha: 0.25).cgColor]
+            stopFlow()
+        }
+    }
+
+    /// running：渐变流动动画（对齐原型 progress-flow 2.4s 无限循环）
+    private func startFlowIfNeeded() {
+        if fillGradient.animation(forKey: "flow") != nil { return }
+        let anim = CABasicAnimation(keyPath: "transform.translation.x")
+        anim.fromValue = 0
+        anim.toValue = -fillContainer.bounds.width
+        anim.duration = 2.4
+        anim.repeatCount = .greatestFiniteMagnitude
+        anim.timingFunction = CAMediaTimingFunction(name: .linear)
+        fillGradient.add(anim, forKey: "flow")
+    }
+
+    private func stopFlow() {
+        fillGradient.removeAnimation(forKey: "flow")
     }
 }
 
@@ -186,6 +254,8 @@ final class HoverListView: NSView {
     // 底栏两个按钮的 hit rect（drawBottomArea 中计算）
     private var calendarBtnRect: NSRect = .zero
     private var pauseAllBtnRect: NSRect = .zero
+    /// 底栏日历按钮 hover（原型 hover 琥珀软底）
+    private var hoveredCalendar = false
 
     static func panelHeight(runningPausedCount rp: Int, scheduledCount sc: Int) -> CGFloat {
         // 兼容旧调用: rp = running + paused
@@ -381,9 +451,9 @@ final class HoverListView: NSView {
             guard let newY = newCardYs[entry.id] else { continue }
             let oldY = oldCardYs[entry.id] ?? newY
             let interpolatedY = oldY + (newY - oldY) * animProgress
-            let progressY = interpolatedY + HoverDesign.cardHeight - HoverDesign.progressBarHeight - 4
-            let progressX = HoverDesign.cardPaddingX + HoverDesign.colorBarWidth + 10
-            let progressW = bounds.width - HoverDesign.cardPaddingX * 2 - HoverDesign.colorBarWidth - 10 - 10
+            let progressY = interpolatedY + HoverDesign.cardHeight - HoverDesign.progressBarHeight - 10
+            let progressX = HoverDesign.cardPaddingX
+            let progressW = bounds.width - HoverDesign.cardPaddingX * 2
             pb.frame = NSRect(x: progressX, y: progressY, width: progressW, height: HoverDesign.progressBarHeight)
         }
     }
@@ -431,22 +501,20 @@ final class HoverListView: NSView {
 
     private func layoutRow(entry: TimerEntry, y: CGFloat, contentX: CGFloat, contentW: CGFloat) {
         guard let pb = progressBars[entry.id] else { return }
-        let progressY = y + HoverDesign.cardHeight - HoverDesign.progressBarHeight - 4
-        let progressX = contentX + HoverDesign.colorBarWidth + 10
-        let progressW = contentW - HoverDesign.colorBarWidth - 10 - 10
+        // 进度条贴行底部（原型 mt-2 + pb-2.5），左右与内容同 padding
+        let progressY = y + HoverDesign.cardHeight - HoverDesign.progressBarHeight - 10
+        let progressX = contentX
+        let progressW = contentW
         pb.frame = NSRect(x: progressX, y: progressY, width: progressW, height: HoverDesign.progressBarHeight)
-        // ⑦ 颜色: running=琥珀金, paused=浅琥珀金, scheduled=灰色
-        let accentColor: NSColor
+        // ⑦ 状态: running=渐变+发光+流动, paused=降透明, scheduled=灰色
         if entry.isScheduled {
-            accentColor = NSColor(calibratedWhite: 1.0, alpha: 0.20)
+            pb.style = .scheduled
         } else if entry.isPaused {
-            accentColor = HoverDesign.amber.withAlphaComponent(0.45)
+            pb.style = .paused
         } else {
-            accentColor = HoverDesign.amber
+            pb.style = .running
         }
-        pb.accentColor = accentColor
         let progress = computeProgress(entry: entry)
-        // 首次布局无动画直接跳到当前进度，后续 tick 更新才有 0.3s 平滑动画
         pb.setProgress(CGFloat(progress), animated: pb.hasInitialProgress)
         pb.hasInitialProgress = true
     }
@@ -465,21 +533,20 @@ final class HoverListView: NSView {
         // 绘制分隔线（带动画）
         drawSeparatorsWithAnimation()
 
-        // 绘制存活卡片（带插值位置）
+        // 绘制存活卡片（带插值位置；组内行间画 1px 分隔线，组间由 drawSeparatorsWithAnimation 处理）
         var y: CGFloat = HoverDesign.topPadding
-        for entry in running {
-            drawCardInterpolated(entry: entry, targetY: y)
+        for (i, entry) in running.enumerated() {
+            drawCardInterpolated(entry: entry, targetY: y, drawDivider: i < running.count - 1)
             y += HoverDesign.cardHeight + HoverDesign.cardGap
         }
-        // 跳过分隔线高度（已单独绘制）
         if !running.isEmpty && !paused.isEmpty { y += HoverDesign.groupSeparatorHeight }
-        for entry in paused {
-            drawCardInterpolated(entry: entry, targetY: y)
+        for (i, entry) in paused.enumerated() {
+            drawCardInterpolated(entry: entry, targetY: y, drawDivider: i < paused.count - 1)
             y += HoverDesign.cardHeight + HoverDesign.cardGap
         }
         if (!running.isEmpty || !paused.isEmpty) && !scheduled.isEmpty { y += HoverDesign.groupSeparatorHeight }
-        for entry in scheduled {
-            drawCardInterpolated(entry: entry, targetY: y)
+        for (i, entry) in scheduled.enumerated() {
+            drawCardInterpolated(entry: entry, targetY: y, drawDivider: i < scheduled.count - 1)
             y += HoverDesign.cardHeight + HoverDesign.cardGap
         }
 
@@ -552,7 +619,7 @@ final class HoverListView: NSView {
         }
     }
 
-    private func drawCardInterpolated(entry: TimerEntry, targetY: CGFloat) {
+    private func drawCardInterpolated(entry: TimerEntry, targetY: CGFloat, drawDivider: Bool = true) {
         let drawY: CGFloat
         let alpha: CGFloat
         if isAnimating {
@@ -569,7 +636,7 @@ final class HoverListView: NSView {
             drawY = targetY
             alpha = 1.0
         }
-        drawCard(entry: entry, y: drawY, alpha: alpha)
+        drawCard(entry: entry, y: drawY, alpha: alpha, drawDivider: drawDivider)
     }
 
     // MARK: - 背景
@@ -596,15 +663,15 @@ final class HoverListView: NSView {
 
     // MARK: - 卡片
 
-    private func drawCard(entry: TimerEntry, y: CGFloat, alpha: CGFloat = 1.0, scale: CGFloat = 1.0) {
+    private func drawCard(entry: TimerEntry, y: CGFloat, alpha: CGFloat = 1.0, scale: CGFloat = 1.0, drawDivider: Bool = true) {
         guard let ctx = NSGraphicsContext.current?.cgContext else { return }
         ctx.saveGState()
+        let rowRect = NSRect(x: HoverDesign.cardPaddingX, y: y,
+                             width: bounds.width - HoverDesign.cardPaddingX * 2,
+                             height: HoverDesign.cardHeight)
         if scale != 1.0 {
-            let cardRect = NSRect(x: HoverDesign.cardPaddingX, y: y,
-                                  width: bounds.width - HoverDesign.cardPaddingX * 2,
-                                  height: HoverDesign.cardHeight)
-            let cx = cardRect.midX
-            let cy = cardRect.midY
+            let cx = rowRect.midX
+            let cy = rowRect.midY
             ctx.translateBy(x: cx, y: cy)
             ctx.scaleBy(x: scale, y: scale)
             ctx.translateBy(x: -cx, y: -cy)
@@ -613,51 +680,19 @@ final class HoverListView: NSView {
             ctx.setAlpha(alpha)
         }
 
-        let cardRect = NSRect(x: HoverDesign.cardPaddingX, y: y,
-                              width: bounds.width - HoverDesign.cardPaddingX * 2,
-                              height: HoverDesign.cardHeight)
-
-        // ④ hover 高亮: 鼠标悬停的卡片用更亮背景
-        let isHovered = hoveredEntryID == entry.id
-
-        // ⑦ 颜色方案: running=稍亮半透明, paused=普通半透明, scheduled=普通半透明
-        let cardBg: NSColor
-        if entry.isScheduled {
-            cardBg = isHovered ? NSColor(calibratedWhite: 1.0, alpha: 0.10) : HoverDesign.cardBg
-        } else if entry.isPaused {
-            cardBg = isHovered ? NSColor(calibratedWhite: 1.0, alpha: 0.10) : HoverDesign.cardBg
-        } else {
-            // running
-            cardBg = isHovered ? NSColor(calibratedWhite: 1.0, alpha: 0.14) : HoverDesign.cardBgActive
+        // ④ hover 高亮：平铺行用极淡背景（对齐原型，无卡片/色条）
+        if hoveredEntryID == entry.id {
+            HoverDesign.rowHover.setFill()
+            NSBezierPath(roundedRect: rowRect, xRadius: 8, yRadius: 8).fill()
         }
 
-        // 卡片背景
-        let path = NSBezierPath(roundedRect: cardRect,
-                                xRadius: HoverDesign.cardCornerRadius,
-                                yRadius: HoverDesign.cardCornerRadius)
-        cardBg.setFill()
-        path.fill()
+        drawRowContent(entry: entry, rowRect: rowRect)
 
-        // ⑦ 左边缘色条: running=琥珀金, paused=浅琥珀金 alpha 0.45, scheduled=灰色 alpha 0.2
-        let barColor: NSColor
-        if entry.isScheduled {
-            barColor = NSColor(calibratedWhite: 1.0, alpha: 0.20)
-        } else if entry.isPaused {
-            barColor = HoverDesign.amber.withAlphaComponent(0.45)
-        } else {
-            barColor = HoverDesign.amber
+        // 组内行间 1px 分隔线（原型 h-px line）
+        if drawDivider {
+            HoverDesign.rowDivider.setFill()
+            NSRect(x: rowRect.minX, y: rowRect.minY - 0.5, width: rowRect.width, height: 1).fill()
         }
-        let barRect = NSRect(x: cardRect.minX, y: cardRect.minY + 2,
-                             width: HoverDesign.colorBarWidth,
-                             height: cardRect.height - 4)
-        let barPath = NSBezierPath(roundedRect: barRect,
-                                   xRadius: HoverDesign.colorBarWidth / 2,
-                                   yRadius: HoverDesign.colorBarWidth / 2)
-        barColor.setFill()
-        barPath.fill()
-
-        // 文本内容
-        drawRowContent(entry: entry, cardRect: cardRect)
 
         // 被移除的卡片（alpha < 1.0）不保留 hit rects，避免动画期间误触
         if alpha < 1.0 {
@@ -668,77 +703,94 @@ final class HoverListView: NSView {
         ctx.restoreGState()
     }
 
-    private func drawRowContent(entry: TimerEntry, cardRect: NSRect) {
-        let contentX = cardRect.minX + HoverDesign.colorBarWidth + 10
-        let contentW = cardRect.width - HoverDesign.colorBarWidth - 10 - 10
+    private func drawRowContent(entry: TimerEntry, rowRect: NSRect) {
+        let contentX = rowRect.minX
+        let rightEdge = rowRect.maxX
+        let centerY = rowRect.midY
 
-        // 大号等宽数字（左）
+        // 右侧控件（按钮/badge），返回时间文本右对齐锚点
+        let rightAnchor = drawRightControls(entry: entry, rowRect: rowRect, centerY: centerY)
+
+        // 时间文本（右对齐于按钮左侧；running 琥珀 / paused 白 / scheduled 灰）
         let timeText = entry.displayTime
-        // ⑦ 颜色方案: running=白色bold, paused=浅琥珀金 alpha 0.45, scheduled=灰色 alpha 0.4
         let timeColor: NSColor
         let timeWeight: NSFont.Weight
         if entry.isScheduled {
             timeColor = NSColor(calibratedWhite: 1.0, alpha: 0.4)
             timeWeight = .regular
         } else if entry.isPaused {
-            timeColor = NSColor(calibratedWhite: 1.0, alpha: 0.55)
-            timeWeight = .bold
-        } else {
             timeColor = HoverDesign.textPrimary
-            timeWeight = .bold
+            timeWeight = .semibold
+        } else {
+            timeColor = HoverDesign.amber
+            timeWeight = .semibold
         }
-        let timeFont = NSFont.monospacedDigitSystemFont(ofSize: HoverDesign.timeFontSize(),
-                                                        weight: timeWeight)
-        let timeAttr: [NSAttributedString.Key: Any] = [
-            .font: timeFont,
-            .foregroundColor: timeColor
-        ]
+        let timeFont = NSFont.monospacedDigitSystemFont(ofSize: HoverDesign.timeFontSize(), weight: timeWeight)
+        let timeAttr: [NSAttributedString.Key: Any] = [.font: timeFont, .foregroundColor: timeColor]
         let timeSize = (timeText as NSString).size(withAttributes: timeAttr)
+        let timeRect = NSRect(x: rightAnchor - 12 - timeSize.width,
+                              y: centerY - timeSize.height / 2,
+                              width: timeSize.width,
+                              height: timeSize.height)
+        (timeText as NSString).draw(in: timeRect, withAttributes: timeAttr)
 
-        let hasTitle = !(entry.predefinedTitle ?? "").isEmpty
-        let titleText = hasTitle ? entry.predefinedTitle! : ""
-
-        let titleAttr: [NSAttributedString.Key: Any] = [
-            .font: NSFont.systemFont(ofSize: HoverDesign.subtitleFontSize, weight: .regular),
-            .foregroundColor: HoverDesign.textTertiary
-        ]
-        let titleSize = hasTitle
-            ? (titleText as NSString).size(withAttributes: titleAttr)
-            : NSSize(width: 0, height: HoverDesign.subtitleFontSize)
-
-        // 数字 + 副标题作为整体 block, 垂直居中于卡片中线
-        let blockSpacing: CGFloat = 4
-        let blockHeight = timeSize.height + blockSpacing + titleSize.height
-        let blockStartY = cardRect.minY + (cardRect.height - blockHeight) / 2
-        let timeY = blockStartY
-        let titleY = blockStartY + timeSize.height + blockSpacing
-
-        (timeText as NSString).draw(
-            in: NSRect(x: contentX, y: timeY, width: timeSize.width, height: timeSize.height),
-            withAttributes: timeAttr
-        )
-
-        if hasTitle {
-            (titleText as NSString).draw(
-                in: NSRect(x: contentX, y: titleY - 2, width: contentW, height: titleSize.height),
-                withAttributes: titleAttr
-            )
-        }
-
-        // 右侧控件
-        drawRightControls(entry: entry, cardRect: cardRect, blockCenterY: blockStartY + blockHeight / 2)
+        // 左侧标题区（最大宽度到时间左缘）
+        let maxTitleX = timeRect.minX - 16
+        drawLeftTitle(entry: entry, contentX: contentX, centerY: centerY, maxWidth: maxTitleX - contentX)
     }
 
-    private func drawRightControls(entry: TimerEntry, cardRect: NSRect, blockCenterY: CGFloat) {
-        let rightEdge = cardRect.maxX - 10
-        // 修复 3a: 按钮中心 = 文字 block 中心 (不再是硬编码 cardRect.minY + cardHeight/2)
-        let iconY = blockCenterY
+    /// 左区标题：running = 铅笔 + 文本(placeholder「日程」) + 回车图标（视觉 = 原型输入框）；
+    /// paused/scheduled = 名称文本。
+    private func drawLeftTitle(entry: TimerEntry, contentX: CGFloat, centerY: CGFloat, maxWidth: CGFloat) {
+        let hasTitle = !(entry.predefinedTitle ?? "").isEmpty
+        var x = contentX
+
+        if entry.isRunning && !entry.isScheduled {
+            // 铅笔
+            if let pencil = makeTintedSFSymbol("pencil", color: HoverDesign.textTertiary, pointSize: 12) {
+                pencil.draw(in: NSRect(x: x, y: centerY - pencil.size.height / 2,
+                                       width: pencil.size.width, height: pencil.size.height))
+                x += pencil.size.width + 6
+            }
+            // 文本 / placeholder
+            let text = hasTitle ? entry.predefinedTitle! : "日程"
+            let color = hasTitle ? HoverDesign.textPrimary : HoverDesign.textTertiary
+            let attr: [NSAttributedString.Key: Any] = [
+                .font: NSFont.systemFont(ofSize: 13, weight: .medium),
+                .foregroundColor: color
+            ]
+            let textSize = (text as NSString).size(withAttributes: attr)
+            let drawW = min(textSize.width, max(20, maxWidth - 14))   // 给回车图标留位
+            (text as NSString).draw(in: NSRect(x: x, y: centerY - textSize.height / 2,
+                                               width: drawW, height: textSize.height),
+                                    withAttributes: attr)
+            x += drawW + 6
+            // 回车图标
+            if let ret = makeTintedSFSymbol("return", color: HoverDesign.textTertiary, pointSize: 10) {
+                ret.draw(in: NSRect(x: x, y: centerY - ret.size.height / 2,
+                                    width: ret.size.width, height: ret.size.height))
+            }
+        } else {
+            let text = hasTitle ? entry.predefinedTitle! : (entry.scheduledTitle ?? "")
+            let attr: [NSAttributedString.Key: Any] = [
+                .font: NSFont.systemFont(ofSize: 13, weight: .semibold),
+                .foregroundColor: HoverDesign.textPrimary
+            ]
+            let textSize = (text as NSString).size(withAttributes: attr)
+            let drawW = min(textSize.width, max(20, maxWidth))
+            (text as NSString).draw(in: NSRect(x: x, y: centerY - textSize.height / 2,
+                                               width: drawW, height: textSize.height),
+                                    withAttributes: attr)
+        }
+    }
+
+    /// 右侧控件；返回时间文本右对齐锚点（badge/按钮左缘）。
+    private func drawRightControls(entry: TimerEntry, rowRect: NSRect, centerY: CGFloat) -> CGFloat {
+        let rightEdge = rowRect.maxX
 
         if entry.isScheduled {
-            // 清除该 entry 的按钮 hit rect
             pauseRects.removeValue(forKey: entry.id)
             stopRects.removeValue(forKey: entry.id)
-            // 待开始文字
             let text = "待开始"
             let attr: [NSAttributedString.Key: Any] = [
                 .font: NSFont.systemFont(ofSize: HoverDesign.badgeFontSize, weight: .medium),
@@ -746,44 +798,39 @@ final class HoverListView: NSView {
             ]
             let size = (text as NSString).size(withAttributes: attr)
             let rect = NSRect(x: rightEdge - size.width,
-                              y: cardRect.minY + 8,
+                              y: centerY - size.height / 2,
                               width: size.width,
                               height: size.height)
             (text as NSString).draw(in: rect, withAttributes: attr)
-        } else {
-            // 按钮：play/pause + stop —— 用 SF Symbol + tint
-            let primaryIcon = entry.isPaused ? "play.fill" : "pause.fill"
-            let primaryColor: NSColor = entry.isPaused
-                ? HoverDesign.amber
-                : HoverDesign.textTertiary
-
-            // v6 修复: 两个按钮之间的间距 14 → 20
-            drawTintedSFSymbol(primaryIcon,
-                               color: primaryColor,
-                               pointSize: HoverDesign.symbolPointSize,
-                               rightAnchor: rightEdge - 20,
-                               centerY: iconY)
-
-            drawTintedSFSymbol("stop.fill",
-                               color: HoverDesign.textTertiary,
-                               pointSize: HoverDesign.symbolPointSize,
-                               rightAnchor: rightEdge,
-                               centerY: iconY)
-
-            // ① 记录按钮 hit rect (比图标大一倍防误触)
-            let hitPad: CGFloat = HoverDesign.symbolPointSize  // 外扩一倍
-            let pauseIconRect = NSRect(x: rightEdge - 20 - HoverDesign.symbolPointSize,
-                                       y: iconY - HoverDesign.symbolPointSize / 2,
-                                       width: HoverDesign.symbolPointSize,
-                                       height: HoverDesign.symbolPointSize)
-            pauseRects[entry.id] = pauseIconRect.insetBy(dx: -hitPad, dy: -hitPad)
-
-            let stopIconRect = NSRect(x: rightEdge - HoverDesign.symbolPointSize,
-                                      y: iconY - HoverDesign.symbolPointSize / 2,
-                                      width: HoverDesign.symbolPointSize,
-                                      height: HoverDesign.symbolPointSize)
-            stopRects[entry.id] = stopIconRect.insetBy(dx: -hitPad, dy: -hitPad)
+            return rightEdge - size.width
         }
+
+        let isPaused = entry.isPaused
+        // stop 在右缘；pause/play 在 stop 左 20pt（原型：square 14 / pause|play 15）
+        drawTintedSFSymbol("stop.fill",
+                           color: HoverDesign.textTertiary,
+                           pointSize: HoverDesign.symbolPointSize,
+                           rightAnchor: rightEdge,
+                           centerY: centerY)
+        drawTintedSFSymbol(isPaused ? "play.fill" : "pause.fill",
+                           color: isPaused ? HoverDesign.textSecondary : HoverDesign.amber,
+                           pointSize: HoverDesign.symbolPointSize,
+                           rightAnchor: rightEdge - 20,
+                           centerY: centerY)
+
+        let hitPad: CGFloat = HoverDesign.symbolPointSize
+        let stopRect = NSRect(x: rightEdge - HoverDesign.symbolPointSize,
+                              y: centerY - HoverDesign.symbolPointSize / 2,
+                              width: HoverDesign.symbolPointSize,
+                              height: HoverDesign.symbolPointSize)
+        stopRects[entry.id] = stopRect.insetBy(dx: -hitPad, dy: -hitPad)
+        let pauseRect = NSRect(x: rightEdge - 20 - HoverDesign.symbolPointSize,
+                               y: centerY - HoverDesign.symbolPointSize / 2,
+                               width: HoverDesign.symbolPointSize,
+                               height: HoverDesign.symbolPointSize)
+        pauseRects[entry.id] = pauseRect.insetBy(dx: -hitPad, dy: -hitPad)
+
+        return rightEdge - 20 - HoverDesign.symbolPointSize
     }
 
     /// 画带 tint 的 SF Symbol —— 内部通过 lockFocus 把 symbol 当 mask，用 color 填充
@@ -835,29 +882,28 @@ final class HoverListView: NSView {
     private func drawBottomArea() {
         let topY = bounds.height - HoverDesign.bottomAreaHeight - HoverDesign.bottomPadding + 4
         // 分隔线
-        let sepRect = NSRect(x: HoverDesign.cardPaddingX, y: topY,
-                             width: bounds.width - HoverDesign.cardPaddingX * 2, height: 1)
         HoverDesign.bottomSeparator.setFill()
-        sepRect.fill()
+        NSRect(x: HoverDesign.cardPaddingX, y: topY,
+               width: bounds.width - HoverDesign.cardPaddingX * 2, height: 1).fill()
 
-        // 左下：calendar.badge.plus
-        let calRightAnchor = HoverDesign.cardPaddingX + 4 + HoverDesign.bottomSymbolPointSize
-        let calCenterY = topY + HoverDesign.bottomAreaHeight / 2 + 2
+        // 左下：圆形 calendar-plus 按钮（原型 rounded-full h-7 w-7，hover 琥珀软底）
+        let btnSize: CGFloat = 28
+        let btnCenterX = HoverDesign.cardPaddingX + 4 + btnSize / 2
+        let btnCenterY = topY + HoverDesign.bottomAreaHeight / 2 + 2
+        let btnRect = NSRect(x: btnCenterX - btnSize / 2, y: btnCenterY - btnSize / 2,
+                             width: btnSize, height: btnSize)
+        if hoveredCalendar {
+            HoverDesign.amberSoft.setFill()
+            NSBezierPath(ovalIn: btnRect).fill()
+        }
         drawTintedSFSymbol("calendar.badge.plus",
-                           color: HoverDesign.textTertiary,
-                           pointSize: HoverDesign.bottomSymbolPointSize,
-                           rightAnchor: calRightAnchor,
-                           centerY: calCenterY)
-        // 日历按钮 hit area：以图标为中心外扩 20x20
-        calendarBtnRect = NSRect(x: calRightAnchor - HoverDesign.bottomSymbolPointSize - 4,
-                                 y: calCenterY - 10,
-                                 width: HoverDesign.bottomSymbolPointSize + 8,
-                                 height: 20)
+                           color: HoverDesign.amber,
+                           pointSize: 16,
+                           rightAnchor: btnRect.maxX - 2,
+                           centerY: btnCenterY)
+        calendarBtnRect = btnRect
 
         // ② 右下：动态切换 "全部暂停" / "全部继续"
-        //   有任一 running → "全部暂停" + pause.rectangle
-        //   全部 paused → "全部继续" + play
-        //   只有 scheduled → 不显示
         let hasRunning = !running.isEmpty
         let hasPaused = !paused.isEmpty
         let hasActive = hasRunning || hasPaused
@@ -878,7 +924,6 @@ final class HoverListView: NSView {
             )
             (pauseText as NSString).draw(in: textRect, withAttributes: attr)
 
-            // icon 在文字左侧
             let iconRightAnchor = textRect.minX - 4
             drawTintedSFSymbol(pauseIcon,
                                color: HoverDesign.textTertiary,
@@ -886,7 +931,6 @@ final class HoverListView: NSView {
                                rightAnchor: iconRightAnchor,
                                centerY: textRect.midY)
 
-            // 暂停全部按钮 hit area：从 icon 左边缘到文字右边缘
             let iconSize = makeTintedSFSymbol(pauseIcon, color: HoverDesign.textTertiary,
                                               pointSize: HoverDesign.bottomSymbolPointSize)?.size.width ?? 0
             pauseAllBtnRect = NSRect(x: iconRightAnchor - iconSize,
@@ -922,13 +966,14 @@ final class HoverListView: NSView {
     override func mouseExited(with event: NSEvent) {
         onPanelMouseExited?()
         // ④ 离开面板时清除 hover
-        if hoveredEntryID != nil {
+        if hoveredEntryID != nil || hoveredCalendar {
             hoveredEntryID = nil
+            hoveredCalendar = false
             needsDisplay = true
         }
     }
 
-    // ④ hover 高亮: mouseMoved 追踪鼠标在哪张卡片上
+    // ④ hover 高亮: mouseMoved 追踪鼠标在哪张卡片/底栏按钮上
     override func mouseMoved(with event: NSEvent) {
         let point = convert(event.locationInWindow, from: nil)
         var found: UUID?
@@ -941,6 +986,11 @@ final class HoverListView: NSView {
         }
         if found != hoveredEntryID {
             hoveredEntryID = found
+            needsDisplay = true
+        }
+        let calHover = calendarBtnRect.contains(point)
+        if calHover != hoveredCalendar {
+            hoveredCalendar = calHover
             needsDisplay = true
         }
     }
@@ -1019,48 +1069,30 @@ final class HoverListView: NSView {
     private func startEditing(entry: TimerEntry, cardRect: NSRect) {
         // 已在编辑则跳过
         guard editingField == nil else { return }
-        // 已有自定义标题的条目不再进入编辑，避免重复编辑锁定
-        if let title = entry.predefinedTitle, !title.isEmpty { return }
+        // 已有自定义标题的暂停/预约条目不重复编辑（运行中行常驻输入框语义，始终可编辑）
+        if !entry.isRunning, let title = entry.predefinedTitle, !title.isEmpty { return }
 
-        let contentX = cardRect.minX + HoverDesign.colorBarWidth + 10
-        let contentW = cardRect.width - HoverDesign.colorBarWidth - 10 - 10
-
-        // 标题行 y 坐标（和 drawRowContent 一致）
-        let timeText = entry.displayTime
-        let timeFont = NSFont.monospacedDigitSystemFont(ofSize: HoverDesign.timeFontSize(),
-                                                        weight: entry.isRunning ? .bold : .regular)
-        let timeAttr: [NSAttributedString.Key: Any] = [.font: timeFont]
-        let timeSize = (timeText as NSString).size(withAttributes: timeAttr)
-
-        let title = entry.predefinedTitle ?? entry.scheduledTitle ?? ""
-        let titleFont = NSFont.systemFont(ofSize: HoverDesign.subtitleFontSize, weight: .regular)
-        let titleAttr: [NSAttributedString.Key: Any] = [.font: titleFont]
-        let titleSize = (title as NSString).size(withAttributes: titleAttr)
-
-        let blockSpacing: CGFloat = 4
-        let blockHeight = timeSize.height + blockSpacing + titleSize.height
-        let blockStartY = cardRect.minY + (cardRect.height - blockHeight) / 2
-        let titleY = blockStartY + timeSize.height + blockSpacing
-
-        // 非 scheduled 条目右侧有 pause/stop 按钮（约 50pt），输入框留 8pt 边距；scheduled 条目可更宽
-        let fieldWidth = entry.isScheduled ? contentW - 16 : contentW - 58
-        let field = NSTextField(frame: NSRect(x: contentX, y: titleY - 2,
+        let contentX = cardRect.minX                       // 与 drawLeftTitle 起点一致
+        let centerY = cardRect.midY
+        // 标题单行 13pt，垂直居中；宽度到右区按钮之前（留 14 + 右区约 76pt）
+        let fieldWidth = cardRect.width - 14 - 76
+        let fieldHeight: CGFloat = 18
+        let field = NSTextField(frame: NSRect(x: contentX, y: centerY - fieldHeight / 2,
                                                width: max(40, fieldWidth),
-                                               height: titleSize.height + 4))
-        field.font = titleFont
+                                               height: fieldHeight + 4))
+        field.font = NSFont.systemFont(ofSize: 13, weight: .medium)
         field.textColor = HoverDesign.textPrimary
         field.backgroundColor = .clear
         field.drawsBackground = false
         field.isBordered = false
         field.focusRingType = .none
-        field.stringValue = title
-        field.placeholderString = "输入标题"
+        field.stringValue = entry.predefinedTitle ?? entry.scheduledTitle ?? ""
+        field.placeholderString = "日程"
         field.cell?.wraps = false
         field.cell?.isScrollable = true
         field.delegate = self
         field.sizeToFit()
-        // sizeToFit() 会改宽度，这里把宽度锁回目标值，y 与 drawRowContent 绘制位置严格对齐
-        field.setFrameOrigin(NSPoint(x: contentX, y: titleY - 2))
+        field.setFrameOrigin(NSPoint(x: contentX, y: centerY - fieldHeight / 2))
         field.setFrameSize(NSSize(width: max(40, fieldWidth), height: field.frame.height))
 
         addSubview(field)
