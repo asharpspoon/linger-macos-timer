@@ -79,6 +79,18 @@ final class HoverProgressBar: NSView {
     enum Style { case running, paused, scheduled }
     var style: Style = .running { didSet { applyStyle() } }
 
+    /// 最后 10s 提醒：进度条琥珀闪烁（fillContainer opacity 脉冲）
+    var urgent: Bool = false {
+        didSet {
+            guard urgent != oldValue else { return }
+            if urgent {
+                startUrgentBlink()
+            } else {
+                stopUrgentBlink()
+            }
+        }
+    }
+
     private let fillContainer = CALayer()      // 进度容器（发光 + 圆角 + 裁剪）
     private let fillGradient = CAGradientLayer()
     private var currentProgress: CGFloat = 0
@@ -196,6 +208,25 @@ final class HoverProgressBar: NSView {
     private func stopFlow() {
         fillGradient.removeAnimation(forKey: "flow")
     }
+
+    // MARK: - 最后 10s 提醒（琥珀闪烁）
+
+    private func startUrgentBlink() {
+        if fillContainer.animation(forKey: "urgentBlink") != nil { return }
+        let anim = CABasicAnimation(keyPath: "opacity")
+        anim.fromValue = 1.0
+        anim.toValue = 0.30
+        anim.duration = 0.5
+        anim.autoreverses = true
+        anim.repeatCount = .greatestFiniteMagnitude
+        anim.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
+        fillContainer.add(anim, forKey: "urgentBlink")
+    }
+
+    private func stopUrgentBlink() {
+        fillContainer.removeAnimation(forKey: "urgentBlink")
+        fillContainer.opacity = (style == .paused) ? 0.40 : 1.0
+    }
 }
 
 // MARK: - HoverListView
@@ -256,6 +287,10 @@ final class HoverListView: NSView {
     private var pauseAllBtnRect: NSRect = .zero
     /// 底栏日历按钮 hover（原型 hover 琥珀软底）
     private var hoveredCalendar = false
+
+    // 最后 10s 提醒：时间文本闪烁状态
+    private var urgentBlinkOn = false
+    private var urgentBlinkTimer: Timer?
 
     static func panelHeight(runningPausedCount rp: Int, scheduledCount sc: Int) -> CGFloat {
         // 兼容旧调用: rp = running + paused
@@ -443,6 +478,32 @@ final class HoverListView: NSView {
             // 最终布局确保一切到位
             needsLayout = true
         }
+
+        // 最后 10s 提醒：有运行中且剩余 ≤10s 的条目时启动文字闪烁
+        refreshUrgentBlink()
+    }
+
+    /// 扫描运行中条目：剩余 ≤10s → 启动时间文本闪烁；否则停止。
+    private func refreshUrgentBlink() {
+        let hasUrgent = running.contains { $0.remainingTime <= 10 }
+        if hasUrgent {
+            guard urgentBlinkTimer == nil else { return }
+            let t = Timer(timeInterval: 0.5, repeats: true) { [weak self] _ in
+                guard let self else { return }
+                self.urgentBlinkOn.toggle()
+                self.needsDisplay = true
+            }
+            RunLoop.main.add(t, forMode: .common)
+            urgentBlinkTimer = t
+        } else {
+            urgentBlinkTimer?.invalidate()
+            urgentBlinkTimer = nil
+            urgentBlinkOn = false
+        }
+    }
+
+    deinit {
+        urgentBlinkTimer?.invalidate()
     }
 
     private func updateProgressBarsAnimated() {
@@ -509,10 +570,14 @@ final class HoverListView: NSView {
         // ⑦ 状态: running=渐变+发光+流动, paused=降透明, scheduled=灰色
         if entry.isScheduled {
             pb.style = .scheduled
+            pb.urgent = false
         } else if entry.isPaused {
             pb.style = .paused
+            pb.urgent = false
         } else {
             pb.style = .running
+            // 最后 10s：进度条琥珀闪烁提醒
+            pb.urgent = (entry.remainingTime <= 10)
         }
         let progress = computeProgress(entry: entry)
         pb.setProgress(CGFloat(progress), animated: pb.hasInitialProgress)
@@ -722,7 +787,12 @@ final class HoverListView: NSView {
             timeColor = HoverDesign.textPrimary
             timeWeight = .semibold
         } else {
-            timeColor = HoverDesign.amber
+            // running：最后 10s 用琥珀强调色闪烁提醒
+            if entry.remainingTime <= 10 {
+                timeColor = urgentBlinkOn ? HoverDesign.amber : HoverDesign.amber.withAlphaComponent(0.35)
+            } else {
+                timeColor = HoverDesign.amber
+            }
             timeWeight = .semibold
         }
         let timeFont = NSFont.monospacedDigitSystemFont(ofSize: HoverDesign.timeFontSize(), weight: timeWeight)
@@ -1087,7 +1157,8 @@ final class HoverListView: NSView {
         field.isBordered = false
         field.focusRingType = .none
         field.stringValue = entry.predefinedTitle ?? entry.scheduledTitle ?? ""
-        field.placeholderString = "日程"
+        // 用户要求：输入时不要显示「日程」占位（多此一举）
+        field.placeholderString = nil
         field.cell?.wraps = false
         field.cell?.isScrollable = true
         field.delegate = self
