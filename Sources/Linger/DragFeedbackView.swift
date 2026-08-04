@@ -196,13 +196,13 @@ final class DragFeedbackView: NSView {
 
     // MARK: - Esc 断线动画
 
-    /// Esc 取消「灯绳拉断」特效（约 0.55s）：张力颤动 → 颈缩 → 啪断 → 上弹下坠 + 碎屑。
+    /// Esc 取消「收回」动画（约 0.5s）：圆球收缩消失 → 线变最细变暗 → 整体向上收回 icon。
     /// 首帧就从 0.05 起（不是 0），配合 isBreaking 锁，杜绝「闪一帧完整绳子的影子」。
     func animateBreak(completion: @escaping () -> Void) {
         stopBreathing()
         isBreaking = true
         lineView.breakProgress = 0.05
-        let duration: TimeInterval = 0.55
+        let duration: TimeInterval = 0.5
         let start = CACurrentMediaTime()
         let timer = Timer(timeInterval: 1.0 / 60.0, repeats: true) { [weak self] t in
             guard let self else {
