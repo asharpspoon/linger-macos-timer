@@ -81,7 +81,7 @@ final class SettingsWindow: NSWindow {
         // 2026-08-04 重构：回归标准 macOS 设置窗口。
         // 之前 titlebarAppearsTransparent + 自定义 38pt 标题栏导致系统标题栏按钮不渲染、
         // 窗口不像正常窗口（用户反馈）。改用系统标题栏（关闭按钮原生显示）+ 内容自适应高度。
-        title = "Linger 设置"
+        title = "设置"
         titlebarAppearsTransparent = false
         titleVisibility = .visible
         isMovableByWindowBackground = true
@@ -91,6 +91,9 @@ final class SettingsWindow: NSWindow {
         hasShadow = true
         collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
         isReleasedWhenClosed = false
+        // 只保留关闭按钮，隐藏最小化/缩放（用户要求）
+        standardWindowButton(.miniaturizeButton)?.isHidden = true
+        standardWindowButton(.zoomButton)?.isHidden = true
         center()
     }
 
@@ -98,7 +101,8 @@ final class SettingsWindow: NSWindow {
 
     private func buildUI() {
         let root = NSVisualEffectView()
-        root.material = .windowBackground
+        // 磨砂玻璃质感 + 微微透明度（用户要求）
+        root.material = .hudWindow
         root.blendingMode = .withinWindow
         root.state = .active
         contentView = root
@@ -168,7 +172,9 @@ final class SettingsWindow: NSWindow {
     private func makeTabButton(title: String, icon: String, tag: Int) -> NSButton {
         let btn = NSButton()
         btn.tag = tag
-        if let img = NSImage(systemSymbolName: icon, accessibilityDescription: title) {
+        // icon 调大（16 → 20pt，用户要求）
+        if let img = NSImage(systemSymbolName: icon, accessibilityDescription: title)?
+            .withSymbolConfiguration(NSImage.SymbolConfiguration(pointSize: 20, weight: .medium)) {
             btn.image = img
             btn.image?.isTemplate = true
         }
@@ -178,9 +184,9 @@ final class SettingsWindow: NSWindow {
         btn.setButtonType(.momentaryLight)
         btn.target = self
         btn.action = #selector(tabClicked(_:))
-        btn.font = NSFont.systemFont(ofSize: 10, weight: .medium)
+        btn.font = NSFont.systemFont(ofSize: 11, weight: .medium)
         btn.wantsLayer = true
-        btn.layer?.cornerRadius = 8
+        btn.layer?.cornerRadius = 10
         btn.contentTintColor = .tertiaryLabelColor
         return btn
     }
@@ -188,7 +194,16 @@ final class SettingsWindow: NSWindow {
     // MARK: - Tab 切换
 
     @objc private func tabClicked(_ sender: NSButton) {
-        selectTab(sender.tag, animated: true)
+        // 液态玻璃按压反馈：快速 0.96 → 1.0
+        let press = CABasicAnimation(keyPath: "transform.scale")
+        press.fromValue = 0.96
+        press.toValue = 1.0
+        press.duration = 0.18
+        press.timingFunction = CAMediaTimingFunction(name: .easeOut)
+        sender.layer?.add(press, forKey: "tabPress")
+
+        // 不做高度动画：顶部固定、底部伸缩，避免窗口/菜单栏抽搐（用户要求）
+        selectTab(sender.tag, animated: false)
     }
 
     /// 切换面板。`index` 越界时直接返回（PRD §6.3 P2 边界 guard）。
@@ -249,15 +264,37 @@ final class SettingsWindow: NSWindow {
         for btn in tabButtons {
             let active = btn.tag == currentIndex
             if active {
+                // 液态玻璃激活态：半透明白玻璃底 + 1px 高光边 + 顶部内高光 + 琥珀 icon/文字
                 btn.contentTintColor = LingerTheme.amberGold
-                btn.layer?.backgroundColor = NSColor(calibratedRed: 0.961,
-                                                     green: 0.651, blue: 0.137,
-                                                     alpha: 0.14).cgColor
+                btn.layer?.backgroundColor = NSColor(white: 1.0, alpha: 0.10).cgColor
+                btn.layer?.borderColor = NSColor(white: 1.0, alpha: 0.22).cgColor
+                btn.layer?.borderWidth = 1
+                addGlassHighlight(to: btn)
             } else {
                 btn.contentTintColor = .tertiaryLabelColor
                 btn.layer?.backgroundColor = NSColor.clear.cgColor
+                btn.layer?.borderWidth = 0
+                removeGlassHighlight(from: btn)
             }
         }
+    }
+
+    /// 顶部内高光（液态玻璃边缘反光）：8pt 白渐变，只给激活 tab 显示
+    private func addGlassHighlight(to btn: NSButton) {
+        if btn.layer?.sublayers?.contains(where: { $0.name == "glassHighlight" }) == true { return }
+        let h = CAGradientLayer()
+        h.name = "glassHighlight"
+        h.colors = [NSColor(white: 1.0, alpha: 0.28).cgColor,
+                    NSColor(white: 1.0, alpha: 0.0).cgColor]
+        h.locations = [0.0, 1.0]
+        h.frame = NSRect(x: 1, y: btn.bounds.height - 9, width: max(1, btn.bounds.width - 2), height: 8)
+        h.cornerRadius = 4
+        h.autoresizingMask = [.layerWidthSizable]
+        btn.layer?.addSublayer(h)
+    }
+
+    private func removeGlassHighlight(from btn: NSButton) {
+        btn.layer?.sublayers?.removeAll { $0.name == "glassHighlight" }
     }
 
     /// 惰性构建并返回面板视图。`index` 越界时返回空视图（边界 guard）。
