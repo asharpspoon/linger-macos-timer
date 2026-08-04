@@ -57,19 +57,26 @@ Linger2.5/
       - 提示文案只在前 3 次成功拖拽显示（`linger_dragHintUsageCount`）
       - 触顶橡皮筋：`DragPhysics.dampedOvershoot`（iOS 阻尼，上限 +40pt，面板向下生长）
         + trackpad 轻触反馈（NSHapticFeedbackManager，触顶瞬间一次）
+- [x] **拖拽预览第三轮微调（用户 4 条反馈）**：
+      - 发光回归 2.0 做法：紧致 glow（线 shadow 9 / 圆点 5）+ 实心亮金圆点，去掉过宽光晕带
+      - Esc 可取消拖拽（monitor 加 .keyDown，keyCode 53）
+      - 橡皮筋延伸 40 → 10pt（一点点即有反馈）
+      - 默认字号 22 → 18pt（设置滑块 14–26）；高亮侧字号 +4 / 对侧 -2 + 弹跳动画，反差明显
 - [x] **纯逻辑单测接入 `swift test`**（`DragPhysics` + `TimerEntry` 共 8 个，全绿）
 - [ ] **待真机验收 v2**：拖拽手感 / 发光效果 / 橡皮筋触顶 / 字号设置（用户实机确认中）
 - [ ] 按原型逐页对齐：hover-list（悬停列表）、toast、settings×4、about、schedule-timer、notification
 - [ ] 通知/日历权限、预约计时、图标三风格（Ring/Classic/timer）
 
-## 最近交接（2026-08-04 上午 · 拖拽预览重构）
+## 最近交接（2026-08-04 上午 · 拖拽预览第三轮微调）
 
 **本次完成**
-- 6 条反馈全部落地（字号设置 / 发光重构 / HH:mm:ss / 高亮侧字号 +2 / 提示前 3 次 / 触顶橡皮筋+震动）
+- 发光回归 2.0 紧致做法（参考 `Linger2.0/.../DragFeedbackView.swift`：线 glow radius 9 / 圆点 radius 5 / 实心亮金圆点）
+- Esc 取消拖拽；橡皮筋 40→10pt；字号默认 18（滑块 14–26）
+- 高亮侧 +4pt / 对侧 -2pt + 弹跳动画（切侧时 CAKeyframeAnimation scale 过冲回弹）
 - `swift build` 通过、`swift test` 8/8 绿
 
 **未完成 / 卡点**
-- 实机验收：拖拽手感、发光观感、橡皮筋力度、字号滑块生效范围
+- 实机验收：发光观感（对照 2.0 记忆）、橡皮筋 10pt 是否合适、字号 18 是否合适、高亮弹跳是否明显、Esc 取消
 
 **下一步（按优先级）**
 1. 用户实机验收拖拽预览（`./script/build_and_run.sh`）
@@ -82,7 +89,8 @@ Linger2.5/
 - 单测：`swift test --disable-sandbox`（需 `DEVELOPER_DIR` 指向 Xcode）
 
 **给下一位的提示**
-- 发光/光点在 `DragLineView.draw(_:)` 手绘（NSShadow + 径向渐变），别再退回 CALayer 拼装
+- 发光/光点在 `DragLineView.draw(_:)` 手绘（NSShadow 紧致 glow，对齐 2.0 观感）；圆点直径 `DragLineView.dotDiameter`（10pt）
+- 橡皮筋最大延伸 `DragFeedbackView.kRubberHeadroom`（现 10pt，数值小才「看得见」）
 - 橡皮筋纯函数在 `DragPhysics.swift`（Foundation-only，可单测）；面板随溢出向下生长在
   `DragFeedbackView.update()`（顶部固定）
 - 提示次数计数在 `MenuBarManager.finishDrag(with:)` 成功后 +1；改阈值看 `LingerTheme.maxDragHintShownCount`
