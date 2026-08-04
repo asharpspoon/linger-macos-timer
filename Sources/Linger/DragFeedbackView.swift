@@ -134,10 +134,14 @@ final class DragFeedbackView: NSView {
     // MARK: - 显示 / 隐藏
 
     func show(at anchorRect: NSRect) {
-        // 由 linger_maxDragLinePercent 推导竖线最长长度（25–75%，默认 50）
+        // 线长上限 = min(达到最大时长所需的距离, 用户百分比上限)，保证
+        // 「时间到最大时长（如 30:00）时线正好到顶，之后不再长」。
         let percent = UserDefaults.standard.double(forKey: LingerTheme.UserDefaultsKey.maxDragLinePercent.rawValue)
         let p = (percent >= 25 && percent <= 75) ? percent : LingerTheme.defaultMaxDragLinePercent
-        maxLineHeight = DragFeedbackView.kDefaultMaxLineHeight * CGFloat(p / 50)
+        let percentLimit = DragFeedbackView.kDefaultMaxLineHeight * CGFloat(p / 50)
+        let maxDur = UserDefaults.standard.double(forKey: LingerTheme.UserDefaultsKey.maxDurationMinutes.rawValue)
+        let syncDistance = CGFloat(DragPhysics.lineMaxDistance(maxMinutes: maxDur))
+        maxLineHeight = max(100, min(syncDistance, percentLimit))
         rubberHeight = 0
         lineView.breakProgress = 0   // 复位 Esc 断线动画
 

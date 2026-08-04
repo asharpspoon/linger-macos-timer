@@ -30,4 +30,12 @@ enum DragPhysics {
         guard overshoot > 0 else { return normalWidth }
         return minWidth + (normalWidth - minWidth) * exp(-overshoot / k)
     }
+
+    /// 线长上限与最大时长同步：达到 maxMinutes 分钟所需的拖拽距离。
+    /// 由 s=d² 曲线反解：`minutes = (px/40)²` → `px = 40·√minutes`。
+    /// 例：30 分钟 → 219px；60 分钟 → 310px。
+    static func lineMaxDistance(maxMinutes: Double) -> Double {
+        let m = maxMinutes > 0 ? maxMinutes : 30
+        return 40 * sqrt(m)
+    }
 }

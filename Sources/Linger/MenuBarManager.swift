@@ -1,5 +1,6 @@
 import Cocoa
 import os.log
+import Carbon.HIToolbox   // RegisterEventHotKey：拖拽期全局捕获 Esc（无需辅助功能权限）
 
 
 // MARK: - MenuBarManager（菜单栏入口）
@@ -35,6 +36,15 @@ final class MenuBarManager: NSObject {
     private var dragFeedback: DragFeedbackView?
     /// 上一帧是否已触顶（用于触顶时只触发一次轻触反馈）
     private var wasOverflowing = false
+
+    // MARK: - Esc 全局热键（Carbon，无需辅助功能权限）
+
+    /// 拖拽期间注册的 Esc 全局热键。keyDown 在 app 未激活时不会派发到 localMonitor，
+    /// 因此用 RegisterEventHotKey 兜底：拖拽开始注册、结束注销。
+    private static var escHotKeyRef: EventHotKeyRef?
+    private static var escEventHandlerRef: EventHandlerRef?
+    /// 当前持有拖拽的 MenuBarManager（Carbon 回调无法捕获 Swift 对象，用 weak 转发）
+    private static weak var escDragOwner: MenuBarManager?
     /// 触顶瞬间冻结的结束时刻（触顶后数字不再变化，直到退出溢出）
     private var overflowTil: Date?
 
@@ -323,6 +333,36 @@ final class MenuBarManager: NSObject {
     // 2.0 独有能力在此保留：拖拽前收起悬停面板、0.2s 点击轻提示、
     // 修饰键预设标题（Fn/Ctrl/Opt）、并发上限 Toast。
 
+    private func installEscHotKey() {
+        guard Self.escHotKeyRef == nil else { return }
+        Self.escDragOwner = self
+
+        if Self.escEventHandlerRef == nil {
+            var eventType = EventTypeSpec(eventClass: OSType(kEventClassKeyboard),
+                                          eventKind: UInt32(kEventHotKeyPressed))
+            let handler: EventHandlerUPP = { _, _, _ in
+                // Carbon 事件循环线程 → 回主线程执行取消
+                DispatchQueue.main.async {
+                    MenuBarManager.escDragOwner?.cancelDrag(animated: true)
+                }
+                return noErr
+            }
+            InstallEventHandler(GetEventDispatcherTarget(), handler, 1, &eventType, nil, &Self.escEventHandlerRef)
+        }
+
+        let hotKeyID = EventHotKeyID(signature: OSType(0x4C4E4752), id: 1)   // "LNGR"
+        RegisterEventHotKey(UInt32(kVK_Escape), 0, hotKeyID,
+                            GetEventDispatcherTarget(), 0, &Self.escHotKeyRef)
+    }
+
+    private func uninstallEscHotKey() {
+        if let ref = Self.escHotKeyRef {
+            UnregisterEventHotKey(ref)
+            Self.escHotKeyRef = nil
+        }
+        Self.escDragOwner = nil
+    }
+
     private func beginDrag() {
         guard dragState == .idle else {
             os_log("beginDrag ignored: state=%{public}@",
@@ -337,6 +377,7 @@ final class MenuBarManager: NSObject {
         dragState = .pressed
         dragStartLocation = NSEvent.mouseLocation
         pendingTitle = currentPresetTitle(for: NSEvent.modifierFlags)
+        installEscHotKey()
 
         ensureDragFeedback()
 
@@ -472,6 +513,7 @@ final class MenuBarManager: NSObject {
     /// 取消拖拽。`animated` 为 true（Esc）时先播断线动画再复位；
     /// 动画期间不再响应鼠标/轮询，松手也不会创建计时。
     private func cancelDrag(animated: Bool = false) {
+        guard dragState != .cancelling else { return }
         if animated {
             if let m = localMonitor {
                 NSEvent.removeMonitor(m)
@@ -506,6 +548,7 @@ final class MenuBarManager: NSObject {
         dragState = .idle
         wasOverflowing = false
         overflowTil = nil
+        uninstallEscHotKey()
         pendingTitle = nil
         refreshStatusItemTitle()
     }

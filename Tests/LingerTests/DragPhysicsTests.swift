@@ -39,6 +39,16 @@ final class DragPhysicsTests: XCTestCase {
         XCTAssertLessThanOrEqual(DragPhysics.lineWidth(overshoot: 5000), 2 + 0.0001)
     }
 
+    func testLineMaxDistanceSyncsWithMaxDuration() {
+        // 30 分钟 → 40·√30 ≈ 219.09；60 分钟 → 40·√60 ≈ 309.84
+        XCTAssertEqual(DragPhysics.lineMaxDistance(maxMinutes: 30), 40 * sqrt(30), accuracy: 0.0001)
+        XCTAssertEqual(DragPhysics.lineMaxDistance(maxMinutes: 60), 40 * sqrt(60), accuracy: 0.0001)
+        XCTAssertEqual(DragPhysics.lineMaxDistance(maxMinutes: 0), 40 * sqrt(30), accuracy: 0.0001)  // 缺省 30
+        // 更长时长 → 更长的线
+        XCTAssertGreaterThan(DragPhysics.lineMaxDistance(maxMinutes: 60),
+                             DragPhysics.lineMaxDistance(maxMinutes: 30))
+    }
+
     func testDampedOvershootIsResistantAndMonotonic() {
         // overshoot=40 → ~25.3：远不到 40，体现「越拉越顶手」
         let at40 = DragPhysics.dampedOvershoot(40, headroom: 40)
