@@ -14,6 +14,15 @@ s=d² 曲线 + 整分钟吸附），松手即开始计时。AppKit 原生、暗�
 > 每次交接/里程碑后在此**顶部**追加一段（最新在上），格式见 `.agents/skills/linger-handoff/`。
 > 上次交接见 git 历史；当前状态以「最新进度」为准。
 
+- **2026-08-04 晚 · 设置窗口按 settings-window.html 重构完成（Codex）**
+  - 本次完成：5 tab（操作/通知/日历/通用/关于）；Tab 栏弃液态玻璃改底部 2pt 琥珀指示线 + 微琥珀底；
+    面板统一 section/row 范式（去卡片框）；新增「关于」白底票据面板（AboutTicketView：锯齿边/虚线剪刀口/
+    键值字段/页脚）；窗口标题随 tab 切换；切 tab 高度动画只伸缩底部（顶部固定，自定义插值不抽搐）
+  - 未完成/卡点：票据字段是原型占位（你的名字 / https://your.blog / hello@example.com）待用户提供真实信息
+  - 下一步：实机验收 5 tab + 关于票据观感；之后可继续 about/schedule-timer/notification 剩余页面对齐
+  - 如何验证：`./script/build_and_run.sh` → 设置 → 切 5 tab → 看关于票据白底锯齿/深色文字/虚线剪刀口
+  - 给下一位：票据深色文字在 AboutTicketView 局部令牌；系统标题栏勿回退透明；tab 指示线在 updateTabStyles.setTabIndicator
+
 - **2026-08-04 下午 · 设置窗口统一原型落地（Trae）**
   - 本次完成：新增 `pages/settings-window.html` 统一原型（5 tab 合一：操作/通知/日历/通用/关于），含「关于」票据风格面板；Tab 栏改为贴底分割线 + 底部琥珀指示线（弃用液态玻璃容器）
   - 在本文件新增「设置窗口开发指引」章节（设计规范 + 原型架构/功能关联 + Codex 实现步骤），Codex 读完即可开发
@@ -105,6 +114,13 @@ Linger2.5/
       - 毛玻璃胶囊（NSVisualEffectView hudWindow）+ 1px 边框 + 圆角 10，内容自适应（px-5/py-3）
       - 文案 13px ink，对齐原型「已达 N 个计时上限」
       - 动画：淡入 0.4s → 停留 2.5s → 淡出 0.4s（原 2s 直接消失）
+- [x] **设置窗口按 settings-window.html 统一原型重构（2026-08-04 晚）**：
+      - 5 tab（操作/通知/日历/通用/关于）；Tab 栏弃液态玻璃容器 → 底部 2pt 琥珀指示线 + 微琥珀底 + icon 18pt
+      - 面板统一 **section/row 范式**（section-title 11px 大写 + 行间 1px 分隔，去卡片框）
+      - 新增**关于票据面板** `AboutTicketView.swift`（白底 #faf9f6 + 点状纹理 + 上下锯齿 + 虚线剪刀口 + 键值字段 + 页脚）
+      - 窗口标题随 tab 切换（title = tabTitles[index]）
+      - 切 tab 高度动画：自定义插值只伸缩底部（顶部固定），消除抽搐
+      - 字段值为原型占位（你的名字/blog/email），待用户提供真实信息
 - [x] **修「设置窗口关不掉」bug（2026-08-04 下午）**：
       - 根因：SettingsWindow 依赖系统标题栏关闭按钮，但 `titlebarAppearsTransparent + isOpaque=false`
         下系统按钮不渲染，自定义标题栏又没关闭按钮 → 无任何关闭途径（既有缺陷，非本轮改动引入）

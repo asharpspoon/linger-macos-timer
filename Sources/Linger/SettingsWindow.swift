@@ -18,11 +18,11 @@ final class SettingsWindow: NSWindow {
     // MARK: - 4 元素容器（PRD §6.3 P2 越界防护）
 
     /// 标签页标题（恰好 4 个：操作 / 通知 / 日历 / 通用）
-    private let tabTitles = ["操作", "通知", "日历", "通用"]
-    /// 标签页 SF Symbol（与 tabTitles 一一对应，恰好 4 个）
-    private let tabIcons = ["slider.horizontal.3", "bell", "calendar", "gearshape"]
-    /// 已构建面板缓存（恰好 4 个槽位，惰性构建）
-    private var builtPanels: [NSView?] = [nil, nil, nil, nil]
+    private let tabTitles = ["操作", "通知", "日历", "通用", "关于"]
+    /// 标签页 SF Symbol（与 tabTitles 一一对应，恰好 5 个）
+    private let tabIcons = ["slider.horizontal.3", "bell", "calendar", "gearshape", "info"]
+    /// 已构建面板缓存（恰好 5 个槽位，惰性构建）
+    private var builtPanels: [NSView?] = [nil, nil, nil, nil, nil]
 
     // MARK: - 布局常量
 
@@ -172,21 +172,20 @@ final class SettingsWindow: NSWindow {
     private func makeTabButton(title: String, icon: String, tag: Int) -> NSButton {
         let btn = NSButton()
         btn.tag = tag
-        // icon 调大（16 → 20pt，用户要求）
+        // 原型 lg-tab：icon 18pt + label 10pt
         if let img = NSImage(systemSymbolName: icon, accessibilityDescription: title)?
-            .withSymbolConfiguration(NSImage.SymbolConfiguration(pointSize: 20, weight: .medium)) {
+            .withSymbolConfiguration(NSImage.SymbolConfiguration(pointSize: 18, weight: .medium)) {
             btn.image = img
             btn.image?.isTemplate = true
         }
         btn.title = title
         btn.imagePosition = .imageAbove
         btn.isBordered = false
-        btn.setButtonType(.momentaryLight)
+        btn.setButtonType(NSButton.ButtonType.momentaryChange)
         btn.target = self
         btn.action = #selector(tabClicked(_:))
-        btn.font = NSFont.systemFont(ofSize: 11, weight: .medium)
+        btn.font = NSFont.systemFont(ofSize: 10, weight: .medium)
         btn.wantsLayer = true
-        btn.layer?.cornerRadius = 10
         btn.contentTintColor = .tertiaryLabelColor
         return btn
     }
@@ -194,16 +193,8 @@ final class SettingsWindow: NSWindow {
     // MARK: - Tab 切换
 
     @objc private func tabClicked(_ sender: NSButton) {
-        // 液态玻璃按压反馈：快速 0.96 → 1.0
-        let press = CABasicAnimation(keyPath: "transform.scale")
-        press.fromValue = 0.96
-        press.toValue = 1.0
-        press.duration = 0.18
-        press.timingFunction = CAMediaTimingFunction(name: .easeOut)
-        sender.layer?.add(press, forKey: "tabPress")
-
-        // 不做高度动画：顶部固定、底部伸缩，避免窗口/菜单栏抽搐（用户要求）
-        selectTab(sender.tag, animated: false)
+        // 高度动画只伸缩底部（顶部固定），由 selectTab 内自定义插值实现，不再抽搐
+        selectTab(sender.tag, animated: true)
     }
 
     /// 切换面板。`index` 越界时直接返回（PRD §6.3 P2 边界 guard）。
@@ -214,6 +205,8 @@ final class SettingsWindow: NSWindow {
             return
         }
         currentIndex = index
+        // 原型：窗口标题随 tab 切换（如「操作」「关于」）
+        title = tabTitles[index]
         updateTabStyles()
 
         // 替换容器内的面板视图
@@ -229,72 +222,67 @@ final class SettingsWindow: NSWindow {
         ])
 
         panelContainer.layoutSubtreeIfNeeded()
-        // 内容自适应高度：tab 栏 + 面板内容（fittingSize 比 frame.height 可靠，
-        // 避免窗口高度异常占满屏幕）
+        // 内容自适应高度：tab 栏 + 面板内容（fittingSize 比 frame.height 可靠）
         let panelHeight = max(panelContainer.fittingSize.height, 100)
-        let totalContentHeight = tabBarHeight + panelHeight
+        let targetHeight = tabBarHeight + panelHeight
         let oldMaxY = frame.maxY
+        let targetFrame = NSRect(x: frame.minX, y: oldMaxY - targetHeight,
+                                 width: Self.windowWidth, height: targetHeight)
 
-        if animated {
-            let newFrame = NSRect(x: frame.minX,
-                                  y: oldMaxY - totalContentHeight,
-                                  width: Self.windowWidth,
-                                  height: totalContentHeight)
-            animateToFrame(newFrame)
+        if animated && abs(targetHeight - frame.height) > 1 {
+            // 以最上方边为基准，只伸缩底部：自定义高度插值（顶部 maxY 恒定，不抽搐）
+            let startH = frame.height
+            let start = CACurrentMediaTime()
+            let duration: CFTimeInterval = 0.4
+            let timer = Timer(timeInterval: 1.0 / 60.0, repeats: true) { [weak self] t in
+                guard let self else { t.invalidate(); return }
+                let p = min(1, (CACurrentMediaTime() - start) / duration)
+                let eased = 1 - pow(1 - p, 3)   // cubic-bezier(.32,.72,0,1) 近似
+                let h = startH + (targetHeight - startH) * eased
+                self.setFrame(NSRect(x: self.frame.minX, y: oldMaxY - h,
+                                     width: Self.windowWidth, height: h), display: true)
+                if p >= 1 { t.invalidate() }
+            }
+            RunLoop.main.add(timer, forMode: .common)
         } else {
-            setContentSize(NSSize(width: Self.windowWidth, height: totalContentHeight))
-            // 顶部固定，只向下/上调整高度
-            setFrameOrigin(NSPoint(x: frame.minX, y: oldMaxY - frame.height))
+            setFrame(targetFrame, display: true)
         }
 
         refreshPermissionStatuses()
-    }
-
-    private func animateToFrame(_ frame: NSRect) {
-        NSAnimationContext.runAnimationGroup { ctx in
-            ctx.duration = 0.4
-            // PRD §3.6.1：resize 0.4s cubic-bezier(.32,.72,0,1)
-            ctx.timingFunction = CAMediaTimingFunction(controlPoints: 0.32, 0.72, 0, 1)
-            ctx.allowsImplicitAnimation = true
-            self.animator().setFrame(frame, display: true)
-        }
     }
 
     private func updateTabStyles() {
         for btn in tabButtons {
             let active = btn.tag == currentIndex
             if active {
-                // 液态玻璃激活态：半透明白玻璃底 + 1px 高光边 + 顶部内高光 + 琥珀 icon/文字
+                // 原型 lg-tab.is-active：微琥珀底 + 琥珀 icon/文字 + 底部 2pt 琥珀指示线
                 btn.contentTintColor = LingerTheme.amberGold
-                btn.layer?.backgroundColor = NSColor(white: 1.0, alpha: 0.10).cgColor
-                btn.layer?.borderColor = NSColor(white: 1.0, alpha: 0.22).cgColor
-                btn.layer?.borderWidth = 1
-                addGlassHighlight(to: btn)
+                btn.layer?.backgroundColor = LingerTheme.amberGold.withAlphaComponent(0.08).cgColor
+                setTabIndicator(on: btn, visible: true)
             } else {
                 btn.contentTintColor = .tertiaryLabelColor
                 btn.layer?.backgroundColor = NSColor.clear.cgColor
-                btn.layer?.borderWidth = 0
-                removeGlassHighlight(from: btn)
+                setTabIndicator(on: btn, visible: false)
             }
         }
     }
 
-    /// 顶部内高光（液态玻璃边缘反光）：8pt 白渐变，只给激活 tab 显示
-    private func addGlassHighlight(to btn: NSButton) {
-        if btn.layer?.sublayers?.contains(where: { $0.name == "glassHighlight" }) == true { return }
-        let h = CAGradientLayer()
-        h.name = "glassHighlight"
-        h.colors = [NSColor(white: 1.0, alpha: 0.28).cgColor,
-                    NSColor(white: 1.0, alpha: 0.0).cgColor]
-        h.locations = [0.0, 1.0]
-        h.frame = NSRect(x: 1, y: btn.bounds.height - 9, width: max(1, btn.bounds.width - 2), height: 8)
-        h.cornerRadius = 4
-        h.autoresizingMask = [.layerWidthSizable]
-        btn.layer?.addSublayer(h)
-    }
-
-    private func removeGlassHighlight(from btn: NSButton) {
-        btn.layer?.sublayers?.removeAll { $0.name == "glassHighlight" }
+    /// 底部 2pt 琥珀指示线（原型 .lg-tab.is-active::after）
+    private func setTabIndicator(on btn: NSButton, visible: Bool) {
+        if visible {
+            let line = CALayer()
+            line.name = "tabIndicator"
+            line.backgroundColor = LingerTheme.amberGold.cgColor
+            line.cornerRadius = 1
+            btn.layer?.addSublayer(line)
+        }
+        btn.layer?.sublayers?
+            .filter { $0.name == "tabIndicator" }
+            .forEach { l in
+                l.frame = NSRect(x: 0, y: 0, width: btn.bounds.width, height: 2)
+                l.autoresizingMask = [.layerWidthSizable]
+                l.isHidden = !visible
+            }
     }
 
     /// 惰性构建并返回面板视图。`index` 越界时返回空视图（边界 guard）。
@@ -307,6 +295,7 @@ final class SettingsWindow: NSWindow {
         case 1: view = buildNotificationsPanel()
         case 2: view = buildCalendarPanel()
         case 3: view = buildGeneralPanel()
+        case 4: view = buildAboutPanel()
         default: view = NSView()
         }
         builtPanels[index] = view
@@ -314,6 +303,8 @@ final class SettingsWindow: NSWindow {
     }
 
     // MARK: - 通用控件助手
+
+    // MARK: - 通用控件助手（原型 section/row 范式）
 
     private func makeLabel(_ text: String) -> NSTextField {
         let f = NSTextField(labelWithString: text)
@@ -330,13 +321,6 @@ final class SettingsWindow: NSWindow {
         return f
     }
 
-    private func makeSectionTitle(_ text: String) -> NSTextField {
-        let f = NSTextField(labelWithString: text)
-        f.font = NSFont.systemFont(ofSize: 12, weight: .semibold)
-        f.textColor = .secondaryLabelColor
-        return f
-    }
-
     private func spacerView() -> NSView {
         let v = NSView()
         v.setContentHuggingPriority(.defaultLow, for: .horizontal)
@@ -344,17 +328,89 @@ final class SettingsWindow: NSWindow {
         return v
     }
 
-    /// 行：左侧标题，右侧控件（中间弹性 spacer 把控件推到右侧）
-    private func rowWithTitle(_ title: String, control: NSView) -> NSView {
+    /// 行：左 label（13pt，可带 hint）+ 弹性 spacer + 右控件，min-height 34（原型 .row）
+    private func makeRow(label: String, control: NSView, hint: String? = nil) -> NSView {
         let row = NSStackView()
         row.orientation = .horizontal
         row.alignment = .centerY
         row.spacing = 12
-        let label = makeLabel(title)
-        row.addArrangedSubview(label)
+
+        if let hint {
+            let left = NSStackView()
+            left.orientation = .vertical
+            left.alignment = .leading
+            left.spacing = 2
+            left.addArrangedSubview(makeLabel(label))
+            left.addArrangedSubview(makeHint(hint))
+            row.addArrangedSubview(left)
+        } else {
+            row.addArrangedSubview(makeLabel(label))
+        }
         row.addArrangedSubview(spacerView())
         row.addArrangedSubview(control)
+        row.heightAnchor.constraint(greaterThanOrEqualToConstant: 34).isActive = true
         return row
+    }
+
+    private func makeDivider() -> NSView {
+        let v = NSView()
+        v.wantsLayer = true
+        v.layer?.backgroundColor = LingerTheme.nsColor(LingerTheme.Color.line).cgColor
+        v.heightAnchor.constraint(equalToConstant: 1).isActive = true
+        return v
+    }
+
+    /// section：标题（11pt uppercase 灰）+ 行列表（行间 1px 分隔线，原型 .section/.section-rows）
+    private func makeSection(title: String, rows: [NSView]) -> NSView {
+        let section = NSView()
+        let titleLabel = NSTextField(labelWithString: title)
+        titleLabel.font = NSFont.systemFont(ofSize: 11, weight: .semibold)
+        titleLabel.textColor = .tertiaryLabelColor
+        section.addSubview(titleLabel)
+        titleLabel.translatesAutoresizingMaskIntoConstraints = false
+        titleLabel.topAnchor.constraint(equalTo: section.topAnchor).isActive = true
+        titleLabel.leadingAnchor.constraint(equalTo: section.leadingAnchor).isActive = true
+
+        var prev: NSLayoutYAxisAnchor = titleLabel.bottomAnchor
+        for (i, row) in rows.enumerated() {
+            if i > 0 {
+                let div = makeDivider()
+                section.addSubview(div)
+                div.translatesAutoresizingMaskIntoConstraints = false
+                div.leadingAnchor.constraint(equalTo: section.leadingAnchor).isActive = true
+                div.trailingAnchor.constraint(equalTo: section.trailingAnchor).isActive = true
+                div.topAnchor.constraint(equalTo: prev, constant: 8).isActive = true
+                prev = div.bottomAnchor
+            }
+            section.addSubview(row)
+            row.translatesAutoresizingMaskIntoConstraints = false
+            row.leadingAnchor.constraint(equalTo: section.leadingAnchor).isActive = true
+            row.trailingAnchor.constraint(equalTo: section.trailingAnchor).isActive = true
+            row.topAnchor.constraint(equalTo: prev, constant: 8).isActive = true
+            prev = row.bottomAnchor
+            if i == rows.count - 1 {
+                row.bottomAnchor.constraint(equalTo: section.bottomAnchor).isActive = true
+            }
+        }
+        return section
+    }
+
+    /// 面板容器：多个 section 垂直排布（间距 18，原型 .section margin-bottom）
+    private func makePanel(sections: [NSView]) -> NSView {
+        let panel = NSView()
+        var prev: NSLayoutYAxisAnchor = panel.topAnchor
+        for (i, section) in sections.enumerated() {
+            panel.addSubview(section)
+            section.translatesAutoresizingMaskIntoConstraints = false
+            section.leadingAnchor.constraint(equalTo: panel.leadingAnchor).isActive = true
+            section.trailingAnchor.constraint(equalTo: panel.trailingAnchor).isActive = true
+            section.topAnchor.constraint(equalTo: prev, constant: (i == 0 ? 0 : 18)).isActive = true
+            prev = section.bottomAnchor
+            if i == sections.count - 1 {
+                section.bottomAnchor.constraint(equalTo: panel.bottomAnchor).isActive = true
+            }
+        }
+        return panel
     }
 
     private func makeSwitch(initial: Bool, action: Selector) -> NSButton {
@@ -374,45 +430,6 @@ final class SettingsWindow: NSWindow {
         f.allowsFloats = false
         f.minimumIntegerDigits = 1
         return f
-    }
-
-    /// 设置卡片容器：圆角 10 + surface 底 + 1px 边框 + p-4 内边距，行间 14。
-    private func makeCard(rows: [NSView]) -> NSView {
-        let card = NSView()
-        card.wantsLayer = true
-        card.layer?.backgroundColor = LingerTheme.nsColor(LingerTheme.Color.surface).cgColor
-        card.layer?.cornerRadius = 10
-        card.layer?.borderColor = LingerTheme.nsColor(LingerTheme.Color.line).cgColor
-        card.layer?.borderWidth = 1
-        var prev: NSLayoutYAxisAnchor = card.topAnchor
-        for (i, row) in rows.enumerated() {
-            card.addSubview(row)
-            row.translatesAutoresizingMaskIntoConstraints = false
-            row.leadingAnchor.constraint(equalTo: card.leadingAnchor, constant: 16).isActive = true
-            row.trailingAnchor.constraint(equalTo: card.trailingAnchor, constant: -16).isActive = true
-            row.topAnchor.constraint(equalTo: prev, constant: (i == 0 ? 16 : 14)).isActive = true
-            prev = row.bottomAnchor
-            if i == rows.count - 1 {
-                row.bottomAnchor.constraint(equalTo: card.bottomAnchor, constant: -16).isActive = true
-            }
-        }
-        return card
-    }
-
-    /// 多个卡片竖直堆叠（首卡在 topAnchor 下，末卡贴 panel 底）
-    private func layoutCards(_ cards: [NSView], in panel: NSView, below topAnchor: NSLayoutYAxisAnchor, gap: CGFloat) {
-        var prev: NSLayoutYAxisAnchor = topAnchor
-        for (i, card) in cards.enumerated() {
-            panel.addSubview(card)
-            card.translatesAutoresizingMaskIntoConstraints = false
-            card.leadingAnchor.constraint(equalTo: panel.leadingAnchor).isActive = true
-            card.trailingAnchor.constraint(equalTo: panel.trailingAnchor).isActive = true
-            card.topAnchor.constraint(equalTo: prev, constant: gap).isActive = true
-            prev = card.bottomAnchor
-            if i == cards.count - 1 {
-                card.bottomAnchor.constraint(equalTo: panel.bottomAnchor).isActive = true
-            }
-        }
     }
 
     /// kbd 键帽（快捷预设标题）：10px 等宽 + surface2 底 + 圆角 5 + 边框
@@ -494,40 +511,13 @@ final class SettingsWindow: NSWindow {
         }
     }
 
-    /// 把若干行竖直排布进 panel（首行在 title 之下，末行贴 panel 底）
-    private func layoutRows(_ rows: [NSView], in panel: NSView, below title: NSView, gap: CGFloat) {
-        var previousBottom: NSLayoutAnchor<NSLayoutYAxisAnchor> = title.bottomAnchor
-        for (i, row) in rows.enumerated() {
-            panel.addSubview(row)
-            row.translatesAutoresizingMaskIntoConstraints = false
-            row.leadingAnchor.constraint(equalTo: panel.leadingAnchor).isActive = true
-            row.trailingAnchor.constraint(equalTo: panel.trailingAnchor).isActive = true
-            row.topAnchor.constraint(equalTo: previousBottom, constant: gap).isActive = true
-            previousBottom = row.bottomAnchor
-            if i == rows.count - 1 {
-                row.bottomAnchor.constraint(equalTo: panel.bottomAnchor).isActive = true
-            }
-        }
-    }
-
     // MARK: - 面板 0：操作
 
     private func buildOperationsPanel() -> NSView {
-        let panel = NSView()
-        let title = makeSectionTitle("操作设置")
-        panel.addSubview(title)
-        title.translatesAutoresizingMaskIntoConstraints = false
-        title.topAnchor.constraint(equalTo: panel.topAnchor).isActive = true
-        title.leadingAnchor.constraint(equalTo: panel.leadingAnchor).isActive = true
-
-        layoutRows([
-            buildDragLineRow(),
-            buildMaxDurationRow(),
-            buildDualRailRow(),
-            buildTimeFormatRow(),
-            buildPreviewFontSizeRow()
-        ], in: panel, below: title, gap: 14)
-        return panel
+        makePanel(sections: [
+            makeSection(title: "拖拽计时", rows: [buildDragLineRow(), buildMaxDurationRow()]),
+            makeSection(title: "显示", rows: [buildDualRailRow(), buildTimeFormatRow(), buildPreviewFontSizeRow()])
+        ])
     }
 
     private func buildDragLineRow() -> NSView {
@@ -544,7 +534,7 @@ final class SettingsWindow: NSWindow {
         group.alignment = .centerY
         dragLineSlider = slider
         dragLineValueLabel = valueLabel
-        return rowWithTitle("下拉线最大长度", control: group)
+        return makeRow(label: "下拉线最大长度", control: group)
     }
 
     private func buildMaxDurationRow() -> NSView {
@@ -554,7 +544,6 @@ final class SettingsWindow: NSWindow {
         field.target = self
         field.action = #selector(maxDurationChanged(_:))
         field.widthAnchor.constraint(equalToConstant: 52).isActive = true
-        // 带上下箭头的数字框（对齐 settings-operations 原型）
         let stepper = NSStepper()
         stepper.minValue = 5
         stepper.maxValue = 1440
@@ -569,7 +558,7 @@ final class SettingsWindow: NSWindow {
         group.orientation = .horizontal
         group.spacing = 6
         group.alignment = .centerY
-        return rowWithTitle("最大计时时长", control: group)
+        return makeRow(label: "最大计时时长", control: group)
     }
 
     private func buildDualRailRow() -> NSView {
@@ -580,7 +569,7 @@ final class SettingsWindow: NSWindow {
         if let idx = raws.firstIndex(of: current) { popup.selectItem(at: idx) }
         popup.target = self
         popup.action = #selector(dualRailChanged(_:))
-        return rowWithTitle("双轨显示", control: popup)
+        return makeRow(label: "双轨显示", control: popup)
     }
 
     private func buildTimeFormatRow() -> NSView {
@@ -591,7 +580,7 @@ final class SettingsWindow: NSWindow {
         if let idx = raws.firstIndex(of: current) { popup.selectItem(at: idx) }
         popup.target = self
         popup.action = #selector(timeFormatChanged(_:))
-        return rowWithTitle("时间格式", control: popup)
+        return makeRow(label: "时间格式", control: popup)
     }
 
     private func buildPreviewFontSizeRow() -> NSView {
@@ -608,7 +597,7 @@ final class SettingsWindow: NSWindow {
         group.alignment = .centerY
         previewFontSizeSlider = slider
         previewFontSizeValueLabel = valueLabel
-        return rowWithTitle("计时字号", control: group)
+        return makeRow(label: "计时字号", control: group)
     }
 
     private func currentPreviewFontSize() -> Double {
@@ -625,14 +614,6 @@ final class SettingsWindow: NSWindow {
     // MARK: - 面板 1：通知
 
     private func buildNotificationsPanel() -> NSView {
-        let panel = NSView()
-        let title = makeSectionTitle("通知")
-        panel.addSubview(title)
-        title.translatesAutoresizingMaskIntoConstraints = false
-        title.topAnchor.constraint(equalTo: panel.topAnchor).isActive = true
-        title.leadingAnchor.constraint(equalTo: panel.leadingAnchor).isActive = true
-
-        // 授权状态行（绿点 + 状态 + 管理…）
         let authStatus = NSTextField(labelWithString: "检查中…")
         authStatus.font = NSFont.systemFont(ofSize: 12)
         authStatus.textColor = .secondaryLabelColor
@@ -642,17 +623,14 @@ final class SettingsWindow: NSWindow {
         let authBtn = NSButton(title: "管理…", target: self, action: #selector(openNotifSettings(_:)))
         authBtn.bezelStyle = .rounded
         authBtn.controlSize = .small
-        let authRow = NSStackView(views: [makeLabel("通知授权"), spacerView(),
-                                          makeAuthStatusView(label: authStatus, dot: authDot), authBtn])
-        authRow.orientation = .horizontal
-        authRow.spacing = 8
-        authRow.alignment = .centerY
+        let authControl = NSStackView(views: [makeAuthStatusView(label: authStatus, dot: authDot), authBtn])
+        authControl.orientation = .horizontal
+        authControl.spacing = 10
+        authControl.alignment = .centerY
 
-        let notifyRow = rowWithTitle("计时完成时通知",
-                                     control: makeSwitch(initial: currentNotifyOnComplete(),
-                                                        action: #selector(notifyChanged(_:))))
-
-        // 播放提示音：select + switch
+        let notifyRow = makeRow(label: "计时完成时通知",
+                                control: makeSwitch(initial: currentNotifyOnComplete(),
+                                                    action: #selector(notifyChanged(_:))))
         let playSwitch = makeSwitch(initial: currentPlaySound(), action: #selector(playSoundChanged(_:)))
         let soundPopup = NSPopUpButton()
         let sounds = ["Ping", "Basso", "Blow", "Bottle", "Frog", "Funk",
@@ -668,24 +646,16 @@ final class SettingsWindow: NSWindow {
         soundControl.orientation = .horizontal
         soundControl.spacing = 8
         soundControl.alignment = .centerY
-        let soundRow = rowWithTitle("播放提示音", control: soundControl)
 
-        let card = makeCard(rows: [authRow, notifyRow, soundRow])
-        layoutCards([card], in: panel, below: title.bottomAnchor, gap: 14)
-        return panel
+        return makePanel(sections: [
+            makeSection(title: "授权", rows: [makeRow(label: "通知授权", control: authControl)]),
+            makeSection(title: "提醒方式", rows: [notifyRow, makeRow(label: "播放提示音", control: soundControl)])
+        ])
     }
 
     // MARK: - 面板 2：日历
 
     private func buildCalendarPanel() -> NSView {
-        let panel = NSView()
-        let title = makeSectionTitle("日历")
-        panel.addSubview(title)
-        title.translatesAutoresizingMaskIntoConstraints = false
-        title.topAnchor.constraint(equalTo: panel.topAnchor).isActive = true
-        title.leadingAnchor.constraint(equalTo: panel.leadingAnchor).isActive = true
-
-        // 授权状态行（绿点 + 状态 + 管理…，平铺在卡片外）
         let authStatus = NSTextField(labelWithString: "检查中…")
         authStatus.font = NSFont.systemFont(ofSize: 12)
         authStatus.textColor = .secondaryLabelColor
@@ -695,30 +665,20 @@ final class SettingsWindow: NSWindow {
         let authBtn = NSButton(title: "管理…", target: self, action: #selector(openCalSettings(_:)))
         authBtn.bezelStyle = .rounded
         authBtn.controlSize = .small
-        let authRow = NSStackView(views: [makeLabel("日历授权"), spacerView(),
-                                          makeAuthStatusView(label: authStatus, dot: authDot), authBtn])
-        authRow.orientation = .horizontal
-        authRow.spacing = 8
-        authRow.alignment = .centerY
-        panel.addSubview(authRow)
-        authRow.translatesAutoresizingMaskIntoConstraints = false
-        authRow.leadingAnchor.constraint(equalTo: panel.leadingAnchor).isActive = true
-        authRow.trailingAnchor.constraint(equalTo: panel.trailingAnchor).isActive = true
-        authRow.topAnchor.constraint(equalTo: title.bottomAnchor, constant: 14).isActive = true
+        let authControl = NSStackView(views: [makeAuthStatusView(label: authStatus, dot: authDot), authBtn])
+        authControl.orientation = .horizontal
+        authControl.spacing = 10
+        authControl.alignment = .centerY
 
-        // 卡片1：目标日历 / 写入方式 / 默认标题 + 注释
-        let defaultTitleRow = buildDefaultTitleRow()
-        let hint1 = makeHint("默认标题仅在「自动」模式下使用")
-        let card1 = makeCard(rows: [buildTargetCalendarRow(), buildWriteModeRow(), defaultTitleRow, hint1])
-
-        // 卡片2：快捷预设标题（fn/ctrl/opt，带 kbd 键帽）
-        let card2 = makeCard(rows: [makeSectionTitle("快捷预设标题"),
-                                    buildPresetCardRow(key: .fnTitle, kbd: "fn"),
-                                    buildPresetCardRow(key: .ctrlTitle, kbd: "⌃"),
-                                    buildPresetCardRow(key: .optTitle, kbd: "⌥")])
-
-        layoutCards([card1, card2], in: panel, below: authRow.bottomAnchor, gap: 14)
-        return panel
+        return makePanel(sections: [
+            makeSection(title: "授权", rows: [makeRow(label: "日历授权", control: authControl)]),
+            makeSection(title: "写入设置", rows: [buildTargetCalendarRow(), buildWriteModeRow(), buildDefaultTitleRow()]),
+            makeSection(title: "快捷预设标题", rows: [
+                buildPresetCardRow(key: .fnTitle, kbd: "fn"),
+                buildPresetCardRow(key: .ctrlTitle, kbd: "⌃"),
+                buildPresetCardRow(key: .optTitle, kbd: "⌥")
+            ])
+        ])
     }
 
     private func buildTargetCalendarRow() -> NSView {
@@ -730,7 +690,7 @@ final class SettingsWindow: NSWindow {
         if let idx = titles.firstIndex(of: current) { popup.selectItem(at: idx) }
         popup.target = self
         popup.action = #selector(targetCalendarChanged(_:))
-        return rowWithTitle("目标日历", control: popup)
+        return makeRow(label: "目标日历", control: popup)
     }
 
     private func buildWriteModeRow() -> NSView {
@@ -741,7 +701,7 @@ final class SettingsWindow: NSWindow {
         if let idx = modes.firstIndex(of: current) { popup.selectItem(at: idx) }
         popup.target = self
         popup.action = #selector(writeModeChanged(_:))
-        return rowWithTitle("写入方式", control: popup)
+        return makeRow(label: "写入方式", control: popup)
     }
 
     private func buildDefaultTitleRow() -> NSView {
@@ -751,10 +711,9 @@ final class SettingsWindow: NSWindow {
         field.target = self
         field.action = #selector(defaultTitleChanged(_:))
         field.widthAnchor.constraint(equalToConstant: 200).isActive = true
-        // 仅「自动」模式可用
         field.isEnabled = CalendarManager.shared.writeMode == .auto
         defaultTitleField = field
-        return rowWithTitle("默认标题", control: field)
+        return makeRow(label: "默认标题", control: field, hint: "仅在「自动写入」模式下使用")
     }
 
     private func buildPresetCardRow(key: LingerTheme.UserDefaultsKey, kbd: String) -> NSView {
@@ -765,6 +724,7 @@ final class SettingsWindow: NSWindow {
         field.action = #selector(presetChanged(_:))
         field.widthAnchor.constraint(equalToConstant: 140).isActive = true
         field.identifier = NSUserInterfaceItemIdentifier(rawValue: key.rawValue)
+        // 原型：左 kbd + 输入框，右灰注释「留空则不激活」
         let left = NSStackView(views: [makeKbd(kbd), field])
         left.orientation = .horizontal
         left.spacing = 8
@@ -773,22 +733,14 @@ final class SettingsWindow: NSWindow {
         row.orientation = .horizontal
         row.alignment = .centerY
         row.spacing = 12
+        row.heightAnchor.constraint(greaterThanOrEqualToConstant: 34).isActive = true
         return row
     }
 
     // MARK: - 面板 3：通用
 
     private func buildGeneralPanel() -> NSView {
-        let panel = NSView()
-        let title = makeSectionTitle("通用")
-        panel.addSubview(title)
-        title.translatesAutoresizingMaskIntoConstraints = false
-        title.topAnchor.constraint(equalTo: panel.topAnchor).isActive = true
-        title.leadingAnchor.constraint(equalTo: panel.leadingAnchor).isActive = true
-
         let launchSwitch = makeSwitch(initial: currentLaunchAtLogin(), action: #selector(launchChanged(_:)))
-        let launchRow = rowWithTitle("开机自启", control: launchSwitch)
-
         let cleanupPopup = NSPopUpButton()
         cleanupPopup.addItems(withTitles: ["每周", "每月", "从不"])
         let cleanupRaws = ["weekly", "monthly", "never"]
@@ -796,22 +748,39 @@ final class SettingsWindow: NSWindow {
         if let idx = cleanupRaws.firstIndex(of: cleanup) { cleanupPopup.selectItem(at: idx) }
         cleanupPopup.target = self
         cleanupPopup.action = #selector(cleanupChanged(_:))
-        let cleanupRow = rowWithTitle("自动清理", control: cleanupPopup)
 
         let iconPopup = NSPopUpButton()
-        iconPopup.addItems(withTitles: ["Ring", "Classic", "timer"])
+        iconPopup.addItems(withTitles: ["Ring", "Classic", "SF Symbol"])
         let iconRaws = ["ring", "classic", "timer"]
         let icon = UserDefaults.standard.string(forKey: LingerTheme.UserDefaultsKey.iconStyle.rawValue) ?? "ring"
         if let idx = iconRaws.firstIndex(of: icon) { iconPopup.selectItem(at: idx) }
         iconPopup.target = self
         iconPopup.action = #selector(iconStyleChanged(_:))
         self.iconPopup = iconPopup
-        let iconRow = rowWithTitle("菜单栏图标", control: iconPopup)
 
-        // 图标三风格选择器（Ring / Classic / SF Symbol，选中琥珀边框）
-        let pickerRow = buildIconStylePicker()
+        return makePanel(sections: [
+            makeSection(title: "启动", rows: [makeRow(label: "开机自启", control: launchSwitch)]),
+            makeSection(title: "维护", rows: [makeRow(label: "自动清理", control: cleanupPopup)]),
+            makeSection(title: "菜单栏图标", rows: [
+                makeRow(label: "图标风格", control: iconPopup),
+                buildIconStylePicker()   // 三选一预览，左对齐（原型）
+            ])
+        ])
+    }
 
-        layoutRows([launchRow, cleanupRow, iconRow, pickerRow], in: panel, below: title, gap: 14)
+    // MARK: - 面板 4：关于（票据风格）
+
+    private func buildAboutPanel() -> NSView {
+        let panel = NSView()
+        let ticket = AboutTicketView()
+        ticket.translatesAutoresizingMaskIntoConstraints = false
+        panel.addSubview(ticket)
+        NSLayoutConstraint.activate([
+            ticket.topAnchor.constraint(equalTo: panel.topAnchor),
+            ticket.leadingAnchor.constraint(equalTo: panel.leadingAnchor),
+            ticket.trailingAnchor.constraint(equalTo: panel.trailingAnchor),
+            ticket.bottomAnchor.constraint(equalTo: panel.bottomAnchor)
+        ])
         return panel
     }
 
