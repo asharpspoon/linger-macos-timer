@@ -82,22 +82,26 @@ Linger2.5/
       1. 圆球从外向内收缩消失（0–22%，easeOut）
       2. 线变到最细（当前宽→1pt）+ 颜色变暗（alpha 1→0.45）（22–52%）
       3. 整体向上收缩回菜单栏 icon（52–100%，easeOut 收尾加速），末端 15% 淡出；0.5s
+- [x] **拖拽预览第九轮（线从 icon 圆圈上延伸，自适应）**：
+      - 新增 `LingerStatusItemView.iconCenterInScreen()`，以图标（圆圈）中心为拖拽线锚点
+      - `MenuBarManager.iconAnchorRect()`：0 尺寸矩形（midX/midY = 圆心），替代按钮底边锚点
+      - `DragFeedbackView`：线顶 = 圆心下方 6pt（≈圆下缘），窗口顶部相应让位；icon 宽度变化不影响
 - [x] **纯逻辑单测接入 `swift test`**（DragPhysics 变细/同步公式、TimerEntry 格式、布局防遮挡，共 12 个，全绿）
-- [ ] **待真机验收 v7**：Esc「收回」三步观感（圆球收缩→变细变暗→上收回 icon）、触顶拉长变细、是否还闪帧（用户实机确认中）
+- [ ] **待真机验收 v8**：线从圆圈延伸的观感、Esc「收回」三步、触顶拉长变细、是否还闪帧（用户实机确认中）
 - [ ] 按原型逐页对齐：hover-list（悬停列表）、toast、settings×4、about、schedule-timer、notification
 - [ ] 通知/日历权限、预约计时、图标三风格（Ring/Classic/timer）
 
-## 最近交接（2026-08-04 下午 · 拖拽预览第八轮）
+## 最近交接（2026-08-04 下午 · 拖拽预览第九轮）
 
 **本次完成**
-- Esc 取消动画 = 用户分镜三步（`DragLineView.draw`，breakProgress 驱动，0.5s）：
-  圆球收缩（0–22%）→ 线最细+变暗（22–52%）→ 向上收回 icon（52–100% + 末端淡出）
-- 防闪帧 `isBreaking` 锁保留；动画时长 0.5s
-- 之前第七轮「灯绳拉断」特效已被本版替换（用户嫌 PPT 感，此版更克制）
+- 线从 icon 圆圈延伸：锚点 = `LingerStatusItemView.iconCenterInScreen()`（imageView 中心，屏幕坐标）
+- `MenuBarManager.iconAnchorRect()` 提供圆心锚点；`DragFeedbackView` 线顶 = 圆心下 6pt
+- 图标/标题宽度自适应：始终对齐圆圈，不随按钮宽度偏移
+- 保留第八轮 Esc「收回」三步动画 + `isBreaking` 防闪帧
 - `swift build` 通过、`swift test` 12/12 绿
 
 **未完成 / 卡点**
-- 实机验收：Esc「收回」三步节奏与观感、触顶拉长变细、闪帧
+- 实机验收：线从圆圈延伸的观感（kIconLineGap=6 可调）、Esc 收回三步、触顶反馈、闪帧
 
 **下一步（按优先级）**
 1. 用户实机验收拖拽预览（`./script/build_and_run.sh`）
@@ -115,6 +119,7 @@ Linger2.5/
 - Esc 用 Carbon 热键（`installEscHotKey`/`uninstallEscHotKey`，拖拽期注册）——别再用 localMonitor 等 keyDown（未激活收不到）
 - Esc「收回」三步动画在 `DragLineView.draw`：breakProgress 分段（0–0.22 圆球收缩 / 0.22–0.52 变细变暗 / 0.52–1 向上收回）；`isBreaking` 锁防拖拽帧干扰
 - 动画时长 `DragFeedbackView.animateBreak`（0.5s）；首帧从 0.05 起防闪帧
+- 线锚点：`LingerStatusItemView.iconCenterInScreen()` + `MenuBarManager.iconAnchorRect()`；线顶偏移 `kIconLineGap`（6pt，可调）
 - **别再让字号弹跳动画的对侧从 >1 起跳**（会盖字），见 `animateFontPop`
 - label frame 留 padding（前缀 +2 / 数字 +4），文字不贴右缘
 - 断线动画：`DragFeedbackView.animateBreak` + `MenuBarManager.cancelDrag(animated: true)`
