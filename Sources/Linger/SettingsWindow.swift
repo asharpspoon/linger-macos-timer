@@ -27,7 +27,6 @@ final class SettingsWindow: NSWindow {
     // MARK: - 布局常量
 
     private static let windowWidth: CGFloat = 520
-    private let titleBarHeight: CGFloat = 38
     private let tabBarHeight: CGFloat = 52
     private let contentHPadding: CGFloat = 24
     private let contentVSpacing: CGFloat = 16
@@ -35,7 +34,6 @@ final class SettingsWindow: NSWindow {
 
     // MARK: - 视图引用
 
-    private var titleLabel: NSTextField!
     private var tabButtons: [NSButton] = []
     private var panelContainer: NSView!
 
@@ -80,12 +78,16 @@ final class SettingsWindow: NSWindow {
     // MARK: - 窗口配置
 
     private func configureWindow() {
-        titlebarAppearsTransparent = true
-        titleVisibility = .hidden
+        // 2026-08-04 重构：回归标准 macOS 设置窗口。
+        // 之前 titlebarAppearsTransparent + 自定义 38pt 标题栏导致系统标题栏按钮不渲染、
+        // 窗口不像正常窗口（用户反馈）。改用系统标题栏（关闭按钮原生显示）+ 内容自适应高度。
+        title = "Linger 设置"
+        titlebarAppearsTransparent = false
+        titleVisibility = .visible
         isMovableByWindowBackground = true
         level = .floating
-        backgroundColor = .clear
-        isOpaque = false
+        backgroundColor = .windowBackgroundColor
+        isOpaque = true
         hasShadow = true
         collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
         isReleasedWhenClosed = false
@@ -101,75 +103,12 @@ final class SettingsWindow: NSWindow {
         root.state = .active
         contentView = root
 
-        // 1) 标题栏（38pt，居中面板名，左侧仅关闭按钮）
-        let titleBar = NSView()
-        root.addSubview(titleBar)
-        titleBar.translatesAutoresizingMaskIntoConstraints = false
-        NSLayoutConstraint.activate([
-            titleBar.topAnchor.constraint(equalTo: root.topAnchor),
-            titleBar.leadingAnchor.constraint(equalTo: root.leadingAnchor),
-            titleBar.trailingAnchor.constraint(equalTo: root.trailingAnchor),
-            titleBar.heightAnchor.constraint(equalToConstant: titleBarHeight)
-        ])
-
-        // 标题栏左侧 traffic light：红点 = 真实关闭按钮，灰点仅装饰（对齐 settings 原型）
-        // 系统标题栏按钮在 titlebarAppearsTransparent + 自定义 contentView 下不渲染，
-        // 必须提供可点击的关闭途径，否则窗口关不掉（2026-08-04 用户反馈）。
-        let trafficStack = NSStackView()
-        trafficStack.orientation = .horizontal
-        trafficStack.spacing = 8
-        trafficStack.alignment = .centerY
-        titleBar.addSubview(trafficStack)
-        trafficStack.translatesAutoresizingMaskIntoConstraints = false
-        NSLayoutConstraint.activate([
-            trafficStack.leadingAnchor.constraint(equalTo: titleBar.leadingAnchor, constant: 14),
-            trafficStack.centerYAnchor.constraint(equalTo: titleBar.centerYAnchor)
-        ])
-
-        let closeBtn = NSButton()
-        closeBtn.wantsLayer = true
-        closeBtn.layer?.backgroundColor = NSColor(calibratedRed: 1.0, green: 0.373, blue: 0.341, alpha: 1.0).cgColor  // #FF5F57
-        closeBtn.layer?.cornerRadius = 6
-        closeBtn.isBordered = false
-        closeBtn.setButtonType(NSButton.ButtonType.momentaryChange)
-        closeBtn.target = self
-        closeBtn.action = #selector(closeWindow(_:))
-        closeBtn.toolTip = "关闭"
-        closeBtn.translatesAutoresizingMaskIntoConstraints = false
-        closeBtn.widthAnchor.constraint(equalToConstant: 12).isActive = true
-        closeBtn.heightAnchor.constraint(equalToConstant: 12).isActive = true
-        trafficStack.addArrangedSubview(closeBtn)
-
-        for _ in 0..<2 {
-            let deco = NSView()
-            deco.wantsLayer = true
-            deco.layer?.backgroundColor = NSColor(calibratedWhite: 0.5, alpha: 0.45).cgColor
-            deco.layer?.cornerRadius = 6
-            deco.translatesAutoresizingMaskIntoConstraints = false
-            deco.widthAnchor.constraint(equalToConstant: 12).isActive = true
-            deco.heightAnchor.constraint(equalToConstant: 12).isActive = true
-            trafficStack.addArrangedSubview(deco)
-        }
-
-        titleLabel = NSTextField(labelWithString: tabTitles[0])
-        titleLabel.font = NSFont.systemFont(ofSize: 13, weight: .semibold)
-        titleLabel.textColor = .labelColor
-        titleLabel.alignment = .center
-        titleBar.addSubview(titleLabel)
-        titleLabel.translatesAutoresizingMaskIntoConstraints = false
-        NSLayoutConstraint.activate([
-            titleLabel.centerXAnchor.constraint(equalTo: titleBar.centerXAnchor),
-            titleLabel.centerYAnchor.constraint(equalTo: titleBar.centerYAnchor)
-        ])
-
-        addHairline(to: titleBar, atBottom: true)
-
-        // 2) Tab 栏（图标 + 文字，居中，激活态琥珀金高亮）
+        // Tab 栏（图标 + 文字，居中，激活态琥珀金高亮）—— 系统标题栏之下
         let tabBar = NSView()
         root.addSubview(tabBar)
         tabBar.translatesAutoresizingMaskIntoConstraints = false
         NSLayoutConstraint.activate([
-            tabBar.topAnchor.constraint(equalTo: titleBar.bottomAnchor),
+            tabBar.topAnchor.constraint(equalTo: root.topAnchor),
             tabBar.leadingAnchor.constraint(equalTo: root.leadingAnchor),
             tabBar.trailingAnchor.constraint(equalTo: root.trailingAnchor),
             tabBar.heightAnchor.constraint(equalToConstant: tabBarHeight)
@@ -195,7 +134,7 @@ final class SettingsWindow: NSWindow {
 
         addHairline(to: tabBar, atBottom: true)
 
-        // 3) 面板容器
+        // 面板容器
         panelContainer = NSView()
         root.addSubview(panelContainer)
         panelContainer.translatesAutoresizingMaskIntoConstraints = false
@@ -209,6 +148,7 @@ final class SettingsWindow: NSWindow {
         // 默认进入「操作」面板（索引 0）
         selectTab(0, animated: false)
     }
+
 
     private func addHairline(to parent: NSView, atBottom: Bool) {
         let line = NSView()
@@ -259,7 +199,6 @@ final class SettingsWindow: NSWindow {
             return
         }
         currentIndex = index
-        titleLabel.stringValue = tabTitles[index]
         updateTabStyles()
 
         // 替换容器内的面板视图
@@ -275,18 +214,22 @@ final class SettingsWindow: NSWindow {
         ])
 
         panelContainer.layoutSubtreeIfNeeded()
-        let panelHeight = max(panel.frame.height, 120)
-        let totalHeight = titleBarHeight + tabBarHeight + panelHeight + contentVSpacing * 2
-
-        var newFrame = frame
-        newFrame.size.width = Self.windowWidth
-        newFrame.size.height = totalHeight
-        newFrame.origin.y = frame.maxY - totalHeight
+        // 内容自适应高度：tab 栏 + 面板内容（fittingSize 比 frame.height 可靠，
+        // 避免窗口高度异常占满屏幕）
+        let panelHeight = max(panelContainer.fittingSize.height, 100)
+        let totalContentHeight = tabBarHeight + panelHeight
+        let oldMaxY = frame.maxY
 
         if animated {
+            let newFrame = NSRect(x: frame.minX,
+                                  y: oldMaxY - totalContentHeight,
+                                  width: Self.windowWidth,
+                                  height: totalContentHeight)
             animateToFrame(newFrame)
         } else {
-            setFrame(newFrame, display: true)
+            setContentSize(NSSize(width: Self.windowWidth, height: totalContentHeight))
+            // 顶部固定，只向下/上调整高度
+            setFrameOrigin(NSPoint(x: frame.minX, y: oldMaxY - frame.height))
         }
 
         refreshPermissionStatuses()
@@ -1000,10 +943,6 @@ final class SettingsWindow: NSWindow {
         refreshPermissionStatuses()
     }
 
-    /// 标题栏红点关闭按钮
-    @objc private func closeWindow(_ sender: Any?) {
-        performClose(sender)
-    }
 
     // MARK: - 当前值读取（含默认值兜底）
 
