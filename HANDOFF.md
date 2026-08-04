@@ -74,23 +74,26 @@ Linger2.5/
         30:00 时线正好到顶（219px），之后只剩 10pt 橡皮筋，不再空拉 141px
       - **Esc 可靠生效**：keyDown 在 app 未激活时不派发 → 改用 Carbon `RegisterEventHotKey`
         全局热键（无需辅助功能权限），拖拽开始注册 / 结束注销，触发断线动画
+- [x] **拖拽预览第六轮（触顶反馈 + Esc 断线特效打磨）**：
+      - 触顶反馈更明显：橡皮筋延伸 10 → 24pt（微微拉长可见），线宽衰减常数 k 40 → 60（变细过程平滑可见）
+      - Esc 断线特效两阶段：先从中部裂开（缝扩大）→ 上段缩回菜单栏、下段带圆点重力下坠淡出（0.4s）
+      - 修「闪一帧完整绳子的影子」：`isBreaking` 锁让断线期间忽略一切拖拽帧更新 + 首帧即 0.05 裂开
 - [x] **纯逻辑单测接入 `swift test`**（DragPhysics 变细/同步公式、TimerEntry 格式、布局防遮挡，共 12 个，全绿）
-- [ ] **待真机验收 v4**：线长 30:00 同步到顶、Esc 断线（任意 app 前台下）、遮挡、字号 16（用户实机确认中）
+- [ ] **待真机验收 v5**：触顶「微微拉长 + 变细」幅度、Esc 两阶段断线、是否还闪帧（用户实机确认中）
 - [ ] 按原型逐页对齐：hover-list（悬停列表）、toast、settings×4、about、schedule-timer、notification
 - [ ] 通知/日历权限、预约计时、图标三风格（Ring/Classic/timer）
 
-## 最近交接（2026-08-04 下午 · 拖拽预览第五轮）
+## 最近交接（2026-08-04 下午 · 拖拽预览第六轮）
 
 **本次完成**
-- **线长与时长同步**：`DragPhysics.lineMaxDistance`（40·√maxMinutes）；默认 30min → 线顶 219px，
-  `show()` 里 `maxLineHeight = max(100, min(syncDistance, percentLimit))`，解决「数字到顶线还拉很远」
-- **Esc 全局热键**：`RegisterEventHotKey`（Carbon，无需辅助功能权限）拖拽期注册/结束注销，
-  解决「app 未激活 keyDown 不派发」；触发断线动画；`cancelDrag` 加 `.cancelling` 防重入
-- 保留第四轮：触顶三段式、断线动画、遮挡修复、字号 16
+- 触顶反馈更明显：`kRubberHeadroom` 10→24pt；`DragPhysics.lineWidth` 默认 k 40→60
+- Esc 断线特效两阶段（`DragLineView.draw`）：断裂期缝扩大 → 坠落期上段缩回/下段重力下坠淡出，0.4s
+- 防闪帧：`DragFeedbackView.isBreaking` 锁 + `animateBreak` 首帧 breakProgress=0.05
+- 保留第五轮：线长与时长同步（`lineMaxDistance`）、Carbon Esc 热键
 - `swift build` 通过、`swift test` 12/12 绿
 
 **未完成 / 卡点**
-- 实机验收：线长 30:00 到顶同步、Esc 断线（任意前台）、遮挡、字号 16
+- 实机验收：触顶拉长/变细幅度、Esc 两阶段断线、闪帧是否消失
 
 **下一步（按优先级）**
 1. 用户实机验收拖拽预览（`./script/build_and_run.sh`）
@@ -104,8 +107,9 @@ Linger2.5/
 
 **给下一位的提示**
 - 发光/光点在 `DragLineView.draw(_:)` 手绘（NSShadow 紧致 glow，对齐 2.0 观感）；圆点直径 `DragLineView.dotDiameter`（10pt）
-- 线长上限在 `DragFeedbackView.show()`：`max(100, min(40·√maxMinutes, percentLimit))`；橡皮筋 `kRubberHeadroom`（10pt）
+- 线长上限在 `DragFeedbackView.show()`：`max(100, min(40·√maxMinutes, percentLimit))`；橡皮筋 `kRubberHeadroom`（24pt）
 - Esc 用 Carbon 热键（`installEscHotKey`/`uninstallEscHotKey`，拖拽期注册）——别再用 localMonitor 等 keyDown（未激活收不到）
+- 断线两阶段绘制在 `DragLineView.draw`（breakProgress：0.5 前裂开、之后坠落）；`isBreaking` 锁防拖拽帧干扰
 - **别再让字号弹跳动画的对侧从 >1 起跳**（会盖字），见 `animateFontPop`
 - label frame 留 padding（前缀 +2 / 数字 +4），文字不贴右缘
 - 断线动画：`DragFeedbackView.animateBreak` + `MenuBarManager.cancelDrag(animated: true)`
