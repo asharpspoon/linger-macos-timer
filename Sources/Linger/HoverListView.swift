@@ -756,7 +756,7 @@ final class HoverListView: NSView {
                                        width: pencil.size.width, height: pencil.size.height))
                 x += pencil.size.width + 6
             }
-            // 文本 / placeholder
+            // 文本 / placeholder（回车图标只在编辑时显示在输入框最右侧，见 startEditing）
             let text = hasTitle ? entry.predefinedTitle! : "日程"
             let color = hasTitle ? HoverDesign.textPrimary : HoverDesign.textTertiary
             let attr: [NSAttributedString.Key: Any] = [
@@ -764,16 +764,10 @@ final class HoverListView: NSView {
                 .foregroundColor: color
             ]
             let textSize = (text as NSString).size(withAttributes: attr)
-            let drawW = min(textSize.width, max(20, maxWidth - 14))   // 给回车图标留位
+            let drawW = min(textSize.width, max(20, maxWidth))
             (text as NSString).draw(in: NSRect(x: x, y: centerY - textSize.height / 2,
                                                width: drawW, height: textSize.height),
                                     withAttributes: attr)
-            x += drawW + 6
-            // 回车图标
-            if let ret = makeTintedSFSymbol("return", color: HoverDesign.textTertiary, pointSize: 10) {
-                ret.draw(in: NSRect(x: x, y: centerY - ret.size.height / 2,
-                                    width: ret.size.width, height: ret.size.height))
-            }
         } else {
             let text = hasTitle ? entry.predefinedTitle! : (entry.scheduledTitle ?? "")
             let attr: [NSAttributedString.Key: Any] = [
@@ -1066,6 +1060,8 @@ final class HoverListView: NSView {
 
     private var editingField: NSTextField?
     private var editingEntryID: UUID?
+    /// 编辑期输入框最右侧的灰色回车暗示图标（↩︎）
+    private var editingReturnIcon: NSView?
 
     /// 编辑期间禁用自动隐藏
     var isEditing: Bool { editingField != nil }
@@ -1102,6 +1098,18 @@ final class HoverListView: NSView {
         addSubview(field)
         editingField = field
         editingEntryID = entry.id
+
+        // 输入框最右侧的灰色回车暗示（↩︎）：按回车提交
+        if let ret = makeTintedSFSymbol("return", color: HoverDesign.textTertiary, pointSize: 10) {
+            let icon = NSImageView(image: ret)
+            icon.frame = NSRect(x: field.frame.maxX + 6,
+                                y: centerY - ret.size.height / 2,
+                                width: ret.size.width,
+                                height: ret.size.height)
+            addSubview(icon)
+            editingReturnIcon = icon
+        }
+
         window?.makeFirstResponder(field)
     }
 
@@ -1112,6 +1120,8 @@ final class HoverListView: NSView {
             onTitleEdit?(id, text)
         }
         field.removeFromSuperview()
+        editingReturnIcon?.removeFromSuperview()
+        editingReturnIcon = nil
         editingField = nil
         editingEntryID = nil
         needsDisplay = true
