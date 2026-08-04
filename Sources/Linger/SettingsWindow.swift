@@ -112,6 +112,45 @@ final class SettingsWindow: NSWindow {
             titleBar.heightAnchor.constraint(equalToConstant: titleBarHeight)
         ])
 
+        // 标题栏左侧 traffic light：红点 = 真实关闭按钮，灰点仅装饰（对齐 settings 原型）
+        // 系统标题栏按钮在 titlebarAppearsTransparent + 自定义 contentView 下不渲染，
+        // 必须提供可点击的关闭途径，否则窗口关不掉（2026-08-04 用户反馈）。
+        let trafficStack = NSStackView()
+        trafficStack.orientation = .horizontal
+        trafficStack.spacing = 8
+        trafficStack.alignment = .centerY
+        titleBar.addSubview(trafficStack)
+        trafficStack.translatesAutoresizingMaskIntoConstraints = false
+        NSLayoutConstraint.activate([
+            trafficStack.leadingAnchor.constraint(equalTo: titleBar.leadingAnchor, constant: 14),
+            trafficStack.centerYAnchor.constraint(equalTo: titleBar.centerYAnchor)
+        ])
+
+        let closeBtn = NSButton()
+        closeBtn.wantsLayer = true
+        closeBtn.layer?.backgroundColor = NSColor(calibratedRed: 1.0, green: 0.373, blue: 0.341, alpha: 1.0).cgColor  // #FF5F57
+        closeBtn.layer?.cornerRadius = 6
+        closeBtn.isBordered = false
+        closeBtn.setButtonType(NSButton.ButtonType.momentaryChange)
+        closeBtn.target = self
+        closeBtn.action = #selector(closeWindow(_:))
+        closeBtn.toolTip = "关闭"
+        closeBtn.translatesAutoresizingMaskIntoConstraints = false
+        closeBtn.widthAnchor.constraint(equalToConstant: 12).isActive = true
+        closeBtn.heightAnchor.constraint(equalToConstant: 12).isActive = true
+        trafficStack.addArrangedSubview(closeBtn)
+
+        for _ in 0..<2 {
+            let deco = NSView()
+            deco.wantsLayer = true
+            deco.layer?.backgroundColor = NSColor(calibratedWhite: 0.5, alpha: 0.45).cgColor
+            deco.layer?.cornerRadius = 6
+            deco.translatesAutoresizingMaskIntoConstraints = false
+            deco.widthAnchor.constraint(equalToConstant: 12).isActive = true
+            deco.heightAnchor.constraint(equalToConstant: 12).isActive = true
+            trafficStack.addArrangedSubview(deco)
+        }
+
         titleLabel = NSTextField(labelWithString: tabTitles[0])
         titleLabel.font = NSFont.systemFont(ofSize: 13, weight: .semibold)
         titleLabel.textColor = .labelColor
@@ -959,6 +998,11 @@ final class SettingsWindow: NSWindow {
     override func orderFront(_ sender: Any?) {
         super.orderFront(sender)
         refreshPermissionStatuses()
+    }
+
+    /// 标题栏红点关闭按钮
+    @objc private func closeWindow(_ sender: Any?) {
+        performClose(sender)
     }
 
     // MARK: - 当前值读取（含默认值兜底）

@@ -99,6 +99,10 @@ Linger2.5/
       - 毛玻璃胶囊（NSVisualEffectView hudWindow）+ 1px 边框 + 圆角 10，内容自适应（px-5/py-3）
       - 文案 13px ink，对齐原型「已达 N 个计时上限」
       - 动画：淡入 0.4s → 停留 2.5s → 淡出 0.4s（原 2s 直接消失）
+- [x] **修「设置窗口关不掉」bug（2026-08-04 下午）**：
+      - 根因：SettingsWindow 依赖系统标题栏关闭按钮，但 `titlebarAppearsTransparent + isOpaque=false`
+        下系统按钮不渲染，自定义标题栏又没关闭按钮 → 无任何关闭途径（既有缺陷，非本轮改动引入）
+      - 修复：标题栏左侧加 traffic light（对齐原型）——红点 = 真实关闭按钮（performClose），两灰点装饰
 - [x] **settings×4 对齐（2026-08-04 下午）**：
       - 外壳已有（520pt 玻璃 + 顶部图标 Tab）；本轮对齐内容区
       - 通知页：改**卡片**结构（授权绿点 + 「管理…」→ 系统通知设置 + 完成通知 switch + 提示音 select+switch），删废弃浮窗行
