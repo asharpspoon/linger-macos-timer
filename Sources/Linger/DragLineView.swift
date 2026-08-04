@@ -43,9 +43,8 @@ final class DragLineView: NSView {
         let w = max(1, lineWidth)
         let midX = bounds.midX
         let lineTop = bounds.height - topY
-        let alpha = 1 - breakProgress * 0.9
 
-        func drawSegment(fromTop: CGFloat, height: CGFloat) {
+        func drawSegment(fromTop: CGFloat, height: CGFloat, alpha: CGFloat) {
             guard height > 0.5 else { return }
             let rect = NSRect(x: midX - w / 2, y: fromTop - height, width: w, height: height)
             let path = NSBezierPath(roundedRect: rect, xRadius: w / 2, yRadius: w / 2)
@@ -64,7 +63,7 @@ final class DragLineView: NSView {
             NSGraphicsContext.restoreGraphicsState()
         }
 
-        func drawDot(center: NSPoint, diameter: CGFloat) {
+        func drawDot(center: NSPoint, diameter: CGFloat, alpha: CGFloat) {
             let dotRect = NSRect(x: center.x - diameter / 2,
                                  y: center.y - diameter / 2,
                                  width: diameter,
@@ -83,18 +82,37 @@ final class DragLineView: NSView {
 
         let dotDiameter = isOverflowing ? Self.dotDiameter + 2 : Self.dotDiameter
 
-        if breakProgress > 0 {
-            // 断线：中间裂开，缝随进度扩大，下段 + 圆点下坠
-            let gap = breakProgress * 28
-            let drop = breakProgress * 14
+        guard breakProgress > 0 else {
+            drawSegment(fromTop: lineTop, height: h, alpha: 1)
+            drawDot(center: NSPoint(x: midX, y: lineTop - h), diameter: dotDiameter, alpha: 1)
+            return
+        }
+
+        // Esc 断线特效（两阶段）：
+        //   t∈[0,0.5) 断裂期：从中间裂开，缝逐渐扩大（两段保持钉在原位）
+        //   t∈[0.5,1] 坠落期：上段向上缩回菜单栏，下段带圆点加速下坠（重力感）并淡出
+        let t = min(1, breakProgress)
+        let alpha = 1 - t * t * 0.92   // 后期加速淡出
+
+        if t < 0.5 {
+            let phase = t / 0.5
+            let gap = phase * 30
             let segH = max(0, (h - gap) / 2)
-            drawSegment(fromTop: lineTop, height: segH)
-            let lowerTop = lineTop - gap - drop
-            drawSegment(fromTop: lowerTop, height: segH)
-            drawDot(center: NSPoint(x: midX, y: lowerTop - segH), diameter: dotDiameter)
+            drawSegment(fromTop: lineTop, height: segH, alpha: alpha)
+            let lowerTop = lineTop - gap
+            drawSegment(fromTop: lowerTop, height: segH, alpha: alpha)
+            drawDot(center: NSPoint(x: midX, y: lowerTop - segH), diameter: dotDiameter, alpha: alpha)
         } else {
-            drawSegment(fromTop: lineTop, height: h)
-            drawDot(center: NSPoint(x: midX, y: lineTop - h), diameter: dotDiameter)
+            let phase = (t - 0.5) / 0.5
+            let baseSegH = max(0, (h - 30) / 2)
+            // 上段向上缩回
+            let upperH = baseSegH * (1 - phase * 0.85)
+            drawSegment(fromTop: lineTop, height: upperH, alpha: alpha)
+            // 下段 + 圆点重力下坠（phase² 加速），掉出面板底
+            let drop = phase * phase * 300
+            let lowerTop = lineTop - 30 - drop
+            drawSegment(fromTop: lowerTop, height: baseSegH, alpha: alpha)
+            drawDot(center: NSPoint(x: midX, y: lowerTop - baseSegH), diameter: dotDiameter, alpha: alpha)
         }
     }
 }

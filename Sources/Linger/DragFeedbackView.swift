@@ -39,7 +39,7 @@ final class DragFeedbackView: NSView {
     private static let kTopY: CGFloat = 12
     private static let kDefaultMaxLineHeight: CGFloat = 360
     private static let kBottomBlockHeight: CGFloat = 124   // 双轨 + 提示 + 边距
-    private static let kRubberHeadroom: CGFloat = 10       // 橡皮筋最大延伸（一点点即可，太大以为没生效）
+    private static let kRubberHeadroom: CGFloat = 24       // 橡皮筋最大延伸（触顶后「微微拉长」要看得见）
     private static let kHighlightFontBump: CGFloat = 4     // 高亮侧字号增量（要明显）
     private static let kHighlightFontShrink: CGFloat = 2   // 对侧字号减量（反差越大越明显）
 
@@ -50,6 +50,8 @@ final class DragFeedbackView: NSView {
     private var rubberHeight: CGFloat = 0                  // 橡皮筋延伸量（面板增高）
 
     private var currentHighlight: HighlightSide = .forSide
+    /// Esc 断线动画进行中：期间忽略一切 update（防闪一帧完整线的影子）
+    private var isBreaking = false
 
     /// 当前预览字号（UserDefaults `linger_dragPreviewFontSize`，缺省 16，范围 12–24）
     private var previewFontSize: CGFloat {
@@ -143,6 +145,7 @@ final class DragFeedbackView: NSView {
         let syncDistance = CGFloat(DragPhysics.lineMaxDistance(maxMinutes: maxDur))
         maxLineHeight = max(100, min(syncDistance, percentLimit))
         rubberHeight = 0
+        isBreaking = false
         lineView.breakProgress = 0   // 复位 Esc 断线动画
 
         // 面板宽度按字号自适应（两轨都按「高亮侧 +2pt」的最宽值算，避免切换时挤破）
@@ -187,15 +190,19 @@ final class DragFeedbackView: NSView {
 
     func hide() {
         stopBreathing()
+        isBreaking = false
         panelWindow?.orderOut(nil)
     }
 
     // MARK: - Esc 断线动画
 
-    /// Esc 取消：线条从中间裂开、圆点下坠、整体淡出（约 0.28s），完成后回调隐藏面板。
+    /// Esc 取消断线特效（约 0.4s）：先从中部裂开，再上段缩回 / 下段带圆点坠出。
+    /// 首帧就从 0.05 起（不是 0），配合 isBreaking 锁，杜绝「闪一帧完整绳子的影子」。
     func animateBreak(completion: @escaping () -> Void) {
         stopBreathing()
-        let duration: TimeInterval = 0.28
+        isBreaking = true
+        lineView.breakProgress = 0.05
+        let duration: TimeInterval = 0.4
         let start = CACurrentMediaTime()
         let timer = Timer(timeInterval: 1.0 / 60.0, repeats: true) { [weak self] t in
             guard let self else {
@@ -206,6 +213,7 @@ final class DragFeedbackView: NSView {
             if progress >= 1 {
                 t.invalidate()
                 self.lineView.breakProgress = 1
+                self.isBreaking = false
                 completion()
                 return
             }
@@ -241,6 +249,9 @@ final class DragFeedbackView: NSView {
                 highlight: HighlightSide,
                 overflow: Bool,
                 title: String?) {
+        // 断线动画期间忽略任何拖拽帧更新（Esc 后 pollDrag 可能还有一帧排队）
+        guard !isBreaking else { return }
+
         // 1) 竖线：正常拉到 maxLineHeight；越过则按 iOS 橡皮筋阻尼继续延伸（阻力渐增）
         let baseLine = min(maxLineHeight, max(minLineHeight, distance))
         let overshoot = max(0, distance - maxLineHeight)

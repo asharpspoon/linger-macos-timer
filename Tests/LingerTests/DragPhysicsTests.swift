@@ -25,8 +25,8 @@ final class DragPhysicsTests: XCTestCase {
     }
 
     func testLineWidthThinsContinuouslyTowardMin() {
-        // 指数衰减：拉过 40px → 2 + 2*e^-1 ≈ 2.736
-        XCTAssertEqual(DragPhysics.lineWidth(overshoot: 40), 2 + 2 * exp(-1), accuracy: 0.0001)
+        // 指数衰减（k=60）：拉过 40px → 2 + 2*e^(-40/60) ≈ 3.027
+        XCTAssertEqual(DragPhysics.lineWidth(overshoot: 40), 2 + 2 * exp(-40.0 / 60.0), accuracy: 0.0001)
         // 单调递减且不低于 min
         var prev = DragPhysics.lineWidth(overshoot: 0)
         for o in stride(from: 0.0, through: 400.0, by: 20.0) {

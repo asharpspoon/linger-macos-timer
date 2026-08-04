@@ -21,12 +21,13 @@ enum DragPhysics {
     /// 触顶后线条变细公式：随 overshoot 增加，宽度从 normalWidth 连续衰减到 minWidth。
     ///
     /// 指数曲线：`min + (normal - min) * e^(-overshoot / k)`，
-    /// - `k` 为衰减常数（默认 40px：拉过 40px 衰减到差值约 63%，拉过 120px 基本到底）
+    /// - `k` 为衰减常数（默认 60px：拉过 60px 衰减到差值约 63%，拉过 180px 基本到底，
+    ///   过程比 k=40 更平滑可见）
     /// - overshoot ≤ 0 时恒为 normalWidth（未触顶不细）
     static func lineWidth(overshoot: Double,
                           normalWidth: Double = 4,
                           minWidth: Double = 2,
-                          k: Double = 40) -> Double {
+                          k: Double = 60) -> Double {
         guard overshoot > 0 else { return normalWidth }
         return minWidth + (normalWidth - minWidth) * exp(-overshoot / k)
     }
