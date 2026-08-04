@@ -1144,8 +1144,14 @@ final class HoverListView: NSView {
 
         let contentX = cardRect.minX                       // 与 drawLeftTitle 起点一致
         let centerY = cardRect.midY
-        // 标题单行 13pt，垂直居中；宽度到右区按钮之前（留 14 + 右区约 76pt）
-        let fieldWidth = cardRect.width - 14 - 76
+        // 输入框宽度按右侧时间文本实际宽度收窄，保证回车图标不被时间挡住：
+        // 时间左缘 = 右缘 - 按钮区(31) - 间距(12) - 时间宽；再留出图标(≈12)+间距
+        let rightEdge = cardRect.maxX
+        let timeText = entry.displayTime
+        let timeFont = NSFont.monospacedDigitSystemFont(ofSize: HoverDesign.timeFontSize(), weight: .semibold)
+        let timeW = (timeText as NSString).size(withAttributes: [.font: timeFont]).width
+        let timeLeft = rightEdge - 31 - 12 - timeW
+        let fieldWidth = max(40, timeLeft - 10 - 6 - 12 - contentX)
         let fieldHeight: CGFloat = 18
         let field = NSTextField(frame: NSRect(x: contentX, y: centerY - fieldHeight / 2,
                                                width: max(40, fieldWidth),
