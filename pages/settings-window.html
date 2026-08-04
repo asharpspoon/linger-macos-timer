@@ -1,25 +1,79 @@
 <!DOCTYPE html>
+<!--
+  ════════════════════════════════════════════════════════════════════════
+  Linger 设置窗口原型 · settings-window.html
+  ════════════════════════════════════════════════════════════════════════
+  本文件是 SettingsWindow.swift 的 UI 唯一准绳。所有尺寸已精确到 pt，
+  并标注 LingerTheme 令牌映射。Codex 照本文件抄即可，禁止自由发挥。
+
+  ── 实现铁律（违反即丑）─────────────────────────────────────────────
+  1. 所有颜色走 LingerTheme，禁止硬编码 #F5A623 / 裸 NSColor
+  2. Switch 必须自定义绘制胶囊（36×20），禁止用 NSButton(.switch) 复选框
+     → 实现：自定义 LingerSwitch(NSView) 或 NSSwitch + 强制 tint 琥珀金
+  3. Select 必须自定义外观（surface2 底 24pt 高 圆角4），禁止 NSPopUpButton 默认 bezel
+     → 实现：NSPopUpButton + bezelStyle=.inline + layer 自绘底/边框，或自定义
+  4. 标题栏保持系统原生（.titled + .closable），勿回退透明
+  5. 间距用 LingerTheme.space1~6（4/8/12/16/24/32），禁止任意值
+  6. 字号用 LingerTheme.labelFont(size:) / timeFont(size:)
+
+  ── 令牌映射表（CSS var → LingerTheme）────────────────────────────
+  --linger-primary  #F5A623  → LingerTheme.amberGold / Color.amber
+  --linger-primary-light #FFC966 → LingerTheme.amberLight
+  --linger-bg        #0C0C0E  → 窗口底（NSVisualEffectView .hudWindow）
+  --linger-surface   #16161A  → LingerTheme.Color.surface
+  --linger-surface-2 #1F1F25  → LingerTheme.Color.surface2
+  --linger-ink       #F5F5F3  → LingerTheme.ink (.labelColor)
+  --linger-ink-2     #A6A6AA  → LingerTheme.ink2 (.secondaryLabelColor)
+  --linger-ink-3     #75757B  → LingerTheme.ink3 (.tertiaryLabelColor)
+  --linger-line      rgba(255,255,255,.10) → LingerTheme.Color.line / .separatorColor
+  --state-success    #30D158  → LingerTheme.stateSuccess
+  --state-info       #0A84FF  → 系统链接色
+
+  ── 字号阶梯（pt）──────────────────────────────────────────────────
+  10pt  tab 标签 / kbd 键帽 / 票据 label
+  11pt  section 标题 / 行提示 / 注释
+  12pt  控件值 / select 文字 / 票据 value
+  13pt  行标签 / 窗口标题
+  20pt  票据 App 名
+
+  ── 间距阶梯（pt → LingerTheme）────────────────────────────────────
+  4→space1  8→space2  12→space3  16→space4  20→(space4+4)  24→space5
+
+  ── 圆角（pt → LingerTheme）────────────────────────────────────────
+  4→radiusXS  8→radiusSM  12→radiusMD  16→radiusLG
+
+  ── 关键尺寸（pt）──────────────────────────────────────────────────
+  窗口宽 520  标题栏 38  Tab 栏 48  面板内边距 20H/24V
+  Section 间距 20  Row 高 36  Row 上下 padding 8
+  Switch 36×20(滑块16)  Select 高24  Stepper框 56×24
+  Slider 轨道高4 宽160  Kbd 20高 圆角5  状态点 6×6
+  ════════════════════════════════════════════════════════════════════════
+-->
 <html lang="zh-CN" class="dark">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Linger 2.0 — 设置窗口原型</title>
+    <title>Linger 2.5 — 设置窗口原型（设计规范精确版）</title>
     <style id="theme-vars">
 :root {
-  --linger-primary: #F5A623;
-  --linger-primary-light: #FFC966;
+  /* ── 品牌色：琥珀金阶梯（LingerTheme.Color.amber*）── */
+  --linger-primary: #F5A623;            /* LingerTheme.amberGold */
+  --linger-primary-light: #FFC966;      /* LingerTheme.amberLight */
   --linger-primary-lighter: #FFE0A8;
-  --linger-primary-dark: #D98E14;
+  --linger-primary-dark: #D98E14;       /* LingerTheme.amberDeep */
   --linger-primary-darker: #8F5A0D;
-  --linger-primary-soft: rgba(245, 166, 35, 0.14);
-  --linger-primary-glow: rgba(245, 166, 35, 0.40);
-  --linger-bg: #0C0C0E;
-  --linger-surface: #16161A;
-  --linger-surface-2: #1F1F25;
-  --linger-ink: #F5F5F3;
-  --linger-ink-2: #A6A6AA;
-  --linger-ink-3: #75757B;
-  --linger-line: rgba(255, 255, 255, 0.10);
+  --linger-primary-soft: rgba(245, 166, 35, 0.14);  /* LingerTheme.amberSoft / Color.amberSoft */
+  --linger-primary-glow: rgba(245, 166, 35, 0.40);  /* Color.amberGlow */
+
+  /* ── 背景/面板面 ── */
+  --linger-bg: #0C0C0E;                 /* 窗口底（VisualEffectView hudWindow） */
+  --linger-surface: #16161A;            /* LingerTheme.Color.surface */
+  --linger-surface-2: #1F1F25;          /* LingerTheme.Color.surface2 */
+  --linger-ink: #F5F5F3;               /* LingerTheme.ink / .labelColor */
+  --linger-ink-2: #A6A6AA;             /* LingerTheme.ink2 / .secondaryLabelColor */
+  --linger-ink-3: #75757B;             /* LingerTheme.ink3 / .tertiaryLabelColor */
+  --linger-line: rgba(255, 255, 255, 0.10);  /* LingerTheme.Color.line / .separatorColor */
+
   --linger-background: var(--linger-bg);
   --linger-foreground: var(--linger-ink);
   --linger-card: var(--linger-surface);
@@ -32,26 +86,37 @@
   --linger-border: var(--linger-line);
   --linger-input: rgba(255, 255, 255, 0.08);
   --linger-ring: rgba(245, 166, 35, 0.55);
-  --state-success: #30D158;
+
+  /* ── 语义状态色 ── */
+  --state-success: #30D158;   /* LingerTheme.stateSuccess */
   --state-warning: #FF9F0A;
   --state-error: #FF453A;
-  --state-info: #0A84FF;
-  --radius-sm: 4px;
-  --radius-md: 8px;
-  --radius-lg: 12px;
-  --radius-xl: 16px;
+  --state-info: #0A84FF;      /* 系统链接色，"管理…"按钮 */
+
+  /* ── 圆角（pt = px @1x）── LingerTheme.radiusXS/SM/MD/LG ── */
+  --radius-sm: 4px;    /* radiusXS — select / 数字框 / kbd(5) */
+  --radius-md: 8px;    /* radiusSM */
+  --radius-lg: 12px;   /* radiusMD — 窗口圆角 */
+  --radius-xl: 16px;   /* radiusLG */
   --radius-full: 9999px;
   --linger-radius-small: var(--radius-sm);
   --linger-radius-medium: var(--radius-md);
   --linger-radius-large: var(--radius-lg);
-  --shadow-1: 0 1px 2px rgba(0, 0, 0, 0.05);
+
+  /* ── 阴影 ── */
   --shadow-2: 0 8px 24px -8px rgba(0, 0, 0, 0.30);
   --shadow-3: 0 24px 60px -20px rgba(0, 0, 0, 0.45);
+
+  /* ── 字体 ── LingerTheme.labelFont / timeFont ── */
   --font-sans: -apple-system, BlinkMacSystemFont, "SF Pro Text", "SF Pro Display", "PingFang SC", "Hiragino Sans GB", "Helvetica Neue", Arial, sans-serif;
-  --font-mono: "SF Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+  --font-mono: "SF Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+
+  /* ── 玻璃 ── NSVisualEffectView ── */
   --glass-blur: blur(16px) saturate(180%);
   --glass-panel-bg: rgba(24, 24, 28, 0.72);
   --glass-panel-bg-strong: rgba(12, 12, 14, 0.92);
+
+  /* ── 舞台（仅预览用，非窗口本身）── */
   --wallpaper-base: #0B0B0D;
   --wallpaper-glow-amber: rgba(245, 166, 35, 0.14);
   --wallpaper-glow-warm: rgba(120, 90, 40, 0.16);
@@ -88,11 +153,42 @@ body { margin: 0; background-color: var(--wallpaper-base); color: var(--linger-i
 .traffic-close { background: #FF5F57; }
 .traffic-min { background: #FEBC2E; }
 .traffic-zoom { background: #28C840; }
-.switch { position: relative; width: 36px; height: 20px; border-radius: 9999px; background: rgba(255,255,255,0.16); border: 1px solid var(--linger-line); transition: background 160ms cubic-bezier(.2,.8,.2,1); }
-.switch::after { content: ""; position: absolute; top: 1px; left: 1px; width: 16px; height: 16px; border-radius: 9999px; background: #FFFFFF; box-shadow: 0 1px 3px rgba(0,0,0,0.4); transition: transform 160ms cubic-bezier(.3,0,0,1); }
+
+/* ═══ 自定义 Switch（铁律：勿用 NSButton.checkbox）═══
+   尺寸 36×20pt | 滑块 16×16 | 关 rgba(255,255,255,.16) | 开琥珀金
+   实现：自定义 NSView 子类 draw(_:)，或 NSSwitch 强制 tint */
+.switch {
+  position: relative; width: 36px; height: 20px; border-radius: 9999px;
+  background: rgba(255,255,255,0.16); border: 1px solid var(--linger-line);
+  transition: background 160ms cubic-bezier(.2,.8,.2,1);  /* LingerTheme.durationFast */
+  flex-shrink: 0;
+}
+.switch::after {
+  content: ""; position: absolute; top: 1px; left: 1px; width: 16px; height: 16px;
+  border-radius: 9999px; background: #FFFFFF;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.4);
+  transition: transform 160ms cubic-bezier(.3,0,0,1);
+}
 .switch.is-on { background: var(--linger-primary); border-color: var(--linger-primary); }
 .switch.is-on::after { transform: translateX(16px); }
-.mac-select { display: inline-flex; align-items: center; gap: 6px; height: 22px; padding: 0 8px; font-size: 12px; color: var(--linger-ink); background: var(--linger-surface-2); border: 1px solid var(--linger-line); border-radius: var(--radius-sm); cursor: default; }
+
+/* ═══ 自定义 Select（铁律：勿用 NSPopUpButton 默认 bezel）═══
+   高 24pt | 圆角 4(radiusXS) | surface2 底 | 1px line 边 | 字号 12
+   实现：NSPopUpButton + bezelStyle=.inline + layer 自绘，或自定义 */
+.mac-select {
+  display: inline-flex; align-items: center; gap: 6px; height: 24px; padding: 0 10px;
+  font-size: 12px; color: var(--linger-ink);
+  background: var(--linger-surface-2); border: 1px solid var(--linger-line);
+  border-radius: var(--radius-sm); cursor: default; flex-shrink: 0;
+}
+
+/* ═══ 数字输入框（stepper 配套）═══ 高24 宽56 圆角4 surface2底 */
+.num-field {
+  display: inline-flex; align-items: center; justify-content: center;
+  height: 24px; width: 56px; font-size: 12px; color: var(--linger-ink);
+  background: var(--linger-surface-2); border: 1px solid var(--linger-line);
+  border-radius: var(--radius-sm); font-variant-numeric: tabular-nums;
+}
     </style>
     <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4.3.1/dist/index.global.js"></script>
     <style type="text/tailwindcss">
@@ -115,71 +211,81 @@ body { margin: 0; background-color: var(--wallpaper-base); color: var(--linger-i
     --radius-lg: var(--linger-radius-large);
   }
     </style>
-    <style id="liquid-glass-tabs">
+    <style id="settings-spec">
+      /* ════════════════════════════════════════════════════════════════
+         设置窗口本体样式（所有 pt 值 = LingerTheme 映射）
+         ════════════════════════════════════════════════════════════════ */
+
+      /* ── Tab 栏：贴底分割线 + 底部琥珀指示线 ── */
       .lg-tabs {
         display: flex; align-items: center; justify-content: center; gap: 0;
-        border-bottom: 1px solid var(--linger-line);
-        padding: 0;
+        border-bottom: 1px solid var(--linger-line);  /* NSColor.separatorColor */
+        padding: 0; height: 48px;  /* LingerTheme: tabBarHeight=48 */
       }
       .lg-tab {
         position: relative; display: flex; flex-direction: column; align-items: center; gap: 3px;
-        padding: 8px 16px; cursor: pointer; border: none; background: none;
-        transition: background 200ms ease;
+        padding: 0 18px; cursor: pointer; border: none; background: none;
+        transition: background 200ms ease;  /* 200ms hover */
       }
       .lg-tab:hover { background: rgba(255,255,255,0.04); }
-      .lg-tab.is-active { background: rgba(245,166,35,0.08); }
+      .lg-tab.is-active { background: rgba(245,166,35,0.08); }  /* 微琥珀底 */
       .lg-tab.is-active::after {
         content: ""; position: absolute; bottom: -1px; left: 0; right: 0; height: 2px;
-        background: var(--linger-primary); border-radius: 1px;
+        background: var(--linger-primary); border-radius: 1px;  /* 底部琥珀指示线 */
       }
       .lg-tab .lg-tab-icon { width: 18px; height: 18px; color: var(--linger-ink-3); transition: color 200ms ease; }
       .lg-tab.is-active .lg-tab-icon { color: var(--linger-primary); }
       .lg-tab .lg-tab-label { font-size: 10px; color: var(--linger-ink-3); white-space: nowrap; transition: color 200ms ease; }
       .lg-tab.is-active .lg-tab-label { color: var(--linger-primary); font-weight: 600; }
-      .lg-content { overflow: hidden; transition: height 400ms cubic-bezier(0.32,0.72,0,1); }
+      .lg-content { overflow: hidden; transition: height 400ms cubic-bezier(0.32,0.72,0,1); }  /* LingerTheme.durationResize */
       .tab-panel { display: none; }
       .tab-panel.is-visible { display: block; }
 
-      /* ========== 统一设置面板设计规范 ========== */
-      .panel-body { padding: 18px 20px 22px; }
-      .section { margin-bottom: 18px; }
+      /* ═══ 面板统一范式（section / row）═══
+         去掉卡片外框，用标题 + 分割线分组，对齐 macOS 系统设置 */
+      .panel-body { padding: 20px 24px 24px; }  /* 上20 左右24 下24 */
+      .section { margin-bottom: 20px; }         /* section 间距 20 */
       .section:last-child { margin-bottom: 0; }
-      .section-title { font-size: 11px; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; color: var(--linger-ink-3); margin-bottom: 2px; }
+      .section-title {
+        font-size: 11px; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase;
+        color: var(--linger-ink-3); margin-bottom: 4px;  /* 11pt semibold ink3 */
+      }
       .section-rows { display: flex; flex-direction: column; }
-      .row { display: flex; align-items: center; justify-content: space-between; min-height: 34px; padding: 6px 0; border-bottom: 1px solid var(--linger-line); }
+      .row {
+        display: flex; align-items: center; justify-content: space-between;
+        min-height: 36px; padding: 8px 0;  /* row 高 36，padding 8 */
+        border-bottom: 1px solid var(--linger-line);
+      }
       .row:last-child { border-bottom: none; }
-      .row-label { font-size: 13px; color: var(--linger-ink); }
-      .row-hint { font-size: 11px; color: var(--linger-ink-3); margin-top: 2px; }
+      .row-label { font-size: 13px; color: var(--linger-ink); }  /* 13pt ink */
+      .row-hint { font-size: 11px; color: var(--linger-ink-3); margin-top: 2px; }  /* 11pt ink3 */
 
-      /* ========== 票据风格「关于」面板（白底纸张纹理） ========== */
+      /* ═══ 票据风格「关于」面板（白底纸张纹理）═══
+         暗色窗口里的白色票据，强对比；锯齿/剪刀口挖空成窗口背景色 */
       .ticket {
-        position: relative;
-        margin: 20px;
-        background: #faf9f6;
+        position: relative; margin: 20px;
+        background: #faf9f6;  /* 纸张白 */
         background-image:
           radial-gradient(rgba(0,0,0,0.015) 1px, transparent 1px),
           radial-gradient(rgba(0,0,0,0.01) 1px, transparent 1px);
         background-size: 3px 3px, 7px 7px;
         background-position: 0 0, 1px 2px;
-        border-radius: 10px;
-        overflow: hidden;
+        border-radius: 10px; overflow: hidden;
         box-shadow: 0 2px 12px rgba(0,0,0,0.25), inset 0 0 0 0.5px rgba(0,0,0,0.06);
       }
-      /* 票据顶部锯齿边 */
-      .ticket::before {
+      .ticket::before {  /* 顶部锯齿：16px 间隔圆形挖空 */
         content: ""; position: absolute; top: -1px; left: 0; right: 0; height: 10px;
         background: radial-gradient(circle at 8px 0, var(--linger-bg) 5px, transparent 5.5px);
         background-size: 16px 10px; background-repeat: repeat-x;
       }
-      /* 票据底部锯齿边 */
-      .ticket::after {
+      .ticket::after {  /* 底部锯齿 */
         content: ""; position: absolute; bottom: -1px; left: 0; right: 0; height: 10px;
         background: radial-gradient(circle at 8px 10px, var(--linger-bg) 5px, transparent 5.5px);
         background-size: 16px 10px; background-repeat: repeat-x;
       }
       .ticket-inner { padding: 24px 24px 20px; }
       .ticket-header { display: flex; flex-direction: column; align-items: center; text-align: center; }
-      .ticket-app-icon {
+      .ticket-app-icon {  /* 48×48 琥珀渐变图标，圆角12 */
         width: 48px; height: 48px; border-radius: 12px;
         background: linear-gradient(135deg, rgba(245,166,35,0.20), rgba(245,166,35,0.08));
         border: 1px solid rgba(245,166,35,0.25);
@@ -189,8 +295,7 @@ body { margin: 0; background-color: var(--wallpaper-base); color: var(--linger-i
         position: relative; height: 1px; margin: 18px 0;
         background-image: linear-gradient(to right, transparent, rgba(0,0,0,0.10) 12%, rgba(0,0,0,0.10) 88%, transparent);
       }
-      /* 票据虚线分割（带剪刀口质感） */
-      .ticket-dashed {
+      .ticket-dashed {  /* 虚线分割 + 两端剪刀口（挖空背景色）*/
         position: relative; height: 1px; margin: 16px 0;
         background-image: repeating-linear-gradient(to right, rgba(0,0,0,0.12) 0, rgba(0,0,0,0.12) 4px, transparent 4px, transparent 9px);
       }
@@ -202,7 +307,7 @@ body { margin: 0; background-color: var(--wallpaper-base); color: var(--linger-i
       .ticket-dashed::after { right: -5px; }
       .ticket-field { display: flex; align-items: baseline; justify-content: space-between; padding: 5px 0; }
       .ticket-field-label { font-family: var(--font-mono); font-size: 10px; letter-spacing: 0.05em; text-transform: uppercase; color: #8e8e93; }
-      .ticket-field-value { font-size: 12px; color: #1d1d1f; text-align: right; }
+      .ticket-field-value { font-size: 12px; color: #1d1d1f; text-align: right; }  /* 票据深色文字 */
       .ticket-field-value.mono { font-family: var(--font-mono); font-size: 11px; }
       .ticket-footer { text-align: center; }
       .ticket-footer p { color: #8e8e93 !important; }
@@ -239,12 +344,14 @@ body { margin: 0; background-color: var(--wallpaper-base); color: var(--linger-i
     <div class="flex items-center gap-4">
       <span data-slot="linger-status" class="flex items-center gap-1.5"><span class="flex items-center gap-1.5"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="h-[17px] w-[17px] text-[var(--linger-ink)]"><circle cx="12" cy="12" r="8.5"/><circle cx="12" cy="12" r="3" fill="currentColor" stroke="none"/></svg><span class="font-mono text-[12px] tabular-nums text-[var(--linger-primary)]">12:34</span></span></span>
       <span class="h-3.5 w-px bg-[var(--linger-line)]"></span>
-      <span class="text-[12px] tabular-nums text-[var(--linger-ink)]">8月2日 周日 11:24</span>
+      <span class="text-[12px] tabular-nums text-[var(--linger-ink)]">8月4日 周一 17:30</span>
     </div>
   </header>
 
   <div data-slot="page-scene" class="relative flex-1"><div class="flex h-full items-center justify-center">
+    <!-- ═══ 设置窗口本体：520pt 宽，系统标题栏 + 玻璃面板 ═══ -->
     <div class="glass-panel-strong flex w-[520px] flex-col overflow-hidden rounded-[12px] shadow-[var(--shadow-3)]" id="settingsWindow">
+      <!-- 标题栏 38pt：系统原生（.titled+.closable），关闭按钮左，标题居中 -->
       <div class="relative flex h-[38px] shrink-0 items-center justify-center border-b border-[var(--linger-line)]">
         <div class="absolute left-3.5 flex items-center gap-2">
           <span class="traffic-light traffic-close"></span>
@@ -254,6 +361,7 @@ body { margin: 0; background-color: var(--wallpaper-base); color: var(--linger-i
         <span id="windowTitle" class="text-[13px] font-semibold text-[var(--linger-ink)]">操作</span>
       </div>
 
+      <!-- Tab 栏 48pt：5 个 tab，贴底分割线 + 底部琥珀指示线 -->
       <nav class="lg-tabs" id="lgTabs">
         <button class="lg-tab is-active" data-tab="operations">
           <i data-lucide="sliders-horizontal" class="lg-tab-icon"></i>
@@ -279,23 +387,25 @@ body { margin: 0; background-color: var(--wallpaper-base); color: var(--linger-i
 
       <div class="lg-content" id="lgContent">
 
-        <!-- ========== 面板 1：操作 ========== -->
+        <!-- ═══ 面板 1：操作 ═══ -->
         <div class="tab-panel is-visible" data-panel="operations">
           <div class="panel-body">
             <div class="section">
               <p class="section-title">拖拽计时</p>
               <div class="section-rows">
+                <!-- AppKit: NSSlider(160pt) + NSTextField(44pt, timeFont 12) -->
                 <div class="row">
                   <span class="row-label">下拉线最大长度</span>
-                  <div class="flex items-center gap-2.5">
-                    <input type="range" min="25" max="75" value="50" class="h-1 w-36 accent-[var(--linger-primary)]" aria-label="下拉线最大长度"/>
-                    <span class="w-9 text-right text-[12px] tabular-nums text-[var(--linger-ink-2)]">50%</span>
+                  <div class="flex items-center gap-2">
+                    <input type="range" min="25" max="75" value="50" class="h-1 w-40 accent-[var(--linger-primary)]" aria-label="下拉线最大长度"/>
+                    <span class="w-11 text-right text-[12px] tabular-nums text-[var(--linger-ink-2)]">50%</span>
                   </div>
                 </div>
+                <!-- AppKit: NSTextField(56×24) + NSStepper + 单位 label 12pt -->
                 <div class="row">
                   <span class="row-label">最大计时时长</span>
                   <div class="flex items-center gap-1.5">
-                    <span class="flex h-[22px] w-14 items-center justify-center rounded-[4px] border border-[var(--linger-line)] bg-[var(--linger-surface-2)] text-[12px] tabular-nums text-[var(--linger-ink)]">30</span>
+                    <span class="num-field">30</span>
                     <span class="flex flex-col">
                       <i data-lucide="chevron-up" class="h-3 w-3 text-[var(--linger-ink-3)]"></i>
                       <i data-lucide="chevron-down" class="h-3 w-3 text-[var(--linger-ink-3)]"></i>
@@ -308,6 +418,7 @@ body { margin: 0; background-color: var(--wallpaper-base); color: var(--linger-i
             <div class="section">
               <p class="section-title">显示</p>
               <div class="section-rows">
+                <!-- AppKit: 自定义 LingerSelect(24pt高) -->
                 <div class="row">
                   <span class="row-label">双轨显示</span>
                   <span class="mac-select"><span>倒计时 + 结束时间</span><i data-lucide="chevron-down" class="h-3 w-3 text-[var(--linger-ink-3)]"></i></span>
@@ -321,15 +432,16 @@ body { margin: 0; background-color: var(--wallpaper-base); color: var(--linger-i
           </div>
         </div>
 
-        <!-- ========== 面板 2：通知（去掉卡片框，标题+分割线） ========== -->
+        <!-- ═══ 面板 2：通知 ═══ -->
         <div class="tab-panel" data-panel="notifications">
           <div class="panel-body">
             <div class="section">
               <p class="section-title">授权</p>
               <div class="section-rows">
+                <!-- AppKit: 状态点(6×6) + 文字(12pt success) + 管理按钮(info链接色) -->
                 <div class="row">
                   <span class="row-label">通知授权</span>
-                  <div class="flex items-center gap-2">
+                  <div class="flex items-center gap-2.5">
                     <span class="flex items-center gap-1.5 text-[12px] text-[var(--state-success)]"><span class="h-1.5 w-1.5 rounded-full bg-[var(--state-success)]"></span>已授权</span>
                     <button class="text-[12px] text-[var(--state-info)] hover:opacity-80">管理…</button>
                   </div>
@@ -339,14 +451,15 @@ body { margin: 0; background-color: var(--wallpaper-base); color: var(--linger-i
             <div class="section">
               <p class="section-title">提醒方式</p>
               <div class="section-rows">
+                <!-- AppKit: 自定义 LingerSwitch(36×20) -->
                 <div class="row">
                   <span class="row-label">计时完成时通知</span>
                   <span class="switch is-on"></span>
                 </div>
                 <div class="row">
                   <span class="row-label">播放提示音</span>
-                  <div class="flex items-center gap-2">
-                    <span class="mac-select"><span>Ping</span><i data-lucide="chevron-down" class="h-3 w-3 text-[var(--linger-ink-3)]"></i></span>
+                  <div class="flex items-center gap-2.5">
+                    <span class="mac-select"><span>Glass</span><i data-lucide="chevron-down" class="h-3 w-3 text-[var(--linger-ink-3)]"></i></span>
                     <span class="switch is-on"></span>
                   </div>
                 </div>
@@ -355,7 +468,7 @@ body { margin: 0; background-color: var(--wallpaper-base); color: var(--linger-i
           </div>
         </div>
 
-        <!-- ========== 面板 3：日历（去掉卡片框，标题+分割线） ========== -->
+        <!-- ═══ 面板 3：日历 ═══ -->
         <div class="tab-panel" data-panel="calendar">
           <div class="panel-body">
             <div class="section">
@@ -363,7 +476,7 @@ body { margin: 0; background-color: var(--wallpaper-base); color: var(--linger-i
               <div class="section-rows">
                 <div class="row">
                   <span class="row-label">日历授权</span>
-                  <div class="flex items-center gap-2">
+                  <div class="flex items-center gap-2.5">
                     <span class="flex items-center gap-1.5 text-[12px] text-[var(--state-success)]"><span class="h-1.5 w-1.5 rounded-full bg-[var(--state-success)]"></span>已授权</span>
                     <button class="text-[12px] text-[var(--state-info)] hover:opacity-80">管理…</button>
                   </div>
@@ -386,31 +499,33 @@ body { margin: 0; background-color: var(--wallpaper-base); color: var(--linger-i
                     <span class="row-label">默认标题</span>
                     <p class="row-hint">仅在「自动写入」模式下使用</p>
                   </div>
-                  <span class="flex h-[22px] w-36 items-center rounded-[4px] border border-[var(--linger-line)] bg-[var(--linger-surface-2)] px-2 text-[12px] text-[var(--linger-ink)]">专注</span>
+                  <!-- AppKit: NSTextField(200×24, surface2底, 圆角4) -->
+                  <span class="flex h-[24px] w-[200px] items-center rounded-[4px] border border-[var(--linger-line)] bg-[var(--linger-surface-2)] px-2.5 text-[12px] text-[var(--linger-ink)]">专注</span>
                 </div>
               </div>
             </div>
             <div class="section">
               <p class="section-title">快捷预设标题</p>
               <div class="section-rows">
+                <!-- AppKit: kbd(20高,mono10,surface2底,圆角5) + NSTextField(140×24) + 注释(11pt ink3) -->
                 <div class="row">
                   <div class="flex items-center gap-2">
-                    <kbd class="rounded-[5px] border border-[var(--linger-line)] bg-[var(--linger-surface-2)] px-1.5 py-0.5 font-mono text-[10px] text-[var(--linger-ink-2)]">fn</kbd>
-                    <span class="flex h-[22px] w-32 items-center rounded-[4px] border border-[var(--linger-line)] bg-[var(--linger-surface-2)] px-2 text-[12px] text-[var(--linger-ink)]">开会</span>
+                    <kbd class="flex h-[20px] min-w-[28px] items-center justify-center rounded-[5px] border border-[var(--linger-line)] bg-[var(--linger-surface-2)] px-1.5 font-mono text-[10px] text-[var(--linger-ink-2)]">fn</kbd>
+                    <span class="flex h-[24px] w-[140px] items-center rounded-[4px] border border-[var(--linger-line)] bg-[var(--linger-surface-2)] px-2.5 text-[12px] text-[var(--linger-ink)]">开会</span>
                   </div>
                   <span class="text-[11px] text-[var(--linger-ink-3)]">留空则不激活</span>
                 </div>
                 <div class="row">
                   <div class="flex items-center gap-2">
-                    <kbd class="rounded-[5px] border border-[var(--linger-line)] bg-[var(--linger-surface-2)] px-1.5 py-0.5 font-mono text-[10px] text-[var(--linger-ink-2)]">⌃</kbd>
-                    <span class="flex h-[22px] w-32 items-center rounded-[4px] border border-[var(--linger-line)] bg-[var(--linger-surface-2)] px-2 text-[12px] text-[var(--linger-ink)]">写代码</span>
+                    <kbd class="flex h-[20px] min-w-[28px] items-center justify-center rounded-[5px] border border-[var(--linger-line)] bg-[var(--linger-surface-2)] px-1.5 font-mono text-[10px] text-[var(--linger-ink-2)]">⌃</kbd>
+                    <span class="flex h-[24px] w-[140px] items-center rounded-[4px] border border-[var(--linger-line)] bg-[var(--linger-surface-2)] px-2.5 text-[12px] text-[var(--linger-ink)]">写代码</span>
                   </div>
                   <span class="text-[11px] text-[var(--linger-ink-3)]">留空则不激活</span>
                 </div>
                 <div class="row">
                   <div class="flex items-center gap-2">
-                    <kbd class="rounded-[5px] border border-[var(--linger-line)] bg-[var(--linger-surface-2)] px-1.5 py-0.5 font-mono text-[10px] text-[var(--linger-ink-2)]">⌥</kbd>
-                    <span class="flex h-[22px] w-32 items-center rounded-[4px] border border-[var(--linger-line)] bg-[var(--linger-surface-2)] px-2 text-[12px] text-[var(--linger-ink)]">休息</span>
+                    <kbd class="flex h-[20px] min-w-[28px] items-center justify-center rounded-[5px] border border-[var(--linger-line)] bg-[var(--linger-surface-2)] px-1.5 font-mono text-[10px] text-[var(--linger-ink-2)]">⌥</kbd>
+                    <span class="flex h-[24px] w-[140px] items-center rounded-[4px] border border-[var(--linger-line)] bg-[var(--linger-surface-2)] px-2.5 text-[12px] text-[var(--linger-ink)]">休息</span>
                   </div>
                   <span class="text-[11px] text-[var(--linger-ink-3)]">留空则不激活</span>
                 </div>
@@ -419,7 +534,7 @@ body { margin: 0; background-color: var(--wallpaper-base); color: var(--linger-i
           </div>
         </div>
 
-        <!-- ========== 面板 4：通用 ========== -->
+        <!-- ═══ 面板 4：通用 ═══ -->
         <div class="tab-panel" data-panel="general">
           <div class="panel-body">
             <div class="section">
@@ -447,11 +562,12 @@ body { margin: 0; background-color: var(--wallpaper-base); color: var(--linger-i
                   <span class="row-label">图标风格</span>
                   <span class="mac-select"><span>Ring</span><i data-lucide="chevron-down" class="h-3 w-3 text-[var(--linger-ink-3)]"></i></span>
                 </div>
+                <!-- 三风格选择器：选中琥珀边框，未选中 line 边框 opacity 0.7 -->
                 <div class="row">
-                  <div class="flex items-center gap-4">
-                    <span class="flex items-center gap-1.5 rounded-[6px] border border-[var(--linger-primary)] px-2 py-1.5"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="h-4 w-4 text-[var(--linger-primary)]"><circle cx="12" cy="12" r="8.5"/><circle cx="12" cy="12" r="3" fill="currentColor" stroke="none"/></svg><span class="text-[11px] text-[var(--linger-primary)]">Ring</span></span>
-                    <span class="flex items-center gap-1.5 rounded-[6px] border border-[var(--linger-line)] px-2 py-1.5 opacity-70"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="h-4 w-4 text-[var(--linger-ink-2)]"><circle cx="12" cy="12" r="8.5" stroke-dasharray="4 3"/></svg><span class="text-[11px] text-[var(--linger-ink-2)]">Classic</span></span>
-                    <span class="flex items-center gap-1.5 rounded-[6px] border border-[var(--linger-line)] px-2 py-1.5 opacity-70"><i data-lucide="timer" class="h-4 w-4 text-[var(--linger-ink-2)]"></i><span class="text-[11px] text-[var(--linger-ink-2)]">SF Symbol</span></span>
+                  <div class="flex items-center gap-3">
+                    <span class="flex items-center gap-1.5 rounded-[6px] border border-[var(--linger-primary)] px-2.5 py-1.5"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="h-4 w-4 text-[var(--linger-primary)]"><circle cx="12" cy="12" r="8.5"/><circle cx="12" cy="12" r="3" fill="currentColor" stroke="none"/></svg><span class="text-[11px] text-[var(--linger-primary)]">Ring</span></span>
+                    <span class="flex items-center gap-1.5 rounded-[6px] border border-[var(--linger-line)] px-2.5 py-1.5 opacity-70"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="h-4 w-4 text-[var(--linger-ink-2)]"><circle cx="12" cy="12" r="8.5" stroke-dasharray="4 3"/></svg><span class="text-[11px] text-[var(--linger-ink-2)]">Classic</span></span>
+                    <span class="flex items-center gap-1.5 rounded-[6px] border border-[var(--linger-line)] px-2.5 py-1.5 opacity-70"><i data-lucide="timer" class="h-4 w-4 text-[var(--linger-ink-2)]"></i><span class="text-[11px] text-[var(--linger-ink-2)]">SF Symbol</span></span>
                   </div>
                   <span></span>
                 </div>
@@ -460,24 +576,23 @@ body { margin: 0; background-color: var(--wallpaper-base); color: var(--linger-i
           </div>
         </div>
 
-        <!-- ========== 面板 5：关于（票据风格） ========== -->
+        <!-- ═══ 面板 5：关于（票据风格，白底纸张）═══ -->
         <div class="tab-panel" data-panel="about">
           <div class="ticket">
             <div class="ticket-inner">
-              <!-- 票据头部：App 图标 + 名称 + 版本 + Slogan -->
+              <!-- 票据头部：App 图标(48×48 圆角12) + 名称(20pt bold) + 版本(mono 11pt) + slogan(12pt 斜体) -->
               <div class="ticket-header">
                 <div class="ticket-app-icon">
                   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" class="h-7 w-7 text-[var(--linger-primary)]"><circle cx="12" cy="12" r="8.5"/><circle cx="12" cy="12" r="3" fill="currentColor" stroke="none"/></svg>
                 </div>
                 <h1 class="mt-3 text-[20px] font-bold tracking-tight text-[var(--linger-ink)]">Linger</h1>
-                <p class="mt-0.5 font-mono text-[11px] text-[var(--linger-ink-2)]">Version 2.0.0</p>
+                <p class="mt-1 font-mono text-[11px] text-[var(--linger-ink-2)]">Version 2.5.0</p>
                 <p class="mt-2 text-[12px] italic text-[var(--linger-ink-3)]">一拉即走，松手计时</p>
               </div>
 
-              <!-- 票据虚线分割 -->
               <div class="ticket-dashed"></div>
 
-              <!-- 票据正文：键值对字段 -->
+              <!-- 票据字段：label(mono 10pt 大写 灰) / value(12pt 深色, mono 11pt) -->
               <div class="ticket-fields">
                 <div class="ticket-field">
                   <span class="ticket-field-label">Developer</span>
@@ -493,7 +608,7 @@ body { margin: 0; background-color: var(--wallpaper-base); color: var(--linger-i
                 </div>
                 <div class="ticket-field">
                   <span class="ticket-field-label">Build</span>
-                  <span class="ticket-field-value mono">2026.08.02</span>
+                  <span class="ticket-field-value mono">2026.08.04</span>
                 </div>
                 <div class="ticket-field">
                   <span class="ticket-field-label">License</span>
@@ -501,10 +616,9 @@ body { margin: 0; background-color: var(--wallpaper-base); color: var(--linger-i
                 </div>
               </div>
 
-              <!-- 票据虚线分割 -->
               <div class="ticket-dashed"></div>
 
-              <!-- 票据底部：感谢语 -->
+              <!-- 票据底部：感谢语(11pt) + mono 落款(9pt) -->
               <div class="ticket-footer">
                 <p class="text-[11px] text-[var(--linger-ink-3)]">Made with care · 感谢使用 Linger</p>
                 <p class="mt-1 font-mono text-[9px] tracking-wider text-[var(--linger-ink-3)] opacity-60">— LINGER · 2026 —</p>
@@ -600,7 +714,7 @@ body { margin: 0; background-color: var(--wallpaper-base); color: var(--linger-i
 
         content.style.height = oldHeight + 'px';
         content.offsetHeight;
-        content.style.transition = 'height 400ms cubic-bezier(0.32, 0.72, 0, 1)';
+        content.style.transition = 'height 400ms cubic-bezier(0.32,0.72,0,1)';
         content.style.height = newHeight + 'px';
 
         function onEnd(e) {
