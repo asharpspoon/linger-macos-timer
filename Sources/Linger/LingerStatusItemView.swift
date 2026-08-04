@@ -59,14 +59,6 @@ final class LingerStatusItemView: NSView {
         invalidateIntrinsicContentSize()
     }
 
-    /// 图标（圆圈）中心在屏幕坐标系下的点。
-    /// 拖拽线以此为锚点从圆圈上延伸出来——无论标题/icon 宽度怎么变，始终对齐圆圈。
-    func iconCenterInScreen() -> NSPoint? {
-        guard let window else { return nil }
-        let f = window.convertToScreen(convert(imageView.bounds, from: imageView))
-        return NSPoint(x: f.midX, y: f.midY)
-    }
-
     override var intrinsicContentSize: NSSize {
         var width: CGFloat = 4
         if hasIcon { width += 16 + 2 }

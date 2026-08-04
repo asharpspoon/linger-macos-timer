@@ -37,8 +37,6 @@ final class DragFeedbackView: NSView {
 
     private static let kContentWidthMin: CGFloat = 280
     private static let kTopY: CGFloat = 12
-    /// 线顶相对图标圆圈中心的偏移：圆心下方 6pt ≈ 圆下缘，线像从圆圈上延伸出来
-    private static let kIconLineGap: CGFloat = 6
     private static let kDefaultMaxLineHeight: CGFloat = 360
     private static let kBottomBlockHeight: CGFloat = 124   // 双轨 + 提示 + 边距
     private static let kRubberHeadroom: CGFloat = 24       // 橡皮筋最大延伸（触顶后「微微拉长」要看得见）
@@ -177,11 +175,8 @@ final class DragFeedbackView: NSView {
         if let visible = NSScreen.main?.visibleFrame {
             x = min(max(x, visible.minX + 4), visible.maxX - contentWidth - 4)
         }
-        // 线顶对齐图标圆圈中心下方 kIconLineGap（从圆圈上延伸出来），窗口顶部再让出 topY。
-        // anchorRect 是 0 尺寸矩形（midX/midY = 圆心）。
-        let lineTopScreenY = anchorRect.midY + DragFeedbackView.kIconLineGap
-        let windowTop = lineTopScreenY + topY
-        let y = windowTop - height
+        // 窗口顶部对齐菜单栏按钮底边（anchorRect.minY），向下延伸。
+        let y = anchorRect.minY - height
 
         panelWindow?.setFrame(NSRect(x: x, y: y, width: contentWidth, height: height), display: false)
         frame = NSRect(x: 0, y: 0, width: contentWidth, height: height)
