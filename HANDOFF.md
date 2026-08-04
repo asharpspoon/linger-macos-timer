@@ -99,7 +99,14 @@ Linger2.5/
       - 毛玻璃胶囊（NSVisualEffectView hudWindow）+ 1px 边框 + 圆角 10，内容自适应（px-5/py-3）
       - 文案 13px ink，对齐原型「已达 N 个计时上限」
       - 动画：淡入 0.4s → 停留 2.5s → 淡出 0.4s（原 2s 直接消失）
-- [ ] 剩余页面对齐：settings×4、about、schedule-timer、notification
+- [x] **settings×4 对齐（2026-08-04 下午）**：
+      - 外壳已有（520pt 玻璃 + 顶部图标 Tab）；本轮对齐内容区
+      - 通知页：改**卡片**结构（授权绿点 + 「管理…」→ 系统通知设置 + 完成通知 switch + 提示音 select+switch），删废弃浮窗行
+      - 日历页：授权绿点行 + **卡片1**（目标日历/写入方式/默认标题 + 灰注释）+ **卡片2**（快捷预设 fn/ctrl/opt 带 kbd 键帽 + 注释）
+      - 通用页：加**图标三风格选择器**（Ring/Classic/SF Symbol 三选一，选中琥珀边框，绑定 linger_iconStyle，与 popup 双向同步）
+      - 操作页：最大时长数字框加 **stepper 上下箭头**
+      - 新增 token：LingerTheme.Color.surface/surface2（卡片面 #16161A / #1F1F25）
+- [ ] 剩余页面对齐：about、schedule-timer、notification
 - [ ] 按原型逐页对齐：hover-list（悬停列表）、toast、settings×4、about、schedule-timer、notification
 - [ ] 通知/日历权限、预约计时、图标三风格（Ring/Classic/timer）
 
