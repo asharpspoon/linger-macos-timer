@@ -46,12 +46,48 @@ Linger2.5/
 - [x] `script/build_and_run.sh` 一键构建 + 打 `dist/Linger.app`（ad-hoc 签名）+ 启动
 - [x] **拖拽死锁修复**（根因：NSStatusBarButton cell tracking loop 吞 mouseUp →
       状态机卡死、松手不计时。方案：自定义 `LingerStatusItemView` 直接在视图层收鼠标事件）
-- [x] **拖拽预览按 menubar-drag.html 重写**（4pt 渐变竖线 + 10pt 圆点 + 水平双轨
+- [x] **拖拽预览第一轮**（按 menubar-drag.html：4pt 渐变竖线 + 10pt 圆点 + 水平双轨
       for/til 均 24pt + 悬停高亮 + 提示文案）
-- [ ] **待真机验收**：菜单栏图标 → 拖拽 → 松手计时 → 悬停列表（用户实机确认中）
+- [x] **拖拽预览第二轮重构（用户 6 条反馈）**：
+      - 计时字号 24→22pt，新增设置「计时字号」滑块（18–30pt，`linger_dragPreviewFontSize`）
+      - 发光重构：`DragLineView` 手绘（外光晕 + 渐变核心线 NSShadow + 径向渐变光点 + 呼吸动画），
+        替换原 CALayer 拼装（阴影不可见、圆点生硬）
+      - til 结束时刻改为 HH:mm:ss；面板宽度按字号/最大时长自适应
+      - 高亮侧字号 +2pt（提醒语义）
+      - 提示文案只在前 3 次成功拖拽显示（`linger_dragHintUsageCount`）
+      - 触顶橡皮筋：`DragPhysics.dampedOvershoot`（iOS 阻尼，上限 +40pt，面板向下生长）
+        + trackpad 轻触反馈（NSHapticFeedbackManager，触顶瞬间一次）
+- [x] **纯逻辑单测接入 `swift test`**（`DragPhysics` + `TimerEntry` 共 8 个，全绿）
+- [ ] **待真机验收 v2**：拖拽手感 / 发光效果 / 橡皮筋触顶 / 字号设置（用户实机确认中）
 - [ ] 按原型逐页对齐：hover-list（悬停列表）、toast、settings×4、about、schedule-timer、notification
-- [ ] 纯逻辑单测（TimerEntry/TimerManager）接入 `swift test`
 - [ ] 通知/日历权限、预约计时、图标三风格（Ring/Classic/timer）
+
+## 最近交接（2026-08-04 上午 · 拖拽预览重构）
+
+**本次完成**
+- 6 条反馈全部落地（字号设置 / 发光重构 / HH:mm:ss / 高亮侧字号 +2 / 提示前 3 次 / 触顶橡皮筋+震动）
+- `swift build` 通过、`swift test` 8/8 绿
+
+**未完成 / 卡点**
+- 实机验收：拖拽手感、发光观感、橡皮筋力度、字号滑块生效范围
+
+**下一步（按优先级）**
+1. 用户实机验收拖拽预览（`./script/build_and_run.sh`）
+2. 按原型逐页对齐剩余页面（hover-list / toast / settings / about / schedule-timer / notification）
+3. 通知/日历权限、预约计时、图标三风格
+
+**如何验证**
+- 拖拽：菜单栏图标下拉 → 观察发光竖线/光点、松手计时；拉过最长处感受橡皮筋 + 触顶震动
+- 设置：设置窗口「操作」页 → 计时字号滑块 → 再拖拽看字号与面板宽度联动
+- 单测：`swift test --disable-sandbox`（需 `DEVELOPER_DIR` 指向 Xcode）
+
+**给下一位的提示**
+- 发光/光点在 `DragLineView.draw(_:)` 手绘（NSShadow + 径向渐变），别再退回 CALayer 拼装
+- 橡皮筋纯函数在 `DragPhysics.swift`（Foundation-only，可单测）；面板随溢出向下生长在
+  `DragFeedbackView.update()`（顶部固定）
+- 提示次数计数在 `MenuBarManager.finishDrag(with:)` 成功后 +1；改阈值看 `LingerTheme.maxDragHintShownCount`
+- 字号设置键 `linger_dragPreviewFontSize`（18–30，默认 22）；面板宽度 `requiredPanelWidth()` 自适应
+- 状态栏 `statusItem.view` deprecation 警告是刻意为之，勿改
 
 ## 构建与运行
 
@@ -79,7 +115,8 @@ cd /Users/dawang/Downloads/vibecoding/Linger2.5
   mouseDown/mouseUp/rightMouseUp + 内建 hover tracking —— 这是吞 mouseUp 老 bug 的根治方案
 - **拖拽状态机**：idle → pressed（mouseDown）→ dragging（位移 >4px，30fps 轮询算距离）
   → mouseUp 松手 → `finishDrag` 创建计时；Command 取消；所有出口收敛到 `cleanupDrag`
-- **反馈视图**：`DragFeedbackView.swift`（按 menubar-drag.html 实现，水平双轨）
+- **反馈视图**：`DragFeedbackView.swift`（水平双轨、字号设置、橡皮筋动态增高）、
+  `DragLineView.swift`（发光竖线/光点手绘）、`DragPhysics.swift`（触顶阻尼纯函数，可单测）
 - **浮窗**：`HoverListView.swift`（300pt 毛玻璃列表，三组排序）、`ScheduleTimerView.swift`（预约）、
   `ToastView.swift`（居中提示）、`NotificationManager.swift`（横幅）、`SettingsWindow/AboutWindow/CalendarManager`
 
