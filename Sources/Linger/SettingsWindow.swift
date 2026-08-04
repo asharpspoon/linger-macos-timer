@@ -437,7 +437,7 @@ final class SettingsWindow: NSWindow {
     }
 
     private func buildPreviewFontSizeRow() -> NSView {
-        let slider = NSSlider(value: currentPreviewFontSize(), minValue: 14, maxValue: 26,
+        let slider = NSSlider(value: currentPreviewFontSize(), minValue: 12, maxValue: 24,
                               target: self, action: #selector(previewFontSizeChanged(_:)))
         slider.widthAnchor.constraint(equalToConstant: 160).isActive = true
         let valueLabel = NSTextField(labelWithString: "\(Int(currentPreviewFontSize()))pt")

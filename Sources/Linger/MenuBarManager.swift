@@ -21,7 +21,7 @@ final class MenuBarManager: NSObject {
     //   1. 按钮只在 leftMouseDown 触发 action（不消费 mouseUp）；
     //   2. 拖拽期挂 **局部** monitor 收 .leftMouseUp / .flagsChanged；
     //   3. 30fps 轮询只负责「算距离 + 刷新反馈」，**不**负责判定松手。
-    private enum DragState { case idle, pressed, dragging }
+    private enum DragState { case idle, pressed, dragging, cancelling }
     private var dragState: DragState = .idle
     private var dragStartLocation: NSPoint = .zero
     private var pollTimer: Timer?
@@ -35,6 +35,8 @@ final class MenuBarManager: NSObject {
     private var dragFeedback: DragFeedbackView?
     /// 上一帧是否已触顶（用于触顶时只触发一次轻触反馈）
     private var wasOverflowing = false
+    /// 触顶瞬间冻结的结束时刻（触顶后数字不再变化，直到退出溢出）
+    private var overflowTil: Date?
 
     // T3: 倒计时面板（CountdownPillPanel / CountdownFloater）已移除；计时归零改用 Toast 占位。
     // T5: 日历预约面板（ScheduleTimerView）承载于独立窗口 schedulePanel。
@@ -402,9 +404,17 @@ final class MenuBarManager: NSObject {
         }
         wasOverflowing = overflow
 
+        // 触顶后冻结结束时刻：for/til 两侧数字都不再变化（WYSIWYG）
+        if overflow {
+            if overflowTil == nil { overflowTil = til }
+        } else {
+            overflowTil = nil
+        }
+        let displayTil = overflowTil ?? til
+
         dragFeedback?.update(distance: distance,
                              seconds: seconds,
-                             til: til,
+                             til: displayTil,
                              mode: dualRailMode(),
                              highlight: highlightSide(),
                              overflow: overflow,
@@ -417,10 +427,10 @@ final class MenuBarManager: NSObject {
         case .leftMouseUp:
             finishDrag()
         case .keyDown:
-            // Esc 取消拖拽（keyCode 53 = Esc）
+            // Esc 取消拖拽：断线动画（keyCode 53 = Esc）
             if event.keyCode == 53 || event.charactersIgnoringModifiers == "\u{1b}" {
                 os_log("Drag cancelled by Esc", log: log, type: .debug)
-                cancelDrag()
+                cancelDrag(animated: true)
             }
         case .flagsChanged:
             if event.modifierFlags.contains(.command) {
@@ -459,7 +469,24 @@ final class MenuBarManager: NSObject {
         os_log("finishDrag: %.1fs (d=%.1f)", log: log, type: .info, seconds, distance)
     }
 
-    private func cancelDrag() {
+    /// 取消拖拽。`animated` 为 true（Esc）时先播断线动画再复位；
+    /// 动画期间不再响应鼠标/轮询，松手也不会创建计时。
+    private func cancelDrag(animated: Bool = false) {
+        if animated {
+            if let m = localMonitor {
+                NSEvent.removeMonitor(m)
+                localMonitor = nil
+            }
+            pollTimer?.invalidate()
+            pollTimer = nil
+            clickHintTimer?.invalidate()
+            clickHintTimer = nil
+            dragState = .cancelling
+            dragFeedback?.animateBreak { [weak self] in
+                self?.cleanupDrag()
+            }
+            return
+        }
         cleanupDrag()
     }
 
@@ -478,6 +505,7 @@ final class MenuBarManager: NSObject {
         hideClickHint()
         dragState = .idle
         wasOverflowing = false
+        overflowTil = nil
         pendingTitle = nil
         refreshStatusItemTitle()
     }

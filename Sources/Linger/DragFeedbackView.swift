@@ -51,11 +51,11 @@ final class DragFeedbackView: NSView {
 
     private var currentHighlight: HighlightSide = .forSide
 
-    /// 当前预览字号（UserDefaults `linger_dragPreviewFontSize`，缺省 22，范围 18–30）
+    /// 当前预览字号（UserDefaults `linger_dragPreviewFontSize`，缺省 16，范围 12–24）
     private var previewFontSize: CGFloat {
         let raw = UserDefaults.standard.double(forKey: LingerTheme.UserDefaultsKey.dragPreviewFontSize.rawValue)
         let v = raw > 0 ? raw : LingerTheme.defaultDragPreviewFontSize
-        return CGFloat(min(max(v, 14), 26))
+        return CGFloat(min(max(v, 12), 24))
     }
 
     /// 面板总高（含橡皮筋延伸）
@@ -139,6 +139,7 @@ final class DragFeedbackView: NSView {
         let p = (percent >= 25 && percent <= 75) ? percent : LingerTheme.defaultMaxDragLinePercent
         maxLineHeight = DragFeedbackView.kDefaultMaxLineHeight * CGFloat(p / 50)
         rubberHeight = 0
+        lineView.breakProgress = 0   // 复位 Esc 断线动画
 
         // 面板宽度按字号自适应（两轨都按「高亮侧 +2pt」的最宽值算，避免切换时挤破）
         contentWidth = max(DragFeedbackView.kContentWidthMin, requiredPanelWidth())
@@ -183,6 +184,30 @@ final class DragFeedbackView: NSView {
     func hide() {
         stopBreathing()
         panelWindow?.orderOut(nil)
+    }
+
+    // MARK: - Esc 断线动画
+
+    /// Esc 取消：线条从中间裂开、圆点下坠、整体淡出（约 0.28s），完成后回调隐藏面板。
+    func animateBreak(completion: @escaping () -> Void) {
+        stopBreathing()
+        let duration: TimeInterval = 0.28
+        let start = CACurrentMediaTime()
+        let timer = Timer(timeInterval: 1.0 / 60.0, repeats: true) { [weak self] t in
+            guard let self else {
+                t.invalidate()
+                return
+            }
+            let progress = CGFloat((CACurrentMediaTime() - start) / duration)
+            if progress >= 1 {
+                t.invalidate()
+                self.lineView.breakProgress = 1
+                completion()
+                return
+            }
+            self.lineView.breakProgress = min(1, progress)
+        }
+        RunLoop.main.add(timer, forMode: .common)
     }
 
     // MARK: - 呼吸微动画（柔和的 opacity 脉动）
@@ -238,6 +263,8 @@ final class DragFeedbackView: NSView {
         lineView.lineHeight = lineHeight
         lineView.topY = topY
         lineView.isOverflowing = overflow
+        // 触顶后线宽按公式连续变细（4 → 2，指数衰减）
+        lineView.lineWidth = CGFloat(DragPhysics.lineWidth(overshoot: Double(overshoot)))
 
         // 4) 双轨文本：for = 倒计时（走 linger_timeFormat），til = 结束时刻 HH:mm:ss
         let format = UserDefaults.standard.string(forKey: LingerTheme.UserDefaultsKey.timeFormat.rawValue)
@@ -279,7 +306,7 @@ final class DragFeedbackView: NSView {
         let forTrackW = prefixW + 6 + forPlaceholder.size(withAttributes: [.font: timeFont]).width
         let tilTrackW = prefixW + 6 + tilPlaceholder.size(withAttributes: [.font: timeFont]).width
         let both = forTrackW + tilTrackW + 16 * 2 + 1
-        return both + 32   // 左右留白
+        return both + 40   // 左右留白（含 frame padding，防任何遮挡）
     }
 
     /// 水平双轨：左组 + 分隔线 + 右组，整体居中。
@@ -313,11 +340,12 @@ final class DragFeedbackView: NSView {
         func place(_ prefix: NSTextField, _ time: NSTextField) {
             let pSize = prefix.intrinsicContentSize
             let tSize = time.intrinsicContentSize
+            // frame 宽度留 padding（前缀 +2 / 数字 +4），文字永不贴右缘被裁
             prefix.frame = NSRect(x: x, y: centerY - pSize.height / 2,
-                                  width: pSize.width, height: pSize.height)
+                                  width: pSize.width + 2, height: pSize.height)
             x += pSize.width + labelGap
             time.frame = NSRect(x: x, y: centerY - tSize.height / 2,
-                                width: tSize.width, height: tSize.height)
+                                width: tSize.width + 4, height: tSize.height)
             x += tSize.width
         }
 
@@ -368,13 +396,26 @@ final class DragFeedbackView: NSView {
         }
     }
 
-    /// 字号弹跳：growing 侧从 0.85 → 1.08 → 1.0（过冲回弹），对侧 1.15 → 0.98 → 1.0。
+    /// 字号弹跳：growing 侧 0.85 → 1.05 → 1.0（过冲回弹）；
+    /// 对侧（已换成更小字号）0.92 → 0.97 → 1.0 —— 只做轻微收拢，
+    /// 绝不能从 1.15 起跳（会盖住前缀末字符 + 顶掉右缘秒数，见 2026-08-04 bug）。
     private func animateFontPop(_ field: NSTextField, growing: Bool) {
         let anim = CAKeyframeAnimation(keyPath: "transform.scale")
-        anim.values = growing ? [0.85, 1.08, 1.0] : [1.15, 0.98, 1.0]
+        anim.values = growing ? [0.85, 1.05, 1.0] : [0.92, 0.97, 1.0]
         anim.keyTimes = [0, 0.6, 1]
         anim.duration = 0.35
         anim.timingFunctions = [CAMediaTimingFunction(name: .easeOut)]
         field.layer?.add(anim, forKey: "fontPop")
+    }
+
+    // MARK: - 调试/测试钩子
+
+    /// 布局摘要（internal，供单测检查遮挡）：面板宽度 + 各标签 frame/intrinsic/文本。
+    func debugLayoutSummary() -> String {
+        func fmt(_ f: NSTextField) -> String {
+            let i = f.intrinsicContentSize
+            return "\(f.stringValue)[\(Int(f.frame.minX))...\(Int(f.frame.maxX)) w=\(Int(f.frame.width)) iw=\(String(format: "%.1f", i.width))]"
+        }
+        return "panelW=\(Int(contentWidth)) | for \(fmt(forPrefix)) \(fmt(forTime)) | til \(fmt(tilPrefix)) \(fmt(tilTime))"
     }
 }

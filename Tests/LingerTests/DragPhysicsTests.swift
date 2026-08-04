@@ -19,6 +19,26 @@ final class DragPhysicsTests: XCTestCase {
         XCTAssertLessThan(DragPhysics.dampedOvershoot(200, headroom: 40), 40)
     }
 
+    func testLineWidthNoOvershootStaysNormal() {
+        XCTAssertEqual(DragPhysics.lineWidth(overshoot: 0), 4, accuracy: 0.0001)
+        XCTAssertEqual(DragPhysics.lineWidth(overshoot: -10), 4, accuracy: 0.0001)
+    }
+
+    func testLineWidthThinsContinuouslyTowardMin() {
+        // 指数衰减：拉过 40px → 2 + 2*e^-1 ≈ 2.736
+        XCTAssertEqual(DragPhysics.lineWidth(overshoot: 40), 2 + 2 * exp(-1), accuracy: 0.0001)
+        // 单调递减且不低于 min
+        var prev = DragPhysics.lineWidth(overshoot: 0)
+        for o in stride(from: 0.0, through: 400.0, by: 20.0) {
+            let v = DragPhysics.lineWidth(overshoot: o)
+            XCTAssertLessThanOrEqual(v, prev, "must be monotonically non-increasing")
+            XCTAssertGreaterThanOrEqual(v, 2 - 0.0001, "must not go below minWidth")
+            prev = v
+        }
+        // 极大 overshoot 饱和到 minWidth（允许浮点等于 2）
+        XCTAssertLessThanOrEqual(DragPhysics.lineWidth(overshoot: 5000), 2 + 0.0001)
+    }
+
     func testDampedOvershootIsResistantAndMonotonic() {
         // overshoot=40 → ~25.3：远不到 40，体现「越拉越顶手」
         let at40 = DragPhysics.dampedOvershoot(40, headroom: 40)
