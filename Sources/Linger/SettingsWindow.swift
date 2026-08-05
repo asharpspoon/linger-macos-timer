@@ -192,66 +192,67 @@ final class SettingsWindow: NSWindow {
             return
         }
         currentIndex = index
-        // 用户要求：标题统一定为「设置」（不随 tab 变化）
         title = "设置"
         updateTabStyles()
 
-        // 替换容器内的面板视图
-        panelContainer.subviews.forEach { $0.removeFromSuperview() }
+        // 先测新 panel 理想高度（此时未加入容器，不受当前窗口高度约束）
         let panel = panelView(at: index)
-        // 先测 panel 理想高度（此时未加入容器，不受当前矮窗口约束干扰，
-        // 保证从低 tab → 高 tab 时 targetHeight 正确，动画两个方向都生效）
         let panelFit = panel.fittingSize.height
         let panelHeight = max(panelFit, 100)
         let computed = tabBarHeight + panelHeight + contentVSpacing * 2
-        // 窗口高度钳制到屏幕可用高度（关于页票据较高，窗口可能比屏幕还高，
-        // 会顶到屏幕上方盖住菜单栏 —— 用户反馈「菜单栏消失」）
+        // 窗口高度钳制到屏幕可用高度（防止窗口比屏幕高、顶部顶出屏幕盖住菜单栏）
         let screenFrame = NSScreen.main?.visibleFrame ?? NSRect(x: 0, y: 0, width: 800, height: 600)
         let maxHeight = max(240, screenFrame.height - 16)
         let targetHeight = min(computed, maxHeight)
-        // 顶部固定且不超出屏幕可见区（保留菜单栏）
+        // 顶部固定且不超出屏幕可见区
         let topLimit = screenFrame.maxY - 8
         let topY = min(frame.maxY, topLimit)
         let targetFrame = NSRect(x: frame.minX, y: topY - targetHeight,
                                  width: Self.windowWidth, height: targetHeight)
 
-        panel.translatesAutoresizingMaskIntoConstraints = false
-        panelContainer.addSubview(panel)
-        NSLayoutConstraint.activate([
-            panel.topAnchor.constraint(equalTo: panelContainer.topAnchor, constant: contentVSpacing),
-            panel.leadingAnchor.constraint(equalTo: panelContainer.leadingAnchor, constant: contentHPadding),
-            panel.trailingAnchor.constraint(equalTo: panelContainer.trailingAnchor, constant: -contentHPadding),
-            panel.bottomAnchor.constraint(lessThanOrEqualTo: panelContainer.bottomAnchor, constant: -contentVSpacing)
-        ])
-
         os_log("LingerDiag selectTab idx=%d animated=%d panelFit=%.1f targetH=%.1f frameH=%.1f screenH=%.1f",
                log: log, type: .info, index, animated ? 1 : 0, panelFit, targetHeight, frame.height, screenFrame.height)
+
+        // 动画完成后（或非动画直接）切换面板内容 + 布局 + 指示线
+        func finish() {
+            panelContainer.subviews.forEach { $0.removeFromSuperview() }
+            panel.translatesAutoresizingMaskIntoConstraints = false
+            panelContainer.addSubview(panel)
+            NSLayoutConstraint.activate([
+                panel.topAnchor.constraint(equalTo: panelContainer.topAnchor, constant: contentVSpacing),
+                panel.leadingAnchor.constraint(equalTo: panelContainer.leadingAnchor, constant: contentHPadding),
+                panel.trailingAnchor.constraint(equalTo: panelContainer.trailingAnchor, constant: -contentHPadding),
+                panel.bottomAnchor.constraint(lessThanOrEqualTo: panelContainer.bottomAnchor, constant: -contentVSpacing)
+            ])
+            panelContainer.layoutSubtreeIfNeeded()
+            tabBar.layoutSubtreeIfNeeded()
+            positionTabIndicator()
+            refreshPermissionStatuses()
+        }
+
         if animated {
-            // 以最上方边为基准，只伸缩底部：自定义高度插值（顶部恒定、不超屏幕；双向都动画）
+            // 先做纯几何高度动画（容器内仍是旧内容，无约束/重绘干扰）→ 双向都丝滑
             let startH = frame.height
             let start = CACurrentMediaTime()
-            let duration: CFTimeInterval = 0.55   // 用户要求更慢、更优雅
+            let duration: CFTimeInterval = 0.55
             let timer = Timer(timeInterval: 1.0 / 60.0, repeats: true) { [weak self] t in
                 guard let self else { t.invalidate(); return }
                 let p = min(1, (CACurrentMediaTime() - start) / duration)
-                // easeInOutCubic：先缓入再缓出（优雅变化曲线）
+                // easeInOutCubic：先缓入再缓出
                 let eased: CGFloat = p < 0.5 ? 4 * p * p * p : 1 - 4 * pow(1 - p, 3)
                 let h = startH + (targetHeight - startH) * eased
                 self.setFrame(NSRect(x: self.frame.minX, y: topY - h,
                                      width: Self.windowWidth, height: h), display: true)
-                if p >= 1 { t.invalidate() }
+                if p >= 1 {
+                    t.invalidate()
+                    finish()
+                }
             }
             RunLoop.main.add(timer, forMode: .common)
         } else {
             setFrame(targetFrame, display: true)
+            finish()
         }
-
-        // 布局后定位激活 tab 顶部指示线（按钮 frame 此刻才确定）
-        panelContainer.layoutSubtreeIfNeeded()
-        tabBar.layoutSubtreeIfNeeded()
-        positionTabIndicator()
-
-        refreshPermissionStatuses()
     }
 
     private func updateTabStyles() {
