@@ -181,7 +181,7 @@ final class ScheduleTimerView: NSView {
         placeCapsule(nameCap, x: sidePadding + durW + capsuleGap, y: topY(forRow: 1),
                      width: innerW - durW - capsuleGap)
 
-        // 行3：预计结束（左）+ 取消 / 确认（右）
+        // 行3：预计结束（左）+ 取消 / 确认（右）—— 全部垂直居中在 row2 行高内
         let arrow = NSImageView()
         arrow.image = NSImage(systemSymbolName: "arrow.right",
                               accessibilityDescription: nil)?
@@ -191,8 +191,10 @@ final class ScheduleTimerView: NSView {
         endStack.orientation = .horizontal
         endStack.spacing = 4
         endStack.alignment = .centerY
+        // endStack 高度 16，垂直居中在 capsuleHeight(28) 内
         endStack.frame = NSRect(x: sidePadding, y: topY(forRow: 2) + (capsuleHeight - 16) / 2,
                                 width: innerW - 70, height: 16)
+        // 取消/确认按钮 24x24，垂直居中在 capsuleHeight(28) 内
         cancelButton.frame = NSRect(x: w - sidePadding - 56, y: topY(forRow: 2) + (capsuleHeight - 24) / 2,
                                     width: 24, height: 24)
         confirmButton.frame = NSRect(x: w - sidePadding - 28, y: topY(forRow: 2) + (capsuleHeight - 24) / 2,
@@ -211,22 +213,28 @@ final class ScheduleTimerView: NSView {
     }
 
     /// 胶囊：input 底色 + 圆角 8 + 图标 + 内容（原型 .bg-input rounded-lg）。
-    /// 内部用 frame + autoresizingMask（不依赖 autolayout，避免未布局时 icon/控件 frame=0 不可见）
+    /// icon 13x13 居中，content 20pt 高度居中 —— 视觉与原型 flex items-center 对齐。
     private func makeCapsule(icon: String, content: NSView) -> NSView {
         let cap = NSView()
         cap.wantsLayer = true
         cap.layer?.backgroundColor = LingerTheme.nsColor(LingerTheme.Color.input).cgColor
         cap.layer?.cornerRadius = 8
 
+        let iconSize: CGFloat = 13
         let iconView = NSImageView()
         iconView.image = NSImage(systemSymbolName: icon, accessibilityDescription: nil)?
-            .withSymbolConfiguration(NSImage.SymbolConfiguration(pointSize: 13, weight: .medium))
+            .withSymbolConfiguration(NSImage.SymbolConfiguration(pointSize: iconSize, weight: .medium))
         iconView.contentTintColor = LingerTheme.ink3
-        iconView.frame = NSRect(x: 8, y: (capsuleHeight - 16) / 2, width: 16, height: 16)
+        // icon 垂直居中在 capsuleHeight(28) 内
+        iconView.frame = NSRect(x: 8, y: (capsuleHeight - iconSize) / 2,
+                                width: iconSize, height: iconSize)
         cap.addSubview(iconView)
 
-        // content 初始用占位 frame，placeCapsule 设 cap.frame 后由 layoutContent 手动修正
-        content.frame = NSRect(x: 30, y: 0, width: 60, height: capsuleHeight)
+        // content 垂直居中：高度 20pt（接近 NSDatePicker .textField + NSTextField 自然高度）
+        let contentH: CGFloat = 20
+        let contentX: CGFloat = 8 + iconSize + 6  // 27（原型 px-2=8 + icon 13 + gap-1.5=6）
+        content.frame = NSRect(x: contentX, y: (capsuleHeight - contentH) / 2,
+                               width: 60, height: contentH)
         content.autoresizingMask = [.width]
         cap.addSubview(content)
         return cap
@@ -237,9 +245,10 @@ final class ScheduleTimerView: NSView {
         contentContainer.addSubview(cap)
         // cap.bounds.width 现在是实际值，手动修正 content frame（autoresize 在某些控件上不可靠）
         if let content = cap.subviews.dropFirst().first {
-            content.frame = NSRect(x: 30, y: 0,
-                                   width: max(20, cap.bounds.width - 38),
-                                   height: capsuleHeight)
+            let contentH: CGFloat = 20
+            content.frame = NSRect(x: 27, y: (capsuleHeight - contentH) / 2,
+                                   width: max(20, cap.bounds.width - 27 - 8),
+                                   height: contentH)
         }
         cap.layoutSubtreeIfNeeded()
     }
@@ -262,7 +271,16 @@ final class ScheduleTimerView: NSView {
     // 2026-08-05：内联进 hover 列表后不画独立背景，透明融入列表
     override func draw(_ dirtyRect: NSRect) {}
 
-    // 内容容器始终匹配自身 bounds（高度动画期间 autoresize 可能不更新，手动同步保证内容不裁）
+    // 关键：手动 timer 改 frame 时 layout() 不一定触发，导致 contentContainer.bounds
+    // 跟不上 scheduleView.bounds → 子 view 在 bounds 外 → hitTest 返回 nil → 无法编辑。
+    // 重写 frame didSet 强制同步 contentContainer.frame，保证子 view 始终在 bounds 内可点击。
+    override var frame: NSRect {
+        didSet {
+            contentContainer.frame = bounds
+        }
+    }
+
+    // 内容容器始终匹配自身 bounds（兜底；动画期间主要由 frame didSet 同步）
     override func layout() {
         super.layout()
         contentContainer.frame = bounds
@@ -337,6 +355,11 @@ final class ScheduleTimerView: NSView {
         contentContainer.wantsLayer = true
         alphaValue = 1
         contentContainer.layer?.setAffineTransform(.identity)
+    }
+
+    /// 诊断用：返回 contentContainer 的 bounds（验证动画期间是否同步）
+    func contentContainerBounds() -> NSRect {
+        return contentContainer.bounds
     }
 
     // MARK: - 数据同步

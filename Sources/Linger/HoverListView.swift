@@ -1166,9 +1166,9 @@ final class HoverListView: NSView {
         scheduleView = v
         isScheduling = true
         // 菜单栏 app（.accessory）必须 activate 才能 makeKey + firstResponder 接收键盘输入
-        // 仅 makeKey 不够：NSTextField 需 app 处于 active 状态才能成为 firstResponder
+        // makeKeyAndOrderFront 比 makeKey 更可靠：显式 orderFront 让窗口真正成为 key window
         NSApp.activate(ignoringOtherApps: true)
-        window?.makeKey()
+        window?.makeKeyAndOrderFront(nil)
         NSLog("LingerDiag schedule expand: view=%@ size=%.0fx%.0f",
               String(describing: v), v.bounds.width, v.bounds.height)
 
@@ -1220,7 +1220,8 @@ final class HoverListView: NSView {
             if p >= 1 {
                 t.invalidate()
                 self.scheduleHeightAnimTimer = nil
-                NSLog("LingerDiag schedule height anim done: finalH=%.1f", sv.frame.height)
+                NSLog("LingerDiag schedule height anim done: frame=%@ contentContainer.bounds=%@",
+                      NSStringFromRect(sv.frame), NSStringFromRect(sv.contentContainerBounds()))
             }
         }
         RunLoop.main.add(timer, forMode: .common)
