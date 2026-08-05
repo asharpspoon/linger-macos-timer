@@ -231,17 +231,17 @@ final class SettingsWindow: NSWindow {
         }
 
         if animated {
-            // 1) 旧内容渐出（0.2s）
+            // 1) 旧内容渐出（0.3s）
             NSAnimationContext.runAnimationGroup { ctx in
-                ctx.duration = 0.2
+                ctx.duration = 0.3
                 ctx.timingFunction = CAMediaTimingFunction(name: .easeIn)
                 panelContainer.subviews.forEach { $0.animator().alphaValue = 0 }
             }
 
-            // 2) 窗口高度动画（0.55s 几何，顶部固定，双向一致）
+            // 2) 窗口高度动画（0.8s 几何，顶部固定，双向一致，更优雅）
             let startH = frame.height
             let start = CACurrentMediaTime()
-            let duration: CFTimeInterval = 0.55
+            let duration: CFTimeInterval = 0.8
             let timer = Timer(timeInterval: 1.0 / 60.0, repeats: true) { [weak self] t in
                 guard let self else { t.invalidate(); return }
                 let p = min(1, (CACurrentMediaTime() - start) / duration)
@@ -254,13 +254,13 @@ final class SettingsWindow: NSWindow {
             }
             RunLoop.main.add(timer, forMode: .common)
 
-            // 3) 0.2s 后换内容并渐入（0.25s）——与高度动画同时间轴完成
+            // 3) 0.3s 后换内容并渐入（0.4s）——与高度动画同时间轴完成
             let token = index
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) { [weak self] in
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { [weak self] in
                 guard let self, self.currentIndex == token else { return }
                 installPanel(alpha: 0)   // 局部函数，闭包内直接调用
                 NSAnimationContext.runAnimationGroup { ctx in
-                    ctx.duration = 0.25
+                    ctx.duration = 0.4
                     ctx.timingFunction = CAMediaTimingFunction(name: .easeOut)
                     panel.animator().alphaValue = 1
                 }
