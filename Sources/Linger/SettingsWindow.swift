@@ -195,16 +195,15 @@ final class SettingsWindow: NSWindow {
         title = "设置"
         updateTabStyles()
 
-        // 先测新 panel 理想高度（此时未加入容器，不受当前窗口高度约束）
+        // 先测新 panel 理想高度（未加入容器，不受当前窗口高度约束）
         let panel = panelView(at: index)
         let panelFit = panel.fittingSize.height
         let panelHeight = max(panelFit, 100)
         let computed = tabBarHeight + panelHeight + contentVSpacing * 2
-        // 窗口高度钳制到屏幕可用高度（防止窗口比屏幕高、顶部顶出屏幕盖住菜单栏）
+        // 窗口高度钳制到屏幕可用高度（防止顶出屏幕盖住菜单栏）
         let screenFrame = NSScreen.main?.visibleFrame ?? NSRect(x: 0, y: 0, width: 800, height: 600)
         let maxHeight = max(240, screenFrame.height - 16)
         let targetHeight = min(computed, maxHeight)
-        // 顶部固定且不超出屏幕可见区
         let topLimit = screenFrame.maxY - 8
         let topY = min(frame.maxY, topLimit)
         let targetFrame = NSRect(x: frame.minX, y: topY - targetHeight,
@@ -213,8 +212,8 @@ final class SettingsWindow: NSWindow {
         os_log("LingerDiag selectTab idx=%d animated=%d panelFit=%.1f targetH=%.1f frameH=%.1f screenH=%.1f",
                log: log, type: .info, index, animated ? 1 : 0, panelFit, targetHeight, frame.height, screenFrame.height)
 
-        // 动画完成后（或非动画直接）切换面板内容 + 布局 + 指示线
-        func finish() {
+        /// 安装新面板（alpha 控制渐入起点），并完成布局/指示线
+        func installPanel(alpha: CGFloat) {
             panelContainer.subviews.forEach { $0.removeFromSuperview() }
             panel.translatesAutoresizingMaskIntoConstraints = false
             panelContainer.addSubview(panel)
@@ -224,6 +223,7 @@ final class SettingsWindow: NSWindow {
                 panel.trailingAnchor.constraint(equalTo: panelContainer.trailingAnchor, constant: -contentHPadding),
                 panel.bottomAnchor.constraint(lessThanOrEqualTo: panelContainer.bottomAnchor, constant: -contentVSpacing)
             ])
+            panel.alphaValue = alpha
             panelContainer.layoutSubtreeIfNeeded()
             tabBar.layoutSubtreeIfNeeded()
             positionTabIndicator()
@@ -231,7 +231,14 @@ final class SettingsWindow: NSWindow {
         }
 
         if animated {
-            // 先做纯几何高度动画（容器内仍是旧内容，无约束/重绘干扰）→ 双向都丝滑
+            // 1) 旧内容渐出（0.2s）
+            NSAnimationContext.runAnimationGroup { ctx in
+                ctx.duration = 0.2
+                ctx.timingFunction = CAMediaTimingFunction(name: .easeIn)
+                panelContainer.subviews.forEach { $0.animator().alphaValue = 0 }
+            }
+
+            // 2) 窗口高度动画（0.55s 几何，顶部固定，双向一致）
             let startH = frame.height
             let start = CACurrentMediaTime()
             let duration: CFTimeInterval = 0.55
@@ -243,15 +250,24 @@ final class SettingsWindow: NSWindow {
                 let h = startH + (targetHeight - startH) * eased
                 self.setFrame(NSRect(x: self.frame.minX, y: topY - h,
                                      width: Self.windowWidth, height: h), display: true)
-                if p >= 1 {
-                    t.invalidate()
-                    finish()
-                }
+                if p >= 1 { t.invalidate() }
             }
             RunLoop.main.add(timer, forMode: .common)
+
+            // 3) 0.2s 后换内容并渐入（0.25s）——与高度动画同时间轴完成
+            let token = index
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) { [weak self] in
+                guard let self, self.currentIndex == token else { return }
+                installPanel(alpha: 0)   // 局部函数，闭包内直接调用
+                NSAnimationContext.runAnimationGroup { ctx in
+                    ctx.duration = 0.25
+                    ctx.timingFunction = CAMediaTimingFunction(name: .easeOut)
+                    panel.animator().alphaValue = 1
+                }
+            }
         } else {
             setFrame(targetFrame, display: true)
-            finish()
+            installPanel(alpha: 1)
         }
     }
 
