@@ -51,6 +51,15 @@ final class TabButtonView: NSControl {
         fatalError("init(coder:) has not been implemented")
     }
 
+    /// 必须实现 intrinsicContentSize，否则 NSStackView 里按钮尺寸塌缩为 0 → tab 栏消失
+    override var intrinsicContentSize: NSSize {
+        let iconW = iconView.image?.size.width ?? 27
+        let labelW = label.intrinsicContentSize.width
+        let w = max(iconW, labelW)
+        let h = 27 + 8 + label.intrinsicContentSize.height   // icon + 间距 + label
+        return NSSize(width: max(36, w + 8), height: max(48, h))
+    }
+
     override func mouseDown(with event: NSEvent) {
         onClick?(index)
     }

@@ -131,7 +131,7 @@ final class SettingsWindow: NSWindow {
         NSLayoutConstraint.activate([
             tabStack.centerXAnchor.constraint(equalTo: tabBar.centerXAnchor),
             // 图标下移，给 tab 顶部指示线留出空隙（icon 上方 9pt）
-            tabStack.topAnchor.constraint(equalTo: tabBar.topAnchor, constant: 14)
+            tabStack.topAnchor.constraint(equalTo: tabBar.topAnchor, constant: 12)
         ])
 
         // 激活 tab 顶部指示线（独立视图，布局后按按钮 frame 定位，不依赖按钮 bounds）
