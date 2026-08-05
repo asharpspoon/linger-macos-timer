@@ -68,6 +68,15 @@ enum LingerTheme {
         static let ink3 = RGBA(117, 117, 123)
         static let line = RGBA(255, 255, 255, 0.10)
 
+        // 开关胶囊关态轨道（铁律：rgba(255,255,255,0.16)）
+        static let switchTrackOff = RGBA(255, 255, 255, 0.16)
+        // 关于票据（settings-window.html .ticket 深色文字）
+        static let ticketPaper = RGBA(250, 249, 246)   // #faf9f6
+        static let ticketInk  = RGBA(29, 29, 31)       // #1d1d1f
+        static let ticketInk2 = RGBA(110, 110, 115)    // #6e6e73
+        static let ticketInk3 = RGBA(142, 142, 147)    // #8e8e93
+        static let ticketInk4 = RGBA(174, 174, 178)    // #aeaeb2
+
         // 语义状态色
         static let success = RGBA(48, 209, 88)   // #30D158
         static let warning = RGBA(255, 159, 10)  // #FF9F0A

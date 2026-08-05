@@ -8,10 +8,10 @@ import Cocoa
 
 final class AboutTicketView: NSView {
 
-    // 票据深色文字（白纸上的深色，与暗色窗口强对比）
-    private static let ticketInk  = NSColor(calibratedRed: 0.114, green: 0.114, blue: 0.122, alpha: 1.0)   // #1d1d1f
-    private static let ticketInk2 = NSColor(calibratedRed: 0.431, green: 0.431, blue: 0.451, alpha: 1.0)   // #6e6e73
-    private static let ticketInk3 = NSColor(calibratedRed: 0.557, green: 0.557, blue: 0.576, alpha: 1.0)   // #8e8e93
+    // 票据深色文字（白纸上的深色，与暗色窗口强对比；铁律：走 LingerTheme）
+    private static let ticketInk  = LingerTheme.nsColor(LingerTheme.Color.ticketInk)
+    private static let ticketInk2 = LingerTheme.nsColor(LingerTheme.Color.ticketInk2)
+    private static let ticketInk3 = LingerTheme.nsColor(LingerTheme.Color.ticketInk3)
 
     override init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
@@ -26,7 +26,7 @@ final class AboutTicketView: NSView {
         wantsLayer = true
         layer?.cornerRadius = 10
         layer?.masksToBounds = true
-        layer?.backgroundColor = NSColor(calibratedRed: 0.980, green: 0.976, blue: 0.965, alpha: 1.0).cgColor  // #faf9f6
+        layer?.backgroundColor = LingerTheme.nsColor(LingerTheme.Color.ticketPaper).cgColor
         layer?.borderWidth = 0.5
         layer?.borderColor = NSColor(calibratedWhite: 0, alpha: 0.08).cgColor
 
@@ -196,7 +196,7 @@ final class AboutTicketView: NSView {
 
         let t2 = NSTextField(labelWithString: "— LINGER · 2026 —")
         t2.font = NSFont.monospacedSystemFont(ofSize: 9, weight: .regular)
-        t2.textColor = NSColor(calibratedRed: 0.682, green: 0.682, blue: 0.698, alpha: 1.0)  // #aeaeb2
+        t2.textColor = LingerTheme.nsColor(LingerTheme.Color.ticketInk4)
         t2.alignment = .center
 
         let footer = NSStackView(views: [t1, t2])

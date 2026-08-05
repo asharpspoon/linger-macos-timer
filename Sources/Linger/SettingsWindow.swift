@@ -184,9 +184,9 @@ final class SettingsWindow: NSWindow {
         btn.setButtonType(NSButton.ButtonType.momentaryChange)
         btn.target = self
         btn.action = #selector(tabClicked(_:))
-        btn.font = NSFont.systemFont(ofSize: 10, weight: .medium)
+        btn.font = LingerTheme.labelFont(size: 10, weight: .medium)
         btn.wantsLayer = true
-        btn.contentTintColor = .tertiaryLabelColor
+        btn.contentTintColor = LingerTheme.ink3
         return btn
     }
 
@@ -260,7 +260,7 @@ final class SettingsWindow: NSWindow {
                 btn.layer?.backgroundColor = LingerTheme.amberGold.withAlphaComponent(0.08).cgColor
                 setTabIndicator(on: btn, visible: true)
             } else {
-                btn.contentTintColor = .tertiaryLabelColor
+                btn.contentTintColor = LingerTheme.ink3
                 btn.layer?.backgroundColor = NSColor.clear.cgColor
                 setTabIndicator(on: btn, visible: false)
             }
@@ -308,15 +308,15 @@ final class SettingsWindow: NSWindow {
 
     private func makeLabel(_ text: String) -> NSTextField {
         let f = NSTextField(labelWithString: text)
-        f.font = NSFont.systemFont(ofSize: 13)
-        f.textColor = .labelColor
+        f.font = LingerTheme.labelFont(size: 13)
+        f.textColor = LingerTheme.ink
         f.alignment = .left
         return f
     }
 
     private func makeHint(_ text: String) -> NSTextField {
         let f = NSTextField(labelWithString: text)
-        f.font = NSFont.systemFont(ofSize: 11)
+        f.font = LingerTheme.labelFont(size: 11)
         f.textColor = .tertiaryLabelColor
         return f
     }
@@ -333,7 +333,7 @@ final class SettingsWindow: NSWindow {
         let row = NSStackView()
         row.orientation = .horizontal
         row.alignment = .centerY
-        row.spacing = 12
+        row.spacing = LingerTheme.space3
 
         if let hint {
             let left = NSStackView()
@@ -348,7 +348,7 @@ final class SettingsWindow: NSWindow {
         }
         row.addArrangedSubview(spacerView())
         row.addArrangedSubview(control)
-        row.heightAnchor.constraint(greaterThanOrEqualToConstant: 34).isActive = true
+        row.heightAnchor.constraint(greaterThanOrEqualToConstant: 36).isActive = true
         return row
     }
 
@@ -364,8 +364,8 @@ final class SettingsWindow: NSWindow {
     private func makeSection(title: String, rows: [NSView]) -> NSView {
         let section = NSView()
         let titleLabel = NSTextField(labelWithString: title)
-        titleLabel.font = NSFont.systemFont(ofSize: 11, weight: .semibold)
-        titleLabel.textColor = .tertiaryLabelColor
+        titleLabel.font = LingerTheme.labelFont(size: 11, weight: .semibold)
+        titleLabel.textColor = LingerTheme.ink3
         section.addSubview(titleLabel)
         titleLabel.translatesAutoresizingMaskIntoConstraints = false
         titleLabel.topAnchor.constraint(equalTo: section.topAnchor).isActive = true
@@ -379,14 +379,14 @@ final class SettingsWindow: NSWindow {
                 div.translatesAutoresizingMaskIntoConstraints = false
                 div.leadingAnchor.constraint(equalTo: section.leadingAnchor).isActive = true
                 div.trailingAnchor.constraint(equalTo: section.trailingAnchor).isActive = true
-                div.topAnchor.constraint(equalTo: prev, constant: 8).isActive = true
+                div.topAnchor.constraint(equalTo: prev, constant: LingerTheme.space2).isActive = true
                 prev = div.bottomAnchor
             }
             section.addSubview(row)
             row.translatesAutoresizingMaskIntoConstraints = false
             row.leadingAnchor.constraint(equalTo: section.leadingAnchor).isActive = true
             row.trailingAnchor.constraint(equalTo: section.trailingAnchor).isActive = true
-            row.topAnchor.constraint(equalTo: prev, constant: 8).isActive = true
+            row.topAnchor.constraint(equalTo: prev, constant: LingerTheme.space2).isActive = true
             prev = row.bottomAnchor
             if i == rows.count - 1 {
                 row.bottomAnchor.constraint(equalTo: section.bottomAnchor).isActive = true
@@ -413,14 +413,26 @@ final class SettingsWindow: NSWindow {
         return panel
     }
 
-    private func makeSwitch(initial: Bool, action: Selector) -> NSButton {
-        let b = NSButton()
-        b.setButtonType(.switch)
-        b.state = initial ? .on : .off
-        b.target = self
-        b.action = action
-        b.title = ""
-        return b
+    /// Select 自定义外观（铁律：禁 NSPopUpButton 默认 bezel；surface2 底 24pt 高 圆角4 12pt 字）
+    private func styleSelect(_ popup: NSPopUpButton) {
+        popup.bezelStyle = .inline
+        popup.isBordered = false
+        popup.wantsLayer = true
+        popup.layer?.backgroundColor = LingerTheme.nsColor(LingerTheme.Color.surface2).cgColor
+        popup.layer?.borderColor = LingerTheme.nsColor(LingerTheme.Color.line).cgColor
+        popup.layer?.borderWidth = 1
+        popup.layer?.cornerRadius = LingerTheme.radiusXS
+        popup.font = LingerTheme.labelFont(size: 12)
+        popup.heightAnchor.constraint(equalToConstant: 24).isActive = true
+    }
+
+    /// 自定义胶囊开关（铁律：禁 NSButton(.switch) 复选框）
+    private func makeSwitch(initial: Bool, action: Selector) -> NSView {
+        let sw = LingerSwitch()
+        sw.isOn = initial
+        sw.target = self
+        sw.action = action
+        return sw
     }
 
     private func integerFormatter(min: Int, max: Int) -> NumberFormatter {
@@ -435,8 +447,8 @@ final class SettingsWindow: NSWindow {
     /// kbd 键帽（快捷预设标题）：10px 等宽 + surface2 底 + 圆角 5 + 边框
     private func makeKbd(_ text: String) -> NSView {
         let label = NSTextField(labelWithString: text)
-        label.font = NSFont.monospacedSystemFont(ofSize: 10, weight: .regular)
-        label.textColor = .secondaryLabelColor
+        label.font = LingerTheme.timeFont(size: 10, weight: .regular)
+        label.textColor = LingerTheme.ink2
         label.alignment = .center
         let box = NSView()
         box.wantsLayer = true
@@ -480,7 +492,7 @@ final class SettingsWindow: NSWindow {
     private func buildIconStylePicker() -> NSView {
         let container = NSStackView()
         container.orientation = .horizontal
-        container.spacing = 8
+        container.spacing = LingerTheme.space2
         container.alignment = .centerY
         let styles = [("ring", "Ring"), ("classic", "Classic"), ("timer", "SF Symbol")]
         for (i, st) in styles.enumerated() {
@@ -488,7 +500,7 @@ final class SettingsWindow: NSWindow {
             btn.setButtonType(NSButton.ButtonType.toggle)
             btn.tag = i
             btn.bezelStyle = .rounded
-            btn.font = NSFont.systemFont(ofSize: 11)
+            btn.font = LingerTheme.labelFont(size: 11)
             btn.wantsLayer = true
             btn.layer?.cornerRadius = 6
             btn.layer?.borderWidth = 1
@@ -507,7 +519,7 @@ final class SettingsWindow: NSWindow {
             let on = (i == idx)
             btn.state = on ? .on : .off
             btn.layer?.borderColor = on ? LingerTheme.amberGold.cgColor : LingerTheme.nsColor(LingerTheme.Color.line).cgColor
-            btn.contentTintColor = on ? LingerTheme.amberGold : .secondaryLabelColor
+            btn.contentTintColor = on ? LingerTheme.amberGold : LingerTheme.ink2
         }
     }
 
@@ -530,7 +542,7 @@ final class SettingsWindow: NSWindow {
         valueLabel.widthAnchor.constraint(equalToConstant: 44).isActive = true
         let group = NSStackView(views: [slider, valueLabel])
         group.orientation = .horizontal
-        group.spacing = 8
+        group.spacing = LingerTheme.space2
         group.alignment = .centerY
         dragLineSlider = slider
         dragLineValueLabel = valueLabel
@@ -543,7 +555,7 @@ final class SettingsWindow: NSWindow {
         field.integerValue = currentMaxDurationMinutes()
         field.target = self
         field.action = #selector(maxDurationChanged(_:))
-        field.widthAnchor.constraint(equalToConstant: 52).isActive = true
+        field.widthAnchor.constraint(equalToConstant: 56).isActive = true
         let stepper = NSStepper()
         stepper.minValue = 5
         stepper.maxValue = 1440
@@ -553,7 +565,7 @@ final class SettingsWindow: NSWindow {
         stepper.action = #selector(maxDurationStepperChanged(_:))
         maxDurationStepper = stepper
         let unit = makeLabel("分钟")
-        unit.textColor = .secondaryLabelColor
+        unit.textColor = LingerTheme.ink2
         let group = NSStackView(views: [field, stepper, unit])
         group.orientation = .horizontal
         group.spacing = 6
@@ -563,6 +575,7 @@ final class SettingsWindow: NSWindow {
 
     private func buildDualRailRow() -> NSView {
         let popup = NSPopUpButton()
+        styleSelect(popup)
         popup.addItems(withTitles: ["倒计时 + 结束时间", "仅倒计时", "仅结束时间"])
         let raws = ["both", "countdown", "endTime"]
         let current = UserDefaults.standard.string(forKey: LingerTheme.UserDefaultsKey.dualRailMode.rawValue) ?? "both"
@@ -574,6 +587,7 @@ final class SettingsWindow: NSWindow {
 
     private func buildTimeFormatRow() -> NSView {
         let popup = NSPopUpButton()
+        styleSelect(popup)
         popup.addItems(withTitles: ["HH:MM:SS", "HH:MM", "MM:SS"])
         let raws = ["hms", "hm", "ms"]
         let current = UserDefaults.standard.string(forKey: LingerTheme.UserDefaultsKey.timeFormat.rawValue) ?? "hms"
@@ -593,7 +607,7 @@ final class SettingsWindow: NSWindow {
         valueLabel.widthAnchor.constraint(equalToConstant: 44).isActive = true
         let group = NSStackView(views: [slider, valueLabel])
         group.orientation = .horizontal
-        group.spacing = 8
+        group.spacing = LingerTheme.space2
         group.alignment = .centerY
         previewFontSizeSlider = slider
         previewFontSizeValueLabel = valueLabel
@@ -615,8 +629,8 @@ final class SettingsWindow: NSWindow {
 
     private func buildNotificationsPanel() -> NSView {
         let authStatus = NSTextField(labelWithString: "检查中…")
-        authStatus.font = NSFont.systemFont(ofSize: 12)
-        authStatus.textColor = .secondaryLabelColor
+        authStatus.font = LingerTheme.labelFont(size: 12)
+        authStatus.textColor = LingerTheme.ink2
         notifAuthLabel = authStatus
         let authDot = makeStatusDot()
         notifAuthDot = authDot
@@ -633,6 +647,7 @@ final class SettingsWindow: NSWindow {
                                                     action: #selector(notifyChanged(_:))))
         let playSwitch = makeSwitch(initial: currentPlaySound(), action: #selector(playSoundChanged(_:)))
         let soundPopup = NSPopUpButton()
+        styleSelect(soundPopup)
         let sounds = ["Ping", "Basso", "Blow", "Bottle", "Frog", "Funk",
                       "Glass", "Heroine", "Morse", "Pop", "Purr", "Sosumi", "Submarine", "Tink"]
         soundPopup.addItems(withTitles: sounds)
@@ -657,8 +672,8 @@ final class SettingsWindow: NSWindow {
 
     private func buildCalendarPanel() -> NSView {
         let authStatus = NSTextField(labelWithString: "检查中…")
-        authStatus.font = NSFont.systemFont(ofSize: 12)
-        authStatus.textColor = .secondaryLabelColor
+        authStatus.font = LingerTheme.labelFont(size: 12)
+        authStatus.textColor = LingerTheme.ink2
         calAuthLabel = authStatus
         let authDot = makeStatusDot()
         calAuthDot = authDot
@@ -685,6 +700,7 @@ final class SettingsWindow: NSWindow {
         let calendars = CalendarManager.shared.availableCalendars()
         let titles = calendars.map { $0.title }
         let popup = NSPopUpButton()
+        styleSelect(popup)
         popup.addItems(withTitles: titles.isEmpty ? ["Linger"] : titles)
         let current = UserDefaults.standard.string(forKey: LingerTheme.UserDefaultsKey.targetCalendar.rawValue) ?? "Linger"
         if let idx = titles.firstIndex(of: current) { popup.selectItem(at: idx) }
@@ -695,6 +711,7 @@ final class SettingsWindow: NSWindow {
 
     private func buildWriteModeRow() -> NSView {
         let popup = NSPopUpButton()
+        styleSelect(popup)
         popup.addItems(withTitles: ["每次询问", "自动", "手动"])
         let modes: [CalendarManager.WriteMode] = [.ask, .auto, .manual]
         let current = CalendarManager.shared.writeMode
@@ -727,13 +744,13 @@ final class SettingsWindow: NSWindow {
         // 原型：左 kbd + 输入框，右灰注释「留空则不激活」
         let left = NSStackView(views: [makeKbd(kbd), field])
         left.orientation = .horizontal
-        left.spacing = 8
+        left.spacing = LingerTheme.space2
         left.alignment = .centerY
         let row = NSStackView(views: [left, spacerView(), makeHint("留空则不激活")])
         row.orientation = .horizontal
         row.alignment = .centerY
-        row.spacing = 12
-        row.heightAnchor.constraint(greaterThanOrEqualToConstant: 34).isActive = true
+        row.spacing = LingerTheme.space3
+        row.heightAnchor.constraint(greaterThanOrEqualToConstant: 36).isActive = true
         return row
     }
 
@@ -742,6 +759,7 @@ final class SettingsWindow: NSWindow {
     private func buildGeneralPanel() -> NSView {
         let launchSwitch = makeSwitch(initial: currentLaunchAtLogin(), action: #selector(launchChanged(_:)))
         let cleanupPopup = NSPopUpButton()
+        styleSelect(cleanupPopup)
         cleanupPopup.addItems(withTitles: ["每周", "每月", "从不"])
         let cleanupRaws = ["weekly", "monthly", "never"]
         let cleanup = UserDefaults.standard.string(forKey: LingerTheme.UserDefaultsKey.cleanupInterval.rawValue) ?? "weekly"
@@ -750,6 +768,7 @@ final class SettingsWindow: NSWindow {
         cleanupPopup.action = #selector(cleanupChanged(_:))
 
         let iconPopup = NSPopUpButton()
+        styleSelect(iconPopup)
         iconPopup.addItems(withTitles: ["Ring", "Classic", "SF Symbol"])
         let iconRaws = ["ring", "classic", "timer"]
         let icon = UserDefaults.standard.string(forKey: LingerTheme.UserDefaultsKey.iconStyle.rawValue) ?? "ring"
@@ -821,13 +840,13 @@ final class SettingsWindow: NSWindow {
 
     // MARK: - 动作：通知面板
 
-    @objc private func notifyChanged(_ sender: NSButton) {
-        UserDefaults.standard.set(sender.state == .on,
+    @objc private func notifyChanged(_ sender: LingerSwitch) {
+        UserDefaults.standard.set(sender.isOn,
                                   forKey: LingerTheme.UserDefaultsKey.notifyOnComplete.rawValue)
     }
 
-    @objc private func playSoundChanged(_ sender: NSButton) {
-        let on = sender.state == .on
+    @objc private func playSoundChanged(_ sender: LingerSwitch) {
+        let on = sender.isOn
         UserDefaults.standard.set(on, forKey: LingerTheme.UserDefaultsKey.playSound.rawValue)
         soundPopup?.isEnabled = on
     }
@@ -877,8 +896,8 @@ final class SettingsWindow: NSWindow {
         }
     }
 
-    @objc private func launchChanged(_ sender: NSButton) {
-        let on = sender.state == .on
+    @objc private func launchChanged(_ sender: LingerSwitch) {
+        let on = sender.isOn
         UserDefaults.standard.set(on, forKey: LingerTheme.UserDefaultsKey.launchAtLogin.rawValue)
         if #available(macOS 13.0, *) {
             do {
@@ -927,8 +946,8 @@ final class SettingsWindow: NSWindow {
         if let cal = calAuthLabel {
             let ok = CalendarManager.shared.isAuthorized
             cal.stringValue = ok ? "已授权" : "未授权"
-            cal.textColor = ok ? LingerTheme.stateSuccess : .secondaryLabelColor
-            calAuthDot?.layer?.backgroundColor = (ok ? LingerTheme.stateSuccess : NSColor.tertiaryLabelColor).cgColor
+            cal.textColor = ok ? LingerTheme.stateSuccess : LingerTheme.ink2
+            calAuthDot?.layer?.backgroundColor = (ok ? LingerTheme.stateSuccess : LingerTheme.ink3).cgColor
         }
         // 通知（异步）
         NotificationManager.shared.fetchAuthorizationStatus { [weak self] status in
@@ -937,8 +956,8 @@ final class SettingsWindow: NSWindow {
             DispatchQueue.main.async {
                 if let nf = self.notifAuthLabel {
                     nf.stringValue = ok ? "已授权" : "未授权"
-                    nf.textColor = ok ? LingerTheme.stateSuccess : .secondaryLabelColor
-                    self.notifAuthDot?.layer?.backgroundColor = (ok ? LingerTheme.stateSuccess : NSColor.tertiaryLabelColor).cgColor
+                    nf.textColor = ok ? LingerTheme.stateSuccess : LingerTheme.ink2
+                    self.notifAuthDot?.layer?.backgroundColor = (ok ? LingerTheme.stateSuccess : LingerTheme.ink3).cgColor
                 }
             }
         }
