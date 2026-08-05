@@ -267,8 +267,11 @@ final class HoverListView: NSView {
     var onStop: ((UUID) -> Void)?
     // ② 底栏回调
     var onToggleAllPause: (() -> Void)?
-    // 日历预约按钮回调（左下 calendar.badge.plus）
-    var onCalendarSchedule: (() -> Void)?
+    /// 内联预约确认（start, duration, title）—— 由 MenuBarManager 创建预约计时
+    var onScheduleConfirm: ((Date, TimeInterval, String) -> Void)?
+    /// 内联预约编辑视图（原型：hover-list 底部内联展开，非独立窗口）
+    private var scheduleView: ScheduleTimerView?
+    var isScheduling: Bool = false
     // ⑤ 编辑标题回调
     var onTitleEdit: ((UUID, String) -> Void)?
 
@@ -426,6 +429,15 @@ final class HoverListView: NSView {
         super.layout()
         if !isAnimating {
             layoutRows()
+        }
+        // 内联预约区：底栏上方（原型 hover-list 底部内联展开）
+        if let sv = scheduleView {
+            let h = ScheduleTimerView.preferredHeight()
+            let topY = bounds.height - HoverDesign.bottomAreaHeight - HoverDesign.bottomPadding + 4
+            sv.frame = NSRect(x: HoverDesign.cardPaddingX,
+                              y: topY - h - 4,
+                              width: bounds.width - HoverDesign.cardPaddingX * 2,
+                              height: h)
         }
     }
 
@@ -954,7 +966,7 @@ final class HoverListView: NSView {
         let btnCenterY = topY + HoverDesign.bottomAreaHeight / 2 + 2
         let btnRect = NSRect(x: btnCenterX - btnSize / 2, y: btnCenterY - btnSize / 2,
                              width: btnSize, height: btnSize)
-        if hoveredCalendar {
+        if hoveredCalendar || isScheduling {
             HoverDesign.amberSoft.setFill()
             NSBezierPath(ovalIn: btnRect).fill()
         }
@@ -1082,7 +1094,7 @@ final class HoverListView: NSView {
 
         // ② 底栏两个独立按钮
         if calendarBtnRect.contains(point) {
-            onCalendarSchedule?()
+            toggleInlineSchedule()
             return
         }
         if pauseAllBtnRect.contains(point) {
@@ -1112,6 +1124,49 @@ final class HoverListView: NSView {
         return NSRect(x: HoverDesign.cardPaddingX, y: y,
                       width: bounds.width - HoverDesign.cardPaddingX * 2,
                       height: HoverDesign.cardHeight)
+    }
+
+    // MARK: - 内联预约展开（原型：hover-list 底部内联，无独立窗口）
+
+    private func toggleInlineSchedule() {
+        if scheduleView != nil {
+            closeInlineSchedule()
+        } else {
+            let h = ScheduleTimerView.preferredHeight()
+            let v = ScheduleTimerView(frame: NSRect(x: 0, y: 0,
+                                                    width: bounds.width,
+                                                    height: h))
+            v.onConfirm = { [weak self] start, dur, title in
+                guard let self else { return }
+                self.onScheduleConfirm?(start, dur, title)
+                self.closeInlineSchedule()
+            }
+            v.onCancel = { [weak self] in
+                self?.closeInlineSchedule()
+            }
+            addSubview(v)
+            scheduleView = v
+            isScheduling = true
+        }
+        notifyHeightChange()
+    }
+
+    private func closeInlineSchedule() {
+        scheduleView?.removeFromSuperview()
+        scheduleView = nil
+        isScheduling = false
+        notifyHeightChange()
+    }
+
+    private func notifyHeightChange() {
+        onHeightAnimation?(currentContentHeight())
+    }
+
+    private func currentContentHeight() -> CGFloat {
+        let base = HoverListView.panelHeight3(runningCount: running.count,
+                                              pausedCount: paused.count,
+                                              scheduledCount: scheduled.count)
+        return base + (isScheduling ? ScheduleTimerView.preferredHeight() + 12 : 0)
     }
 
     /// 底栏区域 rect

@@ -49,8 +49,6 @@ final class MenuBarManager: NSObject {
     private var overflowTil: Date?
 
     // T3: 倒计时面板（CountdownPillPanel / CountdownFloater）已移除；计时归零改用 Toast 占位。
-    // T5: 日历预约面板（ScheduleTimerView）承载于独立窗口 schedulePanel。
-    private var schedulePanel: NSWindow?
 
     // T7–T11: 设置窗口与关于窗口（复用实例，避免重复创建）
     private var settingsWindow: SettingsWindow?
@@ -318,12 +316,7 @@ final class MenuBarManager: NSObject {
         // 每次右键时重建菜单，确保日历权限状态实时更新
         rightClickMenu.removeAllItems()
 
-        let aboutItem = NSMenuItem(title: "关于 Linger",
-                                   action: #selector(showAbout(_:)),
-                                   keyEquivalent: "")
-        aboutItem.target = self
-        rightClickMenu.addItem(aboutItem)
-
+        // 2026-08-05：关于已集成进设置 tab，右键菜单不再单独提供「关于 Linger」入口
         let settingsItem = NSMenuItem(title: "设置…",
                                      action: #selector(showSettings(_:)),
                                      keyEquivalent: "")
@@ -902,8 +895,10 @@ final class MenuBarManager: NSObject {
                 }
             }
         }
-        view.onCalendarSchedule = { [weak self] in
-            self?.presentScheduleTimer()
+        // 2026-08-05：预约计时改为 hover-list 底部内联展开（原型），
+        // 确认后在此创建预约计时；独立浮窗 presentScheduleTimer 已废弃。
+        view.onScheduleConfirm = { [weak self] start, duration, title in
+            self?.createScheduledTimer(startDate: start, duration: duration, title: title)
         }
         view.onHeightAnimation = { [weak self] height in
             guard let self = self, let win = self.hoverListWindow else { return }
@@ -958,48 +953,6 @@ final class MenuBarManager: NSObject {
     // MARK: - 日历预约面板（T5: ScheduleTimerView）
 
     /// 弹出内联日历预约面板（ScheduleTimerView），确认后创建预约计时。
-    private func presentScheduleTimer() {
-        guard let hoverWin = self.hoverListWindow else { return }
-        let width = ScheduleTimerView.panelWidth
-        let height = ScheduleTimerView.preferredHeight()
-        let scheduleView = ScheduleTimerView(frame: NSRect(x: 0, y: 0, width: width, height: height))
-        scheduleView.onConfirm = { [weak self] start, duration, title in
-            self?.createScheduledTimer(startDate: start, duration: duration, title: title)
-            self?.dismissScheduleTimer()
-        }
-        scheduleView.onCancel = { [weak self] in
-            self?.dismissScheduleTimer()
-        }
-
-        let panel = SchedulePanelWindow(
-            contentRect: NSRect(x: 0, y: 0, width: width, height: height),
-            styleMask: [.borderless],
-            backing: .buffered,
-            defer: false
-        )
-        panel.isOpaque = false
-        panel.backgroundColor = .clear
-        panel.level = .floating
-        panel.hasShadow = true
-        panel.isReleasedWhenClosed = false
-        panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .stationary]
-        panel.contentView = scheduleView
-
-        // 锚定到 hover 列表窗口正下方居中
-        var origin = hoverWin.frame.origin
-        origin.y = hoverWin.frame.minY - height - 8
-        origin.x = hoverWin.frame.midX - width / 2
-        panel.setFrameOrigin(origin)
-        panel.makeKeyAndOrderFront(nil)
-        self.schedulePanel = panel
-    }
-
-    /// 关闭并释放日历预约面板
-    private func dismissScheduleTimer() {
-        schedulePanel?.orderOut(nil)
-        schedulePanel = nil
-    }
-
     /// 用 ScheduleTimerView 回填的起止时间创建预约计时
     private func createScheduledTimer(startDate: Date, duration: TimeInterval, title: String) {
         let endDate = startDate.addingTimeInterval(duration)

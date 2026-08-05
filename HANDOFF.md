@@ -14,6 +14,16 @@ s=d² 曲线 + 整分钟吸附），松手即开始计时。AppKit 原生、暗�
 > 每次交接/里程碑后在此**顶部**追加一段（最新在上），格式见 `.agents/skills/linger-handoff/`。
 > 上次交接见 git 历史；当前状态以「最新进度」为准。
 
+- **2026-08-05 · 关于并入设置 + 预约计时内联化（Codex）**
+  - 本次完成：右键菜单删「关于 Linger」入口（关于=设置 tab 5，无独立窗口，AboutWindow.swift 已删）；
+    预约计时改为 **hover-list 底部内联展开**（贴合 schedule-timer.html 原型），删独立浮窗
+    （SchedulePanelWindow / presentScheduleTimer / schedulePanel 已废弃删除）
+  - 未完成/卡点：预约编辑区控件还是系统默认样式（日期/时间/时长/名称胶囊化、预计结束排版）可后续微调
+  - 下一步：notification 通知横幅——原型是自定义玻璃横幅，现状是系统通知，待用户拍板是否自绘替换
+  - 如何验证：`./script/build_and_run.sh` → hover 列表底部日历按钮 → 内联展开预约编辑 → 确认创建预约
+  - 给下一位：内联展开在 HoverListView（toggleInlineSchedule/closeInlineSchedule + onHeightAnimation 驱动高度）；
+    ScheduleTimerView 直接作为 subview 复用
+
 - **2026-08-04 晚 · 设置窗口按 settings-window.html 重构完成（Codex）**
   - 本次完成：5 tab（操作/通知/日历/通用/关于）；Tab 栏弃液态玻璃改底部 2pt 琥珀指示线 + 微琥珀底；
     面板统一 section/row 范式（去卡片框）；新增「关于」白底票据面板（AboutTicketView：锯齿边/虚线剪刀口/

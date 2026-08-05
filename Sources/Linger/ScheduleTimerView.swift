@@ -283,7 +283,3 @@ extension ScheduleTimerView: NSTextFieldDelegate {
 
 /// 无边框窗口默认无法成为 key window，导致 ScheduleTimerView 内的文本框收不到键盘输入。
 /// 此处覆写 `canBecomeKey` 使其可成为 key，从而正常编辑时间 / 时长 / 名称。
-final class SchedulePanelWindow: NSWindow {
-    override var canBecomeKey: Bool { true }
-    override var canBecomeMain: Bool { false }
-}
