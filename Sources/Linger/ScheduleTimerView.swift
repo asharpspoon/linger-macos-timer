@@ -1,13 +1,13 @@
+//  ScheduleTimerView.swift
+//  预约计时编辑面板（内联进 hover 列表底部）—— 按 schedule-timer-expand.html 原型：
+//    行1：日期胶囊（calendar 图标 + 日期）+ 时间胶囊（clock 图标 + HH:mm）
+//    行2：时长胶囊（timer 图标 + 分钟）+ 名称胶囊（pen-line 图标 + 输入框）
+//    行3：预计结束（arrow-right + HH:mm）+ 取消（灰圆）/ 确认（琥珀实底圆）
+//  胶囊底色 LingerTheme.Color.input（rgba(255,255,255,0.08)），圆角 8；透明融入列表无独立背景。
+//  铁律：颜色/字号走 LingerTheme；禁 NSPopUpButton / NSTextField 默认 bezel。
+
 import Cocoa
 
-/// 内联日程设置面板（300pt 宽，3 行胶囊布局）。
-///
-/// - 行1: 日期胶囊（今天 / 明天 / 具体日期）+ 时间胶囊（开始时间 HH:mm）
-/// - 行2: 时长胶囊（分钟）+ 名称输入框（记录日程）
-/// - 行3: 预计结束文案 + 确认（✓ 琥珀金）/ 取消（✕ 灰）按钮
-///
-/// 由 HoverListView 的日历预约按钮触发（替换原 `os_log("not yet implemented")` 桩），
-/// 确认后通过 `onConfirm` 回调把 `startDate / duration / title` 交给上层创建预约计时。
 final class ScheduleTimerView: NSView {
 
     // MARK: - 回调
@@ -20,10 +20,10 @@ final class ScheduleTimerView: NSView {
     // MARK: - 布局常量
 
     static let panelWidth: CGFloat = 300
-    private let rowHeight: CGFloat = 32
+    private let rowHeight: CGFloat = 30
     private let rowGap: CGFloat = 8
     private let sidePadding: CGFloat = 12
-    private let controlHeight: CGFloat = 28
+    private let capsuleHeight: CGFloat = 28
 
     // MARK: - 状态
 
@@ -39,6 +39,8 @@ final class ScheduleTimerView: NSView {
     private let estimatedEndLabel: NSTextField
     private let confirmButton: NSButton
     private let cancelButton: NSButton
+    /// 内容容器：展开动画时整体 translateY 滑入
+    private let contentContainer = NSView()
 
     // MARK: - 时间格式化
 
@@ -48,82 +50,80 @@ final class ScheduleTimerView: NSView {
         return f
     }()
 
-    private let dateFormatter: DateFormatter = {
-        let f = DateFormatter()
-        f.dateFormat = "M/d"
-        return f
-    }()
-
     // MARK: - Init
 
     init(frame frameRect: NSRect, initialStartDate: Date = Date(), initialDuration: TimeInterval = 25 * 60) {
         self.startDate = initialStartDate
         self.duration = initialDuration
 
-        let controlRect = NSRect(x: 0, y: 0, width: 100, height: controlHeight)
+        // 透明无边框控件（胶囊底色由 makeCapsule 提供）
+        datePopup = NSPopUpButton()
+        datePopup.bezelStyle = .inline
+        datePopup.isBordered = false
+        datePopup.font = LingerTheme.labelFont(size: 12)
+        datePopup.contentTintColor = LingerTheme.ink
 
-        // 行1: 日期胶囊
-        datePopup = NSPopUpButton(frame: controlRect, pullsDown: false)
-        datePopup.bezelStyle = .rounded
-
-        // 行1: 时间胶囊
-        timeField = NSTextField(frame: controlRect)
-        timeField.bezelStyle = .roundedBezel
+        timeField = NSTextField()
+        timeField.isBordered = false
+        timeField.drawsBackground = false
+        timeField.focusRingType = .none
         timeField.usesSingleLineMode = true
-        timeField.font = LingerTheme.timeFont(size: 13)
+        timeField.font = LingerTheme.timeFont(size: 12)
+        timeField.textColor = LingerTheme.ink
         timeField.alignment = .center
 
-        // 行2: 时长胶囊
-        durationField = NSTextField(frame: controlRect)
-        durationField.bezelStyle = .roundedBezel
+        durationField = NSTextField()
+        durationField.isBordered = false
+        durationField.drawsBackground = false
+        durationField.focusRingType = .none
         durationField.usesSingleLineMode = true
-        durationField.font = LingerTheme.timeFont(size: 13)
+        durationField.font = LingerTheme.timeFont(size: 12)
+        durationField.textColor = LingerTheme.ink
         durationField.alignment = .center
         durationField.formatter = IntegerFormatter()
 
-        // 行2: 名称输入框
-        nameField = NSTextField(frame: controlRect)
-        nameField.bezelStyle = .roundedBezel
-        nameField.placeholderString = CalendarManager.shared.defaultTitle
-        nameField.font = NSFont.systemFont(ofSize: 13)
+        nameField = NSTextField()
+        nameField.isBordered = false
+        nameField.drawsBackground = false
+        nameField.focusRingType = .none
         nameField.usesSingleLineMode = true
+        nameField.font = LingerTheme.labelFont(size: 12, weight: .medium)
+        nameField.textColor = LingerTheme.ink
+        nameField.placeholderString = "日程"
 
-        // 行3: 预计结束文案
         estimatedEndLabel = NSTextField(labelWithString: "")
-        estimatedEndLabel.font = NSFont.systemFont(ofSize: 12, weight: .regular)
-        estimatedEndLabel.textColor = .secondaryLabelColor
+        estimatedEndLabel.font = LingerTheme.timeFont(size: 11)
+        estimatedEndLabel.textColor = LingerTheme.ink3
         estimatedEndLabel.alignment = .left
 
-        // 行3: 确认 / 取消
-        confirmButton = NSButton(frame: controlRect)
-        confirmButton.bezelStyle = .inline
+        // 确认：琥珀实底圆 + 白 check
+        confirmButton = NSButton()
         confirmButton.isBordered = false
+        confirmButton.wantsLayer = true
+        confirmButton.layer?.backgroundColor = LingerTheme.amberGold.cgColor
+        confirmButton.layer?.cornerRadius = 12
         if let raw = NSImage(systemSymbolName: "checkmark", accessibilityDescription: "确认") {
-            let cfg = NSImage.SymbolConfiguration(pointSize: 15, weight: .bold)
-            confirmButton.image = raw.withSymbolConfiguration(cfg)
+            confirmButton.image = raw.withSymbolConfiguration(NSImage.SymbolConfiguration(pointSize: 14, weight: .bold))
         }
-        confirmButton.contentTintColor = LingerTheme.amberGold
+        confirmButton.contentTintColor = NSColor(calibratedWhite: 0.10, alpha: 1)
 
-        cancelButton = NSButton(frame: controlRect)
-        cancelButton.bezelStyle = .inline
+        // 取消：灰 x 圆，hover surface2 底
+        cancelButton = NSButton()
         cancelButton.isBordered = false
+        cancelButton.wantsLayer = true
+        cancelButton.layer?.cornerRadius = 12
         if let raw = NSImage(systemSymbolName: "xmark", accessibilityDescription: "取消") {
-            let cfg = NSImage.SymbolConfiguration(pointSize: 13, weight: .medium)
-            cancelButton.image = raw.withSymbolConfiguration(cfg)
+            cancelButton.image = raw.withSymbolConfiguration(NSImage.SymbolConfiguration(pointSize: 13, weight: .medium))
         }
-        cancelButton.contentTintColor = NSColor.tertiaryLabelColor
+        cancelButton.contentTintColor = LingerTheme.ink3
 
         super.init(frame: frameRect)
+        contentContainer.frame = bounds
+        contentContainer.autoresizingMask = [.width, .height]
+        addSubview(contentContainer)
 
-        // 预设日期选项：今天 / 明天 / +2 / +3 天
-        let titles: [(String, Date)] = [
-            ("今天", Date()),
-            ("明天", Calendar.current.date(byAdding: .day, value: 1, to: Date()) ?? Date()),
-            ("后天", Calendar.current.date(byAdding: .day, value: 2, to: Date()) ?? Date())
-        ]
-        for (label, _) in titles {
-            datePopup.addItem(withTitle: label)
-        }
+        // 预设日期选项：今天 / 明天 / 后天
+        datePopup.addItems(withTitles: ["今天", "明天", "后天"])
         datePopup.target = self
         datePopup.action = #selector(datePopupChanged(_:))
 
@@ -137,55 +137,167 @@ final class ScheduleTimerView: NSView {
         cancelButton.target = self
         cancelButton.action = #selector(cancelTapped(_:))
 
-        // 布局
         layoutSubviews()
         updateEstimatedEnd()
     }
 
     required init?(coder: NSCoder) { fatalError() }
 
-    // MARK: - 布局
+    // MARK: - 布局（三行胶囊）
 
     private func layoutSubviews() {
         let w = bounds.width
         let innerW = w - sidePadding * 2
         let halfW = (innerW - rowGap) / 2
 
-        // 行1: 日期（左半） + 时间（右半）
-        datePopup.frame = NSRect(x: sidePadding, y: topY(forRow: 0), width: halfW, height: controlHeight)
-        timeField.frame = NSRect(x: sidePadding + halfW + rowGap, y: topY(forRow: 0), width: halfW, height: controlHeight)
+        // 行1：日期胶囊（左）+ 时间胶囊（右）
+        let dateCap = makeCapsule(icon: "calendar", content: datePopup)
+        placeCapsule(dateCap, x: sidePadding, y: topY(forRow: 0), width: halfW)
+        let timeCap = makeCapsule(icon: "clock", content: timeField)
+        placeCapsule(timeCap, x: sidePadding + halfW + rowGap, y: topY(forRow: 0), width: halfW)
 
-        // 行2: 时长（左半） + 名称（右半）
-        durationField.frame = NSRect(x: sidePadding, y: topY(forRow: 1), width: halfW, height: controlHeight)
-        nameField.frame = NSRect(x: sidePadding + halfW + rowGap, y: topY(forRow: 1), width: halfW, height: controlHeight)
+        // 行2：时长胶囊（左，窄）+ 名称胶囊（右，flex）
+        let durW: CGFloat = 92
+        let durationContent = NSStackView(views: [durationField, makeUnitLabel("分")])
+        durationContent.orientation = .horizontal
+        durationContent.spacing = 4
+        durationContent.alignment = .centerY
+        let durCap = makeCapsule(icon: "timer", content: durationContent)
+        placeCapsule(durCap, x: sidePadding, y: topY(forRow: 1), width: durW)
+        let nameCap = makeCapsule(icon: "pen.line", content: nameField)
+        placeCapsule(nameCap, x: sidePadding + durW + rowGap, y: topY(forRow: 1),
+                     width: innerW - durW - rowGap)
 
-        // 行3: 预计结束（左） + 取消 / 确认（右）
-        estimatedEndLabel.frame = NSRect(x: sidePadding, y: topY(forRow: 2), width: innerW - 70, height: controlHeight)
-        cancelButton.frame = NSRect(x: w - sidePadding - 56, y: topY(forRow: 2), width: 24, height: controlHeight)
-        confirmButton.frame = NSRect(x: w - sidePadding - 28, y: topY(forRow: 2), width: 24, height: controlHeight)
+        // 行3：预计结束（左）+ 取消 / 确认（右）
+        let arrow = NSImageView()
+        arrow.image = NSImage(systemSymbolName: "arrow.right",
+                              accessibilityDescription: nil)?
+            .withSymbolConfiguration(NSImage.SymbolConfiguration(pointSize: 10, weight: .medium))
+        arrow.contentTintColor = LingerTheme.ink3
+        let endStack = NSStackView(views: [arrow, estimatedEndLabel])
+        endStack.orientation = .horizontal
+        endStack.spacing = 4
+        endStack.alignment = .centerY
+        endStack.frame = NSRect(x: sidePadding, y: topY(forRow: 2) + (capsuleHeight - 16) / 2,
+                                width: innerW - 70, height: 16)
+        cancelButton.frame = NSRect(x: w - sidePadding - 56, y: topY(forRow: 2) + (capsuleHeight - 24) / 2,
+                                    width: 24, height: 24)
+        confirmButton.frame = NSRect(x: w - sidePadding - 28, y: topY(forRow: 2) + (capsuleHeight - 24) / 2,
+                                     width: 24, height: 24)
 
-        if datePopup.superview == nil { addSubview(datePopup) }
-        if timeField.superview == nil { addSubview(timeField) }
-        if durationField.superview == nil { addSubview(durationField) }
-        if nameField.superview == nil { addSubview(nameField) }
-        if estimatedEndLabel.superview == nil { addSubview(estimatedEndLabel) }
-        if cancelButton.superview == nil { addSubview(cancelButton) }
-        if confirmButton.superview == nil { addSubview(confirmButton) }
+        contentContainer.addSubview(endStack)
+        contentContainer.addSubview(cancelButton)
+        contentContainer.addSubview(confirmButton)
+    }
+
+    private func makeUnitLabel(_ text: String) -> NSTextField {
+        let l = NSTextField(labelWithString: text)
+        l.font = LingerTheme.labelFont(size: 11)
+        l.textColor = LingerTheme.ink3
+        return l
+    }
+
+    /// 胶囊：input 底色 + 圆角 8 + 图标 + 内容（原型 .bg-input rounded-lg）
+    private func makeCapsule(icon: String, content: NSView) -> NSView {
+        let cap = NSView()
+        cap.wantsLayer = true
+        cap.layer?.backgroundColor = LingerTheme.nsColor(LingerTheme.Color.input).cgColor
+        cap.layer?.cornerRadius = 8
+
+        let iconView = NSImageView()
+        iconView.image = NSImage(systemSymbolName: icon, accessibilityDescription: nil)?
+            .withSymbolConfiguration(NSImage.SymbolConfiguration(pointSize: 12, weight: .medium))
+        iconView.contentTintColor = LingerTheme.ink3
+
+        let stack = NSStackView(views: [iconView, content])
+        stack.orientation = .horizontal
+        stack.spacing = 6
+        stack.alignment = .centerY
+        stack.translatesAutoresizingMaskIntoConstraints = false
+        cap.addSubview(stack)
+        NSLayoutConstraint.activate([
+            stack.leadingAnchor.constraint(equalTo: cap.leadingAnchor, constant: 8),
+            stack.trailingAnchor.constraint(equalTo: cap.trailingAnchor, constant: -8),
+            stack.centerYAnchor.constraint(equalTo: cap.centerYAnchor)
+        ])
+        return cap
+    }
+
+    private func placeCapsule(_ cap: NSView, x: CGFloat, y: CGFloat, width: CGFloat) {
+        cap.frame = NSRect(x: x, y: y, width: width, height: capsuleHeight)
+        contentContainer.addSubview(cap)
     }
 
     private func topY(forRow row: Int) -> CGFloat {
-        // 从顶部向下排列三行
         return sidePadding + CGFloat(row) * (rowHeight + rowGap)
     }
 
-    /// 面板总高度
+    /// 面板总高度（三行 + 上下 padding）
     static func preferredHeight() -> CGFloat {
-        let h: CGFloat = 12 + CGFloat(3 * 32) + CGFloat(2 * 8) + 12
-        return h
+        return 12 + CGFloat(3 * 30) + CGFloat(2 * 8) + 12
     }
 
-    // 2026-08-05：内联进 hover 列表后不再画独立玻璃胶囊背景，透明融入列表（用户要求）
+    // 2026-08-05：内联进 hover 列表后不画独立背景，透明融入列表
     override func draw(_ dirtyRect: NSRect) {}
+
+    // MARK: - 展开动画（原型 .schedule-expand__content translateY + opacity）
+
+    /// 展开：内容从 translateY(10) 滑入 0（340ms delay 120ms）+ 自身 opacity 0→1（300ms delay 100ms）
+    func revealContent() {
+        wantsLayer = true
+        contentContainer.wantsLayer = true
+
+        // 先设起始态
+        layer?.opacity = 0
+        contentContainer.layer?.setAffineTransform(CGAffineTransform(translationX: 0, y: 10))
+
+        let now = CACurrentMediaTime()
+        // opacity
+        let oa = CABasicAnimation(keyPath: "opacity")
+        oa.fromValue = 0
+        oa.toValue = 1
+        oa.duration = 0.3
+        oa.beginTime = now + 0.1
+        oa.timingFunction = CAMediaTimingFunction(name: .easeOut)
+        oa.isRemovedOnCompletion = false
+        oa.fillMode = .forwards
+        layer?.add(oa, forKey: "revealOpacity")
+
+        // translateY 滑入
+        let ta = CABasicAnimation(keyPath: "transform.translation.y")
+        ta.fromValue = 10
+        ta.toValue = 0
+        ta.duration = 0.34
+        ta.beginTime = now + 0.12
+        ta.timingFunction = CAMediaTimingFunction(controlPoints: 0.2, 0.8, 0.2, 1)
+        ta.isRemovedOnCompletion = false
+        ta.fillMode = .forwards
+        contentContainer.layer?.add(ta, forKey: "revealY")
+    }
+
+    /// 收回：内容下移 10 + 淡出（供收起动画使用）
+    func hideContent() {
+        let now = CACurrentMediaTime()
+        let oa = CABasicAnimation(keyPath: "opacity")
+        oa.fromValue = 1
+        oa.toValue = 0
+        oa.duration = 0.28
+        oa.beginTime = now
+        oa.timingFunction = CAMediaTimingFunction(name: .easeOut)
+        oa.isRemovedOnCompletion = false
+        oa.fillMode = .forwards
+        layer?.add(oa, forKey: "hideOpacity")
+
+        let ta = CABasicAnimation(keyPath: "transform.translation.y")
+        ta.fromValue = 0
+        ta.toValue = 10
+        ta.duration = 0.34
+        ta.beginTime = now
+        ta.timingFunction = CAMediaTimingFunction(controlPoints: 0.2, 0.8, 0.2, 1)
+        ta.isRemovedOnCompletion = false
+        ta.fillMode = .forwards
+        contentContainer.layer?.add(ta, forKey: "hideY")
+    }
 
     // MARK: - 数据同步
 
@@ -199,7 +311,6 @@ final class ScheduleTimerView: NSView {
         default:
             base = Date()
         }
-        // 用时间胶囊的 HH:mm 覆盖 base 的时分
         let cal = Calendar.current
         var components = cal.dateComponents([.year, .month, .day], from: base)
         if let t = timeFormatter.date(from: timeField.stringValue) {
@@ -215,7 +326,7 @@ final class ScheduleTimerView: NSView {
         let end = start.addingTimeInterval(duration)
         let f = DateFormatter()
         f.dateFormat = "HH:mm"
-        estimatedEndLabel.stringValue = "预计 \(f.string(from: end)) 结束"
+        estimatedEndLabel.stringValue = "预计 \(f.string(from: end))"
     }
 
     // MARK: - 事件
@@ -270,8 +381,3 @@ extension ScheduleTimerView: NSTextFieldDelegate {
         updateEstimatedEnd()
     }
 }
-
-// MARK: - 承载 ScheduleTimerView 的无边框窗口
-
-/// 无边框窗口默认无法成为 key window，导致 ScheduleTimerView 内的文本框收不到键盘输入。
-/// 此处覆写 `canBecomeKey` 使其可成为 key，从而正常编辑时间 / 时长 / 名称。

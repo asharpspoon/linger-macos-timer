@@ -272,14 +272,13 @@ final class HoverListView: NSView {
     /// 内联预约编辑视图（原型：hover-list 底部内联展开，非独立窗口）
     private var scheduleView: ScheduleTimerView?
     var isScheduling: Bool = false
+    /// 底栏日历预约按钮（脉动/点击/激活反馈）
+    private let calendarButton = CalendarPulseButton()
     // ⑤ 编辑标题回调
     var onTitleEdit: ((UUID, String) -> Void)?
 
-    // 底栏两个按钮的 hit rect（drawBottomArea 中计算）
-    private var calendarBtnRect: NSRect = .zero
+    // 底栏「全部暂停」按钮 hit rect（drawBottomArea 中计算）
     private var pauseAllBtnRect: NSRect = .zero
-    /// 底栏日历按钮 hover（原型 hover 琥珀软底）
-    private var hoveredCalendar = false
 
     // 最后 10s 提醒：时间文本闪烁状态
     private var urgentBlinkOn = false
@@ -431,6 +430,23 @@ final class HoverListView: NSView {
         super.layout()
         if !isAnimating {
             layoutRows()
+        }
+        // 底栏日历按钮定位（与 drawBottomArea 底栏同位置）+ 首次接线
+        if calendarButton.superview == nil {
+            calendarButton.onClick = { [weak self] in
+                self?.toggleInlineSchedule()
+            }
+            addSubview(calendarButton)
+        }
+        let topY = bounds.height - HoverDesign.bottomAreaHeight - HoverDesign.bottomPadding + 4
+        let btnSize: CGFloat = 28
+        let btnCenterX = HoverDesign.cardPaddingX + 4 + btnSize / 2
+        let btnCenterY = topY + HoverDesign.bottomAreaHeight / 2 + 2
+        calendarButton.frame = NSRect(x: btnCenterX - btnSize / 2, y: btnCenterY - btnSize / 2,
+                                      width: btnSize, height: btnSize)
+        // 收起态脉动提示
+        if !isScheduling {
+            calendarButton.startHintPulse()
         }
         // 内联预约区：悬浮窗最底部（用户要求填写内容在最下方）
         if let sv = scheduleView {
@@ -962,22 +978,7 @@ final class HoverListView: NSView {
         NSRect(x: HoverDesign.cardPaddingX, y: topY,
                width: bounds.width - HoverDesign.cardPaddingX * 2, height: 1).fill()
 
-        // 左下：圆形 calendar-plus 按钮（原型 rounded-full h-7 w-7，hover 琥珀软底）
-        let btnSize: CGFloat = 28
-        let btnCenterX = HoverDesign.cardPaddingX + 4 + btnSize / 2
-        let btnCenterY = topY + HoverDesign.bottomAreaHeight / 2 + 2
-        let btnRect = NSRect(x: btnCenterX - btnSize / 2, y: btnCenterY - btnSize / 2,
-                             width: btnSize, height: btnSize)
-        if hoveredCalendar || isScheduling {
-            HoverDesign.amberSoft.setFill()
-            NSBezierPath(ovalIn: btnRect).fill()
-        }
-        drawTintedSFSymbol("calendar.badge.plus",
-                           color: HoverDesign.amber,
-                           pointSize: 16,
-                           rightAnchor: btnRect.maxX - 2,
-                           centerY: btnCenterY)
-        calendarBtnRect = btnRect
+        // 左下日历按钮由 CalendarPulseButton 承担（脉动/点击/激活），此处不再绘制
 
         // ② 右下：动态切换 "全部暂停" / "全部继续"
         let hasRunning = !running.isEmpty
@@ -1042,9 +1043,8 @@ final class HoverListView: NSView {
     override func mouseExited(with event: NSEvent) {
         onPanelMouseExited?()
         // ④ 离开面板时清除 hover
-        if hoveredEntryID != nil || hoveredCalendar {
+        if hoveredEntryID != nil {
             hoveredEntryID = nil
-            hoveredCalendar = false
             needsDisplay = true
         }
     }
@@ -1062,11 +1062,6 @@ final class HoverListView: NSView {
         }
         if found != hoveredEntryID {
             hoveredEntryID = found
-            needsDisplay = true
-        }
-        let calHover = calendarBtnRect.contains(point)
-        if calHover != hoveredCalendar {
-            hoveredCalendar = calHover
             needsDisplay = true
         }
     }
@@ -1094,11 +1089,7 @@ final class HoverListView: NSView {
             }
         }
 
-        // ② 底栏两个独立按钮
-        if calendarBtnRect.contains(point) {
-            toggleInlineSchedule()
-            return
-        }
+        // ② 底栏「全部暂停」按钮（日历按钮由 CalendarPulseButton 自行处理）
         if pauseAllBtnRect.contains(point) {
             onToggleAllPause?()
             return
@@ -1134,30 +1125,72 @@ final class HoverListView: NSView {
         if scheduleView != nil {
             closeInlineSchedule()
         } else {
-            let h = ScheduleTimerView.preferredHeight()
-            let v = ScheduleTimerView(frame: NSRect(x: 0, y: 0,
-                                                    width: bounds.width,
-                                                    height: h))
-            v.onConfirm = { [weak self] start, dur, title in
-                guard let self else { return }
-                self.onScheduleConfirm?(start, dur, title)
-                self.closeInlineSchedule()
-            }
-            v.onCancel = { [weak self] in
-                self?.closeInlineSchedule()
-            }
-            addSubview(v)
-            scheduleView = v
-            isScheduling = true
+            expandInlineSchedule()
         }
-        notifyHeightChange()
+    }
+
+    /// 展开：日历按钮反馈 → 浮窗延长 → 220ms 后编辑区高度动画 + 内容滑入（原型时序）
+    private func expandInlineSchedule() {
+        calendarButton.setActive(true)   // 停止脉动 + is-active
+        let h = ScheduleTimerView.preferredHeight()
+        let pad = HoverDesign.cardPaddingX
+        let v = ScheduleTimerView(frame: NSRect(x: pad, y: 0,
+                                                width: bounds.width - pad * 2,
+                                                height: 0))
+        v.wantsLayer = true
+        v.layer?.masksToBounds = true    // clipsToBounds：编辑区从底部「长出来」
+        v.onConfirm = { [weak self] start, dur, title in
+            guard let self else { return }
+            self.onScheduleConfirm?(start, dur, title)
+            self.closeInlineSchedule()
+        }
+        v.onCancel = { [weak self] in
+            self?.closeInlineSchedule()
+        }
+        addSubview(v)
+        scheduleView = v
+        isScheduling = true
+        notifyHeightChange()             // 浮窗高度延长（0.38s，与编辑区同步）
+
+        // 220ms 后编辑区高度 0→preferredHeight（380ms）+ 内容滑入/淡入
+        let token = scheduleView
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.22) { [weak self] in
+            guard let self, self.scheduleView === token else { return }
+            self.animateScheduleViewHeight(to: h)
+            v.revealContent()
+        }
+    }
+
+    /// 编辑区高度动画（0→h，380ms cubic-bezier(.2,.8,.2,1)）
+    private func animateScheduleViewHeight(to h: CGFloat) {
+        guard let sv = scheduleView else { return }
+        NSAnimationContext.runAnimationGroup { ctx in
+            ctx.duration = 0.38
+            ctx.timingFunction = CAMediaTimingFunction(controlPoints: 0.2, 0.8, 0.2, 1)
+            sv.animator().frame = NSRect(x: sv.frame.minX, y: 0,
+                                         width: sv.frame.width, height: h)
+        }
     }
 
     private func closeInlineSchedule() {
-        scheduleView?.removeFromSuperview()
-        scheduleView = nil
+        guard let sv = scheduleView else { return }
+        calendarButton.setActive(false)  // 恢复收起 + 脉动
         isScheduling = false
+        // 编辑区收回（高度→0 + 内容淡出）与浮窗变矮并行
+        sv.hideContent()
+        NSAnimationContext.runAnimationGroup { ctx in
+            ctx.duration = 0.38
+            ctx.timingFunction = CAMediaTimingFunction(controlPoints: 0.2, 0.8, 0.2, 1)
+            sv.animator().frame = NSRect(x: sv.frame.minX, y: 0,
+                                         width: sv.frame.width, height: 0)
+            sv.animator().alphaValue = 0
+        }
         notifyHeightChange()
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) { [weak self] in
+            guard let self, !self.isScheduling else { return }
+            self.scheduleView?.removeFromSuperview()
+            self.scheduleView = nil
+        }
     }
 
     private func notifyHeightChange() {
@@ -1169,10 +1202,11 @@ final class HoverListView: NSView {
         heightAnimTimer?.invalidate()
         let startH = bounds.height
         let start = CACurrentMediaTime()
-        let duration: CFTimeInterval = 0.3
+        let duration: CFTimeInterval = 0.38
         let timer = Timer(timeInterval: 1.0 / 60.0, repeats: true) { [weak self] t in
             guard let self else { t.invalidate(); return }
             let p = min(1, (CACurrentMediaTime() - start) / duration)
+            // cubic-bezier(.2,.8,.2,1) 近似：先快后慢
             let eased = 1 - pow(1 - p, 3)
             let h = startH + (target - startH) * eased
             self.onHeightAnimation?(h)

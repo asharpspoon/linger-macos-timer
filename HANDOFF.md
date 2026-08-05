@@ -14,6 +14,17 @@ s=d² 曲线 + 整分钟吸附），松手即开始计时。AppKit 原生、暗�
 > 每次交接/里程碑后在此**顶部**追加一段（最新在上），格式见 `.agents/skills/linger-handoff/`。
 > 上次交接见 git 历史；当前状态以「最新进度」为准。
 
+- **2026-08-05 · 预约计时按 schedule-timer-expand.html 规范实现（Codex）**
+  - 本次完成：ScheduleTimerView 胶囊化三行（日期/时间、时长/名称、预计结束+确认/取消，input 底+图标，
+    琥珀实底确认圆）；展开动画（日历按钮脉动 1.8s / 点击 scale 1→1.2→1.05 / 展开态激活 → 浮窗延长 0.38s
+    → 220ms 后编辑区高度 0→full 380ms + 内容 translateY 滑入 + 淡入）；收起动画（编辑区收回 + 浮窗变矮）；
+    新增 CalendarPulseButton（独立按钮 subview）；新增 LingerTheme.Color.input 令牌
+  - 未完成/卡点：步骤指示器 + 自动演示循环是原型演示辅助（生产省略）；新日程项滑入动画未做（确认后列表刷新显示）
+  - 下一步：notification 通知横幅方向待用户拍板（自定义玻璃横幅 vs 系统通知）
+  - 如何验证：`./script/build_and_run.sh` → hover 列表 → 点日历按钮 → 展开动画 + 胶囊编辑区 → 确认/取消
+  - 给下一位：展开时序在 HoverListView.expandInlineSchedule / closeInlineSchedule；编辑区动画
+    ScheduleTimerView.revealContent / hideContent + 高度 animator；胶囊样式 makeCapsule
+
 - **2026-08-05 · 关于并入设置 + 预约计时内联化（Codex）**
   - 本次完成：右键菜单删「关于 Linger」入口（关于=设置 tab 5，无独立窗口，AboutWindow.swift 已删）；
     预约计时改为 **hover-list 底部内联展开**（贴合 schedule-timer.html 原型），删独立浮窗
