@@ -37,17 +37,26 @@ final class AboutTicketView: NSView {
         stack.translatesAutoresizingMaskIntoConstraints = false
         addSubview(stack)
         NSLayoutConstraint.activate([
-            stack.topAnchor.constraint(equalTo: topAnchor, constant: 24),
-            stack.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 24),
-            stack.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -24),
-            stack.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -20)
+            stack.topAnchor.constraint(equalTo: topAnchor, constant: 28),
+            stack.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 28),
+            stack.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -28),
+            stack.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -26)
         ])
 
-        stack.addArrangedSubview(makeHeader())
+        // 用户要求：所有行距增高（header / 虚线 / fields / footer 之间拉开）
+        let header = makeHeader()
+        stack.addArrangedSubview(header)
+        stack.setCustomSpacing(20, after: header)
+        let d1 = makeDashed()
+        stack.addArrangedSubview(d1)
+        stack.setCustomSpacing(20, after: d1)
+        let fields = makeFields()
+        stack.addArrangedSubview(fields)
+        stack.setCustomSpacing(20, after: fields)
         stack.addArrangedSubview(makeDashed())
-        stack.addArrangedSubview(makeFields())
-        stack.addArrangedSubview(makeDashed())
-        stack.addArrangedSubview(makeFooter())
+        let footer = makeFooter()
+        stack.addArrangedSubview(footer)
+        stack.setCustomSpacing(22, after: footer)
     }
 
     override func draw(_ dirtyRect: NSRect) {
@@ -67,17 +76,18 @@ final class AboutTicketView: NSView {
             }
         }
 
-        // 上下锯齿边：挖空成窗口背景色（原型 radial-gradient circle 16px 间隔）
+        // 上下锯齿边：挖空成窗口背景色。用户要求：黑点圆心与白纸上下边缘对齐
+        // （圆心 y=0 / y=bounds.height，纸外部分被 masksToBounds 裁剪成半圆）
         let notch = LingerTheme.nsColor(LingerTheme.Color.panelBgDark)
         notch.setFill()
         var x: CGFloat = 8
         while x < bounds.width {
-            NSBezierPath(ovalIn: NSRect(x: x - 5, y: -1, width: 10, height: 10)).fill()
+            NSBezierPath(ovalIn: NSRect(x: x - 5, y: -5, width: 10, height: 10)).fill()
             x += 16
         }
         x = 8
         while x < bounds.width {
-            NSBezierPath(ovalIn: NSRect(x: x - 5, y: bounds.height - 9, width: 10, height: 10)).fill()
+            NSBezierPath(ovalIn: NSRect(x: x - 5, y: bounds.height - 5, width: 10, height: 10)).fill()
             x += 16
         }
     }
@@ -102,9 +112,10 @@ final class AboutTicketView: NSView {
         let header = NSStackView(views: [icon, name, version, slogan])
         header.orientation = .vertical
         header.alignment = .centerX
-        header.spacing = 2
-        header.setCustomSpacing(10, after: icon)
-        header.setCustomSpacing(6, after: name)
+        header.spacing = 4
+        header.setCustomSpacing(14, after: icon)
+        header.setCustomSpacing(8, after: name)
+        header.setCustomSpacing(6, after: version)
         return header
     }
 
@@ -157,7 +168,7 @@ final class AboutTicketView: NSView {
         let stack = NSStackView()
         stack.orientation = .vertical
         stack.alignment = .leading
-        stack.spacing = 4
+        stack.spacing = 10
         for f in fields {
             let row = makeField(label: f.0, value: f.1, mono: f.2)
             stack.addArrangedSubview(row)
@@ -183,6 +194,8 @@ final class AboutTicketView: NSView {
         row.spacing = 12
         // 弹性 spacer 把 value 推到右侧
         row.arrangedSubviews[1].setContentHuggingPriority(.defaultLow, for: .horizontal)
+        // 行距增高
+        row.heightAnchor.constraint(greaterThanOrEqualToConstant: 26).isActive = true
         return row
     }
 
@@ -202,7 +215,7 @@ final class AboutTicketView: NSView {
         let footer = NSStackView(views: [t1, t2])
         footer.orientation = .vertical
         footer.alignment = .centerX
-        footer.spacing = 4
+        footer.spacing = 6
         return footer
     }
 

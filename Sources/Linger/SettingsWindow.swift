@@ -222,9 +222,11 @@ final class SettingsWindow: NSWindow {
         ])
 
         panelContainer.layoutSubtreeIfNeeded()
-        // 内容自适应高度：tab 栏 + 面板内容（fittingSize 比 frame.height 可靠）
-        let panelHeight = max(panelContainer.fittingSize.height, 100)
-        let targetHeight = tabBarHeight + panelHeight
+        // 用 panel 自身 fittingSize（不含容器/窗口高度约束），
+        // 否则从低 tab 切到高 tab 时 targetHeight 被当前矮窗口约束算错 → 突然无动画
+        let panelFit = panel.fittingSize.height
+        let panelHeight = max(panelFit, 100)
+        let targetHeight = tabBarHeight + panelHeight + contentVSpacing * 2
         let oldMaxY = frame.maxY
         let targetFrame = NSRect(x: frame.minX, y: oldMaxY - targetHeight,
                                  width: Self.windowWidth, height: targetHeight)
@@ -280,8 +282,8 @@ final class SettingsWindow: NSWindow {
         btn.layer?.sublayers?
             .filter { $0.name == "tabIndicator" }
             .forEach { l in
-                // 用户反馈：横条太低了，往上移到 tab 内容下方（距顶 18pt），加高到 3pt
-                l.frame = NSRect(x: 0, y: btn.bounds.height - 18, width: btn.bounds.width, height: 3)
+                // 用户反馈：横线要在 icon 上方，中间留一点空隙（顶部指示，距按钮顶 5-8pt）
+                l.frame = NSRect(x: 0, y: btn.bounds.height - 8, width: btn.bounds.width, height: 3)
                 l.autoresizingMask = [.layerWidthSizable]
                 l.isHidden = !visible
             }
