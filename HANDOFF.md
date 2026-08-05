@@ -14,6 +14,25 @@ s=d² 曲线 + 整分钟吸附），松手即开始计时。AppKit 原生、暗�
 > 每次交接/里程碑后在此**顶部**追加一段（最新在上），格式见 `.agents/skills/linger-handoff/`。
 > 上次交接见 git 历史；当前状态以「最新进度」为准。
 
+- **2026-08-05 晚 · 预约计时编辑区输入失效 + icon/文字错位修复（Solo/Trae · bug-fixing skill）**
+  - 本次完成：3 轮迭代修复 spec 对齐后遗留的 2 个 bug
+    1. **timer 打架（commit `dda2483`）**：`closeInlineSchedule` 把 close timer 存到 `heightAnimTimer`，紧接着 `notifyHeightChange()` → `animateHeight()` 第一行 `heightAnimTimer?.invalidate()` 把刚创建的 close timer 干掉。后果：scheduleView 永不移除，后续点击全走 close 但 timer 永不 fire。修复：新增独立 `scheduleHeightAnimTimer`（expand/close 专用），与 `heightAnimTimer`（驱动外层 HoverListView 高度）隔离
+    2. **原型对齐 + NSApp.activate（commit `94f88eb`）**：日程名称胶囊补 bg-input 底色 + 去掉多余 return 图标；日期/时间胶囊改 flex-1/shrink-0 宽度比；`expandInlineSchedule` 加 `NSApp.activate(ignoringOtherApps: true)` + `makeKeyAndOrderFront`（.accessory app 必须 activate 才能让 NSTextField 成为 firstResponder）
+    3. **frame didSet 同步 + icon/content 垂直居中（commit `2683ce9`）** ← **真正根治输入失效**
+       - 真根因：`scheduleView.frame` 在手动 timer 动画中变化，但 `contentContainer.frame` 只在 `layout()` 里同步，手动改 frame 不一定触发 `layout()`。结果 `contentContainer.bounds.height=0`，子 view 在 bounds 外，`hitTest` 返回 nil → 点击穿透到 HoverListView.mouseDown → 无响应
+       - 修复：ScheduleTimerView 重写 `frame didSet` 强制同步 `contentContainer.frame = bounds`
+       - icon/content 错位：icon 改 13x13 frame 居中（y=7.5），content 改 20pt 高度居中（y=4），都垂直居中在 capsuleHeight(28) 内
+  - 编译：`swift build --disable-sandbox` 通过；`swift test` 12/12 绿
+  - 未完成/卡点：实机验收待用户跑 `./script/build_and_run.sh` 确认输入框可点击获得光标；诊断日志 `schedule height anim done: frame=... contentContainer.bounds=...` 留在代码里，验收后可清
+  - 下一步：实机验收 → 清诊断日志 → 拍板通知横幅方向 + 图标三风格实装
+  - 如何验证：`./script/build_and_run.sh` → hover 列表 → 点日历按钮 → 220ms 后编辑区滑入（应看到 `schedule height anim done` 日志，frame 和 contentContainer.bounds 的 height 都=124）→ 点日期/时间/时长/日程输入框应能获得光标输入
+  - 给下一位：
+    - **关键决策**：`scheduleHeightAnimTimer` 与 `heightAnimTimer` 必须分开，前者驱动 scheduleView 自身高度动画，后者驱动外层 HoverListView 高度（onHeightAnimation 回调），两者并行跑互不 invalidate
+    - **关键决策**：ScheduleTimerView `frame didSet` 必须同步 `contentContainer.frame = bounds`，否则手动 timer 改 frame 时 `layout()` 不触发，contentContainer.bounds 卡在 0 导致子 view hitTest 返回 nil
+    - **关键决策**：.accessory app 让 NSTextField 获得 firstResponder 必须 `NSApp.activate(ignoringOtherApps: true)` + `window?.makeKeyAndOrderFront(nil)`，仅 `makeKey()` 不够
+    - 诊断日志在 `animateScheduleViewHeight` 完成时打印 frame + contentContainer.bounds（通过 `ScheduleTimerView.contentContainerBounds()` 访问 private contentContainer）
+    - bug-fixing skill 的 Phase 2 根因分析：第一次诊断停在 NSApp.activate（症状层），第二次才挖到 frame didSet 同步缺失（根因层）；UI bug 不能只读代码，要拿运行时日志验证 hitTest 链路
+
 - **2026-08-05 下午 · 预约计时内联展开 spec 对齐（Solo/Trae）**
   - 本次完成：按 `schedule-timer-expand-handoff.md` spec 对齐 4 处偏差
     1. 编辑区垂直 padding 14→10pt（拆分 `sidePadding`(14,水平) / `verticalPadding`(10,垂直)，对齐 spec §6 `py-2.5=10`）；`preferredHeight` 132→124
