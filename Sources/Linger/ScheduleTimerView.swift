@@ -146,63 +146,82 @@ final class ScheduleTimerView: NSView {
         cancelButton.target = self
         cancelButton.action = #selector(cancelTapped(_:))
 
-        layoutSubviews()
+        buildLayout()
         updateEstimatedEnd()
     }
 
     required init?(coder: NSCoder) { fatalError() }
 
-    // MARK: - 布局（三行胶囊）
+    // MARK: - 布局（autolayout 三行胶囊，严格对齐原型 flex 布局）
 
-    private func layoutSubviews() {
-        let w = bounds.width
-        let innerW = w - sidePadding * 2
-
-        // 行1：日期胶囊（左，flex-1 自适应）+ 时间胶囊（右，shrink-0 紧凑）
-        // 原型：日期 min-w-0 flex-1，时间 shrink-0；HH:mm 紧凑约 56pt，日期占剩余
-        let timeW: CGFloat = 78
-        let dateW = innerW - timeW - capsuleGap
+    /// 用 autolayout 重建三行：胶囊内 icon/content 由 NSStackView alignment .centerY 保证垂直居中，
+    /// 胶囊之间由行 stack 的 distribution/宽度约束控制（日期 flex、时间紧凑、时长固定、名称 flex），
+    /// 不再手算 frame —— 消除 icon/文字错位。
+    private func buildLayout() {
+        // —— 胶囊（icon + content 垂直居中）——
         let dateCap = makeCapsule(icon: "calendar", content: datePicker)
-        placeCapsule(dateCap, x: sidePadding, y: topY(forRow: 0), width: dateW)
         let timeCap = makeCapsule(icon: "clock", content: timePicker)
-        placeCapsule(timeCap, x: sidePadding + dateW + capsuleGap, y: topY(forRow: 0), width: timeW)
-
-        // 行2：时长胶囊（左，窄）+ 日程名称胶囊（右，flex-1）—— 原型两胶囊都有 bg-input 底色
-        let durW: CGFloat = 92
-        let durationContent = NSStackView(views: [durationField, makeUnitLabel("分")])
-        durationContent.orientation = .horizontal
-        durationContent.spacing = 4
-        durationContent.alignment = .centerY
-        let durCap = makeCapsule(icon: "timer", content: durationContent)
-        placeCapsule(durCap, x: sidePadding, y: topY(forRow: 1), width: durW)
-
-        // 原型：日程名称胶囊 = pen-line 图标 + input（无 return 图标，gap-1.5=6）
+        let durContent = NSStackView(views: [durationField, makeUnitLabel("分")])
+        durContent.orientation = .horizontal
+        durContent.spacing = 4
+        durContent.alignment = .centerY
+        let durCap = makeCapsule(icon: "timer", content: durContent)
         let nameCap = makeCapsule(icon: "pencil", content: nameField)
-        placeCapsule(nameCap, x: sidePadding + durW + capsuleGap, y: topY(forRow: 1),
-                     width: innerW - durW - capsuleGap)
 
-        // 行3：预计结束（左）+ 取消 / 确认（右）—— 全部垂直居中在 row2 行高内
+        // —— 行1：日期胶囊 flex（占剩余）+ 时间胶囊紧凑 ——
+        let row1 = NSStackView(views: [dateCap, timeCap])
+        row1.orientation = .horizontal
+        row1.spacing = capsuleGap
+        row1.alignment = .centerY
+        timeCap.widthAnchor.constraint(equalToConstant: 80).isActive = true   // HH:mm 紧凑
+        dateCap.setContentHuggingPriority(.defaultLow, for: .horizontal)
+        dateCap.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+
+        // —— 行2：时长胶囊固定 + 名称胶囊 flex ——
+        let row2 = NSStackView(views: [durCap, nameCap])
+        row2.orientation = .horizontal
+        row2.spacing = capsuleGap
+        row2.alignment = .centerY
+        durCap.widthAnchor.constraint(equalToConstant: 96).isActive = true
+        nameCap.setContentHuggingPriority(.defaultLow, for: .horizontal)
+        nameCap.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+
+        // —— 行3：预计结束（左）+ spacer + 取消/确认（右），全部垂直居中 ——
         let arrow = NSImageView()
-        arrow.image = NSImage(systemSymbolName: "arrow.right",
-                              accessibilityDescription: nil)?
+        arrow.image = NSImage(systemSymbolName: "arrow.right", accessibilityDescription: nil)?
             .withSymbolConfiguration(NSImage.SymbolConfiguration(pointSize: 11, weight: .medium))
         arrow.contentTintColor = LingerTheme.ink3
         let endStack = NSStackView(views: [arrow, estimatedEndLabel])
         endStack.orientation = .horizontal
         endStack.spacing = 4
         endStack.alignment = .centerY
-        // endStack 高度 16，垂直居中在 capsuleHeight(28) 内
-        endStack.frame = NSRect(x: sidePadding, y: topY(forRow: 2) + (capsuleHeight - 16) / 2,
-                                width: innerW - 70, height: 16)
-        // 取消/确认按钮 24x24，垂直居中在 capsuleHeight(28) 内
-        cancelButton.frame = NSRect(x: w - sidePadding - 56, y: topY(forRow: 2) + (capsuleHeight - 24) / 2,
-                                    width: 24, height: 24)
-        confirmButton.frame = NSRect(x: w - sidePadding - 28, y: topY(forRow: 2) + (capsuleHeight - 24) / 2,
-                                     width: 24, height: 24)
+        let spacer = NSView()
+        spacer.setContentHuggingPriority(.defaultLow, for: .horizontal)
+        let row3 = NSStackView(views: [endStack, spacer, cancelButton, confirmButton])
+        row3.orientation = .horizontal
+        row3.spacing = 8
+        row3.alignment = .centerY
+        for b in [cancelButton, confirmButton] {
+            b.widthAnchor.constraint(equalToConstant: 24).isActive = true
+            b.heightAnchor.constraint(equalToConstant: 24).isActive = true
+        }
 
-        contentContainer.addSubview(endStack)
-        contentContainer.addSubview(cancelButton)
-        contentContainer.addSubview(confirmButton)
+        // —— 三行垂直堆叠（行间距 6/8，对齐原型）——
+        let rows = NSStackView(views: [row1, row2, row3])
+        rows.orientation = .vertical
+        rows.translatesAutoresizingMaskIntoConstraints = false
+        rows.setCustomSpacing(row1TopGap, after: row1)
+        rows.setCustomSpacing(row2TopGap, after: row2)
+        contentContainer.addSubview(rows)
+        NSLayoutConstraint.activate([
+            rows.topAnchor.constraint(equalTo: contentContainer.topAnchor, constant: verticalPadding),
+            rows.leadingAnchor.constraint(equalTo: contentContainer.leadingAnchor, constant: sidePadding),
+            rows.trailingAnchor.constraint(equalTo: contentContainer.trailingAnchor, constant: -sidePadding),
+            // 行撑满容器宽度（flex 胶囊因此拉伸）
+            row1.widthAnchor.constraint(equalTo: rows.widthAnchor),
+            row2.widthAnchor.constraint(equalTo: rows.widthAnchor),
+            row3.widthAnchor.constraint(equalTo: rows.widthAnchor)
+        ])
     }
 
     private func makeUnitLabel(_ text: String) -> NSTextField {
@@ -212,54 +231,33 @@ final class ScheduleTimerView: NSView {
         return l
     }
 
-    /// 胶囊：input 底色 + 圆角 8 + 图标 + 内容（原型 .bg-input rounded-lg）。
-    /// icon 13x13 居中，content 20pt 高度居中 —— 视觉与原型 flex items-center 对齐。
+    /// 胶囊：input 底色 + 圆角 8 + icon + content，内部用 NSStackView alignment .centerY 垂直居中。
     private func makeCapsule(icon: String, content: NSView) -> NSView {
         let cap = NSView()
         cap.wantsLayer = true
         cap.layer?.backgroundColor = LingerTheme.nsColor(LingerTheme.Color.input).cgColor
         cap.layer?.cornerRadius = 8
 
-        let iconSize: CGFloat = 13
         let iconView = NSImageView()
         iconView.image = NSImage(systemSymbolName: icon, accessibilityDescription: nil)?
-            .withSymbolConfiguration(NSImage.SymbolConfiguration(pointSize: iconSize, weight: .medium))
+            .withSymbolConfiguration(NSImage.SymbolConfiguration(pointSize: 13, weight: .medium))
         iconView.contentTintColor = LingerTheme.ink3
-        // icon 垂直居中在 capsuleHeight(28) 内
-        iconView.frame = NSRect(x: 8, y: (capsuleHeight - iconSize) / 2,
-                                width: iconSize, height: iconSize)
-        cap.addSubview(iconView)
+        iconView.widthAnchor.constraint(equalToConstant: 13).isActive = true
+        iconView.heightAnchor.constraint(equalToConstant: 13).isActive = true
 
-        // content 垂直居中：高度 20pt（接近 NSDatePicker .textField + NSTextField 自然高度）
-        let contentH: CGFloat = 20
-        let contentX: CGFloat = 8 + iconSize + 6  // 27（原型 px-2=8 + icon 13 + gap-1.5=6）
-        content.frame = NSRect(x: contentX, y: (capsuleHeight - contentH) / 2,
-                               width: 60, height: contentH)
-        content.autoresizingMask = [.width]
-        cap.addSubview(content)
+        let stack = NSStackView(views: [iconView, content])
+        stack.orientation = .horizontal
+        stack.spacing = 6
+        stack.alignment = .centerY
+        stack.translatesAutoresizingMaskIntoConstraints = false
+        cap.addSubview(stack)
+        NSLayoutConstraint.activate([
+            stack.leadingAnchor.constraint(equalTo: cap.leadingAnchor, constant: 8),
+            stack.trailingAnchor.constraint(equalTo: cap.trailingAnchor, constant: -8),
+            stack.centerYAnchor.constraint(equalTo: cap.centerYAnchor),
+            cap.heightAnchor.constraint(equalToConstant: capsuleHeight)
+        ])
         return cap
-    }
-
-    private func placeCapsule(_ cap: NSView, x: CGFloat, y: CGFloat, width: CGFloat) {
-        cap.frame = NSRect(x: x, y: y, width: width, height: capsuleHeight)
-        contentContainer.addSubview(cap)
-        // cap.bounds.width 现在是实际值，手动修正 content frame（autoresize 在某些控件上不可靠）
-        if let content = cap.subviews.dropFirst().first {
-            let contentH: CGFloat = 20
-            content.frame = NSRect(x: 27, y: (capsuleHeight - contentH) / 2,
-                                   width: max(20, cap.bounds.width - 27 - 8),
-                                   height: contentH)
-        }
-        cap.layoutSubtreeIfNeeded()
-    }
-
-    private func topY(forRow row: Int) -> CGFloat {
-        switch row {
-        case 0: return verticalPadding
-        case 1: return verticalPadding + rowHeight + row1TopGap
-        case 2: return verticalPadding + rowHeight + row1TopGap + rowHeight + row2TopGap
-        default: return verticalPadding
-        }
     }
 
     /// 面板总高度（三行 + 上下 padding + 行间距）
