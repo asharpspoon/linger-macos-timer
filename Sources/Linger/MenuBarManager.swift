@@ -54,7 +54,6 @@ final class MenuBarManager: NSObject {
 
     // T7–T11: 设置窗口与关于窗口（复用实例，避免重复创建）
     private var settingsWindow: SettingsWindow?
-    private var aboutWindow: AboutWindow?
 
     // Step 5: 悬停面板
     private var hoverListWindow: HoverListWindow?
@@ -207,9 +206,11 @@ final class MenuBarManager: NSObject {
     // MARK: - 菜单动作
 
     @objc private func showAbout(_ sender: Any?) {
-        if aboutWindow == nil { aboutWindow = AboutWindow() }
-        // AboutWindow.orderFront 覆盖已启动 3 秒权限轮询，无需额外调用
-        aboutWindow?.makeKeyAndOrderFront(nil)
+        // 2026-08-05：关于已集成进设置窗口第 5 tab（统一原型），不再用独立 AboutWindow
+        if settingsWindow == nil { settingsWindow = SettingsWindow() }
+        settingsWindow?.showTab(4)   // 关于 tab
+        settingsWindow?.refreshPermissionStatuses()
+        settingsWindow?.makeKeyAndOrderFront(nil)
     }
 
     @objc private func showSettings(_ sender: Any?) {

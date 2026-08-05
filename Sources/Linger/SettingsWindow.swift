@@ -185,6 +185,11 @@ final class SettingsWindow: NSWindow {
     }
 
     /// 切换面板。`index` 越界时直接返回（PRD §6.3 P2 边界 guard）。
+    /// 供外部（菜单「关于 Linger」）切换到指定 tab
+    func showTab(_ index: Int) {
+        selectTab(index, animated: false)
+    }
+
     private func selectTab(_ index: Int, animated: Bool) {
         guard index >= 0, index < tabTitles.count else {
             os_log("selectTab ignored: index %d out of bounds (count=%d)",
