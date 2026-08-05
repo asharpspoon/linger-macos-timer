@@ -59,6 +59,22 @@ final class AboutTicketView: NSView {
         stack.setCustomSpacing(22, after: footer)
     }
 
+    /// 纸张纹理 pattern（平铺由系统优化，避免每帧重建数万个点 → 窗口动画卡顿）
+    private lazy var paperPattern: NSColor = makePattern(dotAlpha: 0.015, spacing: 4)
+    private lazy var paperPattern2: NSColor = makePattern(dotAlpha: 0.010, spacing: 9)
+
+    private func makePattern(dotAlpha: CGFloat, spacing: CGFloat) -> NSColor {
+        let size = NSSize(width: spacing, height: spacing)
+        let image = NSImage(size: size)
+        image.lockFocus()
+        NSColor.clear.setFill()
+        NSRect(origin: .zero, size: size).fill()
+        NSColor(calibratedWhite: 0, alpha: dotAlpha).setFill()
+        NSBezierPath(ovalIn: NSRect(x: (spacing - 1) / 2, y: (spacing - 1) / 2, width: 1, height: 1)).fill()
+        image.unlockFocus()
+        return NSColor(patternImage: image)
+    }
+
     override func draw(_ dirtyRect: NSRect) {
         guard bounds.width > 0, bounds.height > 0 else { return }
 
@@ -66,26 +82,11 @@ final class AboutTicketView: NSView {
         LingerTheme.nsColor(LingerTheme.Color.ticketPaper).setFill()
         NSRect(x: 0, y: 0, width: bounds.width, height: bounds.height).fill()
 
-        // 点状纹理（双层）—— 所有点合进一个路径，一次 fill，避免逐点 fill 的状态切换开销
-        let dotColor = NSColor(calibratedWhite: 0, alpha: 0.015)
-        dotColor.setFill()
-        let dots = NSBezierPath()
-        for yy in stride(from: 1, to: Int(bounds.height), by: 4) {
-            for xx in stride(from: 1, to: Int(bounds.width), by: 4) {
-                dots.appendOval(in: NSRect(x: CGFloat(xx), y: CGFloat(yy), width: 1, height: 1))
-            }
-        }
-        dots.fill()
-
-        let dot2 = NSColor(calibratedWhite: 0, alpha: 0.010)
-        dot2.setFill()
-        let dots2 = NSBezierPath()
-        for yy in stride(from: 2, to: Int(bounds.height), by: 9) {
-            for xx in stride(from: 2, to: Int(bounds.width), by: 9) {
-                dots2.appendOval(in: NSRect(x: CGFloat(xx), y: CGFloat(yy), width: 1, height: 1))
-            }
-        }
-        dots2.fill()
+        // 点状纹理（双层，pattern 平铺）
+        paperPattern.setFill()
+        NSRect(x: 0, y: 0, width: bounds.width, height: bounds.height).fill()
+        paperPattern2.setFill()
+        NSRect(x: 0, y: 0, width: bounds.width, height: bounds.height).fill()
 
         // 上下锯齿边：黑点圆心与白纸上下边缘对齐（圆心 y=0 / y=bounds.height）
         let notch = LingerTheme.nsColor(LingerTheme.Color.panelBgDark)

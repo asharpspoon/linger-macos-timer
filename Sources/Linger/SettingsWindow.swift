@@ -27,7 +27,7 @@ final class SettingsWindow: NSWindow {
     // MARK: - 布局常量
 
     private static let windowWidth: CGFloat = 520
-    private let tabBarHeight: CGFloat = 60
+    private let tabBarHeight: CGFloat = 72
     private let contentHPadding: CGFloat = 24
     private let contentVSpacing: CGFloat = 24   // 底部留白加大（用户要求）
     private static let defaultWindowHeight: CGFloat = 520
@@ -130,8 +130,8 @@ final class SettingsWindow: NSWindow {
         tabStack.translatesAutoresizingMaskIntoConstraints = false
         NSLayoutConstraint.activate([
             tabStack.centerXAnchor.constraint(equalTo: tabBar.centerXAnchor),
-            // 图标下移，给 tab 顶部指示线留出空隙（icon 上方 9pt）
-            tabStack.topAnchor.constraint(equalTo: tabBar.topAnchor, constant: 12)
+            // 图标下移，给 tab 顶部指示线留出空隙（icon 上方充足空间）
+            tabStack.topAnchor.constraint(equalTo: tabBar.topAnchor, constant: 10)
         ])
 
         // 激活 tab 顶部指示线（独立视图，布局后按按钮 frame 定位，不依赖按钮 bounds）

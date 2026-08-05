@@ -41,8 +41,9 @@ final class TabButtonView: NSControl {
         addSubview(stack)
         NSLayoutConstraint.activate([
             stack.centerXAnchor.constraint(equalTo: centerXAnchor),
-            stack.topAnchor.constraint(equalTo: topAnchor),
-            stack.bottomAnchor.constraint(equalTo: bottomAnchor)
+            // 顶部留 6pt padding：icon 上方充足空间、不被截、高亮背景完整覆盖
+            stack.topAnchor.constraint(equalTo: topAnchor, constant: 6),
+            stack.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -4)
         ])
         updateStyle()
     }
@@ -56,8 +57,8 @@ final class TabButtonView: NSControl {
         let iconW = iconView.image?.size.width ?? 27
         let labelW = label.intrinsicContentSize.width
         let w = max(iconW, labelW)
-        let h = 27 + 8 + label.intrinsicContentSize.height   // icon + 间距 + label
-        return NSSize(width: max(36, w + 8), height: max(48, h))
+        let h = 6 + 27 + 8 + label.intrinsicContentSize.height + 4   // padding + icon + 间距 + label
+        return NSSize(width: max(44, w + 16), height: max(58, h))
     }
 
     override func mouseDown(with event: NSEvent) {
