@@ -283,8 +283,11 @@ final class HoverListView: NSView {
     // 最后 10s 提醒：时间文本闪烁状态
     private var urgentBlinkOn = false
     private var urgentBlinkTimer: Timer?
-    /// 悬浮窗高度动画 timer（内联预约展开/收起）
+    /// 悬浮窗整体高度动画 timer（onHeightAnimation 回调驱动外部改 HoverListView bounds）
     private var heightAnimTimer: Timer?
+    /// scheduleView 自身高度动画 timer（expand / close），独立于 heightAnimTimer
+    /// 否则 closeInlineSchedule 里 notifyHeightChange → animateHeight 会把刚创建的 close timer invalidate 掉
+    private var scheduleHeightAnimTimer: Timer?
 
     static func panelHeight(runningPausedCount rp: Int, scheduledCount sc: Int) -> CGFloat {
         // 兼容旧调用: rp = running + paused
@@ -531,6 +534,7 @@ final class HoverListView: NSView {
     deinit {
         urgentBlinkTimer?.invalidate()
         heightAnimTimer?.invalidate()
+        scheduleHeightAnimTimer?.invalidate()
     }
 
     private func updateProgressBarsAnimated() {
@@ -1190,24 +1194,34 @@ final class HoverListView: NSView {
 
     /// 编辑区高度动画（0→h，380ms cubic-bezier(.2,.8,.2,1) 近似）。
     /// 用手动 timer 插值 frame（animator 在此场景可能不生效导致高度停在 0 → 内容被裁空白）。
+    /// 独立 scheduleHeightAnimTimer，避免被 animateHeight 的 invalidate 误杀。
     private func animateScheduleViewHeight(to h: CGFloat) {
         guard let sv = scheduleView else { return }
+        scheduleHeightAnimTimer?.invalidate()
         let startH = sv.frame.height
         let start = CACurrentMediaTime()
         let duration: CFTimeInterval = 0.38
-        let timer = Timer(timeInterval: 1.0 / 60.0, repeats: true) { [weak sv] t in
-            guard let sv else { t.invalidate(); return }
+        NSLog("LingerDiag schedule height anim: start=%.1f target=%.1f superH=%@",
+              startH, h,
+              sv.superview.map { "\($0.bounds.height)" } ?? "nil")
+        let timer = Timer(timeInterval: 1.0 / 60.0, repeats: true) { [weak self, weak sv] t in
+            guard let self, let sv else { t.invalidate(); return }
             let p = CGFloat(min(1, (CACurrentMediaTime() - start) / duration))
             let eased = CGFloat(1 - pow(1 - Double(p), 3))   // cubic-bezier(.2,.8,.2,1) 近似
             let hh = startH + (h - startH) * eased
             let bottomBarTop = HoverDesign.bottomAreaHeight + HoverDesign.bottomPadding - 4
-            let superH: CGFloat = sv.superview?.bounds.height ?? hh
+            let superH: CGFloat = sv.superview?.bounds.height ?? self.bounds.height
             sv.frame = NSRect(x: sv.frame.minX,
                               y: superH - bottomBarTop - hh,
                               width: sv.frame.width, height: hh)
-            if p >= 1 { t.invalidate() }
+            if p >= 1 {
+                t.invalidate()
+                self.scheduleHeightAnimTimer = nil
+                NSLog("LingerDiag schedule height anim done: finalH=%.1f", sv.frame.height)
+            }
         }
         RunLoop.main.add(timer, forMode: .common)
+        scheduleHeightAnimTimer = timer
     }
 
     private func closeInlineSchedule() {
@@ -1220,23 +1234,27 @@ final class HoverListView: NSView {
         if NSWorkspace.shared.accessibilityDisplayShouldReduceMotion {
             sv.frame.size.height = 0
             sv.alphaValue = 0
-            notifyHeightChange()
             sv.removeFromSuperview()
             scheduleView = nil
+            scheduleHeightAnimTimer?.invalidate()
+            scheduleHeightAnimTimer = nil
+            notifyHeightChange()
             return
         }
-        // 高度动画用手动 timer（与 expand 一致；animator 在此场景可能不生效导致高度停在原值）
+        // 高度动画用手动 timer（与 expand 一致；独立 scheduleHeightAnimTimer 避免被 animateHeight invalidate）
+        scheduleHeightAnimTimer?.invalidate()
         let startH = sv.frame.height
         let targetH: CGFloat = 0
         let start = CACurrentMediaTime()
         let duration: CFTimeInterval = 0.38
+        NSLog("LingerDiag schedule close: startH=%.1f targetH=%.1f", startH, targetH)
         let timer = Timer(timeInterval: 1.0 / 60.0, repeats: true) { [weak self, weak sv] t in
             guard let self, let sv else { t.invalidate(); return }
             let p = CGFloat(min(1, (CACurrentMediaTime() - start) / duration))
             let eased = CGFloat(1 - pow(1 - Double(p), 3))   // cubic-bezier(.2,.8,.2,1) 近似
             let hh = startH + (targetH - startH) * eased
             let bottomBarTop = HoverDesign.bottomAreaHeight + HoverDesign.bottomPadding - 4
-            let superH: CGFloat = sv.superview?.bounds.height ?? hh
+            let superH: CGFloat = sv.superview?.bounds.height ?? self.bounds.height
             sv.frame = NSRect(x: sv.frame.minX,
                               y: superH - bottomBarTop - hh,
                               width: sv.frame.width, height: hh)
@@ -1244,10 +1262,12 @@ final class HoverListView: NSView {
                 t.invalidate()
                 sv.removeFromSuperview()
                 self.scheduleView = nil
+                self.scheduleHeightAnimTimer = nil
+                NSLog("LingerDiag schedule close done: removed")
             }
         }
         RunLoop.main.add(timer, forMode: .common)
-        heightAnimTimer = timer
+        scheduleHeightAnimTimer = timer
         notifyHeightChange()
     }
 
