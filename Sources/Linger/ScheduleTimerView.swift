@@ -32,8 +32,8 @@ final class ScheduleTimerView: NSView {
 
     // MARK: - 子 view
 
-    private let datePopup: NSPopUpButton
-    private let timeField: NSTextField
+    private let datePicker: NSDatePicker
+    private let timePicker: NSDatePicker
     private let durationField: NSTextField
     private let nameField: NSTextField
     private let estimatedEndLabel: NSTextField
@@ -56,21 +56,20 @@ final class ScheduleTimerView: NSView {
         self.startDate = initialStartDate
         self.duration = initialDuration
 
-        // 透明无边框控件（胶囊底色由 makeCapsule 提供）
-        datePopup = NSPopUpButton()
-        datePopup.bezelStyle = .inline
-        datePopup.isBordered = false
-        datePopup.font = LingerTheme.labelFont(size: 12)
-        datePopup.contentTintColor = LingerTheme.ink
+        // macOS 官方日期/时间选择器：支持任意一天任意时间（NSDatePicker）
+        datePicker = NSDatePicker()
+        datePicker.datePickerStyle = .textFieldAndStepper
+        datePicker.datePickerElements = [.yearMonthDay]
+        datePicker.isBordered = false
+        datePicker.font = LingerTheme.labelFont(size: 12)
+        datePicker.dateValue = initialStartDate
 
-        timeField = NSTextField()
-        timeField.isBordered = false
-        timeField.drawsBackground = false
-        timeField.focusRingType = .none
-        timeField.usesSingleLineMode = true
-        timeField.font = LingerTheme.timeFont(size: 12)
-        timeField.textColor = LingerTheme.ink
-        timeField.alignment = .center
+        timePicker = NSDatePicker()
+        timePicker.datePickerStyle = .textFieldAndStepper
+        timePicker.datePickerElements = [.hourMinute]
+        timePicker.isBordered = false
+        timePicker.font = LingerTheme.timeFont(size: 12)
+        timePicker.dateValue = initialStartDate
 
         durationField = NSTextField()
         durationField.isBordered = false
@@ -122,15 +121,13 @@ final class ScheduleTimerView: NSView {
         contentContainer.autoresizingMask = [.width, .height]
         addSubview(contentContainer)
 
-        // 预设日期选项：今天 / 明天 / 后天
-        datePopup.addItems(withTitles: ["今天", "明天", "后天"])
-        datePopup.target = self
-        datePopup.action = #selector(datePopupChanged(_:))
-
-        timeField.stringValue = timeFormatter.string(from: startDate)
-        timeField.delegate = self
         durationField.stringValue = "\(Int(duration / 60))"
         nameField.delegate = self
+
+        datePicker.target = self
+        datePicker.action = #selector(dateChanged(_:))
+        timePicker.target = self
+        timePicker.action = #selector(dateChanged(_:))
 
         confirmButton.target = self
         confirmButton.action = #selector(confirmTapped(_:))
@@ -150,13 +147,13 @@ final class ScheduleTimerView: NSView {
         let innerW = w - sidePadding * 2
         let halfW = (innerW - rowGap) / 2
 
-        // 行1：日期胶囊（左）+ 时间胶囊（右）
-        let dateCap = makeCapsule(icon: "calendar", content: datePopup)
+        // 行1：日期胶囊（左）+ 时间胶囊（右）—— NSDatePicker 支持任意日期/时间
+        let dateCap = makeCapsule(icon: "calendar", content: datePicker)
         placeCapsule(dateCap, x: sidePadding, y: topY(forRow: 0), width: halfW)
-        let timeCap = makeCapsule(icon: "clock", content: timeField)
+        let timeCap = makeCapsule(icon: "clock", content: timePicker)
         placeCapsule(timeCap, x: sidePadding + halfW + rowGap, y: topY(forRow: 0), width: halfW)
 
-        // 行2：时长胶囊（左，窄）+ 名称胶囊（右，flex）
+        // 行2：时长胶囊（左，窄）+ 日程名称（右，沿用 hover 列表输入语言：铅笔 + 输入 + 回车，无胶囊底）
         let durW: CGFloat = 92
         let durationContent = NSStackView(views: [durationField, makeUnitLabel("分")])
         durationContent.orientation = .horizontal
@@ -164,9 +161,22 @@ final class ScheduleTimerView: NSView {
         durationContent.alignment = .centerY
         let durCap = makeCapsule(icon: "timer", content: durationContent)
         placeCapsule(durCap, x: sidePadding, y: topY(forRow: 1), width: durW)
-        let nameCap = makeCapsule(icon: "pen.line", content: nameField)
-        placeCapsule(nameCap, x: sidePadding + durW + rowGap, y: topY(forRow: 1),
-                     width: innerW - durW - rowGap)
+
+        let pencil = NSImageView()
+        pencil.image = NSImage(systemSymbolName: "pencil", accessibilityDescription: nil)?
+            .withSymbolConfiguration(NSImage.SymbolConfiguration(pointSize: 12, weight: .medium))
+        pencil.contentTintColor = LingerTheme.ink3
+        let returnIcon = NSImageView()
+        returnIcon.image = NSImage(systemSymbolName: "return", accessibilityDescription: nil)?
+            .withSymbolConfiguration(NSImage.SymbolConfiguration(pointSize: 10, weight: .medium))
+        returnIcon.contentTintColor = LingerTheme.ink3
+        let nameStack = NSStackView(views: [pencil, nameField, returnIcon])
+        nameStack.orientation = .horizontal
+        nameStack.spacing = 6
+        nameStack.alignment = .centerY
+        nameStack.frame = NSRect(x: sidePadding + durW + rowGap, y: topY(forRow: 1),
+                                 width: innerW - durW - rowGap, height: capsuleHeight)
+        contentContainer.addSubview(nameStack)
 
         // 行3：预计结束（左）+ 取消 / 确认（右）
         let arrow = NSImageView()
@@ -302,23 +312,16 @@ final class ScheduleTimerView: NSView {
     // MARK: - 数据同步
 
     private func resolveStartDate() -> Date {
-        let base: Date
-        switch datePopup.indexOfSelectedItem {
-        case 1:
-            base = Calendar.current.date(byAdding: .day, value: 1, to: Date()) ?? Date()
-        case 2:
-            base = Calendar.current.date(byAdding: .day, value: 2, to: Date()) ?? Date()
-        default:
-            base = Date()
-        }
         let cal = Calendar.current
-        var components = cal.dateComponents([.year, .month, .day], from: base)
-        if let t = timeFormatter.date(from: timeField.stringValue) {
-            let tc = cal.dateComponents([.hour, .minute], from: t)
-            components.hour = tc.hour
-            components.minute = tc.minute
-        }
-        return cal.date(from: components) ?? base
+        let d = cal.dateComponents([.year, .month, .day], from: datePicker.dateValue)
+        let t = cal.dateComponents([.hour, .minute], from: timePicker.dateValue)
+        var c = DateComponents()
+        c.year = d.year
+        c.month = d.month
+        c.day = d.day
+        c.hour = t.hour
+        c.minute = t.minute
+        return cal.date(from: c) ?? Date()
     }
 
     private func updateEstimatedEnd() {
@@ -331,7 +334,7 @@ final class ScheduleTimerView: NSView {
 
     // MARK: - 事件
 
-    @objc private func datePopupChanged(_ sender: Any) {
+    @objc private func dateChanged(_ sender: Any) {
         updateEstimatedEnd()
     }
 

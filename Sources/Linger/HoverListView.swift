@@ -448,13 +448,12 @@ final class HoverListView: NSView {
         if !isScheduling {
             calendarButton.startHintPulse()
         }
-        // 内联预约区：悬浮窗最底部（用户要求填写内容在最下方）
+        // 内联预约区：悬浮窗最底部；高度由展开/收起动画控制（layout 只保持位置/宽度）
         if let sv = scheduleView {
-            let h = ScheduleTimerView.preferredHeight()
             sv.frame = NSRect(x: HoverDesign.cardPaddingX,
                               y: 0,
                               width: bounds.width - HoverDesign.cardPaddingX * 2,
-                              height: h)
+                              height: sv.frame.height)
         }
     }
 
