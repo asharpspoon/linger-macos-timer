@@ -209,7 +209,8 @@ final class ScheduleTimerView: NSView {
         return l
     }
 
-    /// 胶囊：input 底色 + 圆角 8 + 图标 + 内容（原型 .bg-input rounded-lg）
+    /// 胶囊：input 底色 + 圆角 8 + 图标 + 内容（原型 .bg-input rounded-lg）。
+    /// 内部用 frame + autoresizingMask（不依赖 autolayout，避免未布局时 icon/控件 frame=0 不可见）
     private func makeCapsule(icon: String, content: NSView) -> NSView {
         let cap = NSView()
         cap.wantsLayer = true
@@ -220,24 +221,20 @@ final class ScheduleTimerView: NSView {
         iconView.image = NSImage(systemSymbolName: icon, accessibilityDescription: nil)?
             .withSymbolConfiguration(NSImage.SymbolConfiguration(pointSize: 12, weight: .medium))
         iconView.contentTintColor = LingerTheme.ink3
+        iconView.frame = NSRect(x: 8, y: (capsuleHeight - 16) / 2, width: 16, height: 16)
+        cap.addSubview(iconView)
 
-        let stack = NSStackView(views: [iconView, content])
-        stack.orientation = .horizontal
-        stack.spacing = 6
-        stack.alignment = .centerY
-        stack.translatesAutoresizingMaskIntoConstraints = false
-        cap.addSubview(stack)
-        NSLayoutConstraint.activate([
-            stack.leadingAnchor.constraint(equalTo: cap.leadingAnchor, constant: 8),
-            stack.trailingAnchor.constraint(equalTo: cap.trailingAnchor, constant: -8),
-            stack.centerYAnchor.constraint(equalTo: cap.centerYAnchor)
-        ])
+        content.frame = NSRect(x: 30, y: 0, width: max(20, cap.bounds.width - 38), height: capsuleHeight)
+        content.autoresizingMask = [.width]
+        cap.addSubview(content)
         return cap
     }
 
     private func placeCapsule(_ cap: NSView, x: CGFloat, y: CGFloat, width: CGFloat) {
         cap.frame = NSRect(x: x, y: y, width: width, height: capsuleHeight)
         contentContainer.addSubview(cap)
+        // 确保胶囊内部 frame 布局应用（icon/content autoresize）
+        cap.layoutSubtreeIfNeeded()
     }
 
     private func topY(forRow row: Int) -> CGFloat {
@@ -267,6 +264,9 @@ final class ScheduleTimerView: NSView {
         contentContainer.wantsLayer = true
         alphaValue = 0
         contentContainer.layer?.setAffineTransform(CGAffineTransform(translationX: 0, y: 10))
+        NSLog("LingerDiag reveal: subviews=%d contentSubviews=%d bounds=%@ alpha=%.2f",
+              subviews.count, contentContainer.subviews.count,
+              NSStringFromRect(bounds), alphaValue)
 
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { [weak self] in
             guard let self else { return }

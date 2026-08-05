@@ -1149,6 +1149,8 @@ final class HoverListView: NSView {
         addSubview(v)
         scheduleView = v
         isScheduling = true
+        NSLog("LingerDiag schedule expand: view=%@ size=%.0fx%.0f",
+              String(describing: v), v.bounds.width, v.bounds.height)
         notifyHeightChange()             // 浮窗高度延长（0.38s，与编辑区同步）
 
         // 220ms 后编辑区高度 0→preferredHeight（380ms）+ 内容滑入/淡入
