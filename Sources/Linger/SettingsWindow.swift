@@ -203,9 +203,16 @@ final class SettingsWindow: NSWindow {
         // 保证从低 tab → 高 tab 时 targetHeight 正确，动画两个方向都生效）
         let panelFit = panel.fittingSize.height
         let panelHeight = max(panelFit, 100)
-        let targetHeight = tabBarHeight + panelHeight + contentVSpacing * 2
-        let oldMaxY = frame.maxY
-        let targetFrame = NSRect(x: frame.minX, y: oldMaxY - targetHeight,
+        let computed = tabBarHeight + panelHeight + contentVSpacing * 2
+        // 窗口高度钳制到屏幕可用高度（关于页票据较高，窗口可能比屏幕还高，
+        // 会顶到屏幕上方盖住菜单栏 —— 用户反馈「菜单栏消失」）
+        let screenFrame = NSScreen.main?.visibleFrame ?? NSRect(x: 0, y: 0, width: 800, height: 600)
+        let maxHeight = max(240, screenFrame.height - 16)
+        let targetHeight = min(computed, maxHeight)
+        // 顶部固定且不超出屏幕可见区（保留菜单栏）
+        let topLimit = screenFrame.maxY - 8
+        let topY = min(frame.maxY, topLimit)
+        let targetFrame = NSRect(x: frame.minX, y: topY - targetHeight,
                                  width: Self.windowWidth, height: targetHeight)
 
         panel.translatesAutoresizingMaskIntoConstraints = false
@@ -217,10 +224,10 @@ final class SettingsWindow: NSWindow {
             panel.bottomAnchor.constraint(lessThanOrEqualTo: panelContainer.bottomAnchor, constant: -contentVSpacing)
         ])
 
-        os_log("LingerDiag selectTab idx=%d animated=%d panelFit=%.1f targetH=%.1f frameH=%.1f",
-               log: log, type: .info, index, animated ? 1 : 0, panelFit, targetHeight, frame.height)
+        os_log("LingerDiag selectTab idx=%d animated=%d panelFit=%.1f targetH=%.1f frameH=%.1f screenH=%.1f",
+               log: log, type: .info, index, animated ? 1 : 0, panelFit, targetHeight, frame.height, screenFrame.height)
         if animated {
-            // 以最上方边为基准，只伸缩底部：自定义高度插值（顶部 maxY 恒定，不抽搐；双向都动画）
+            // 以最上方边为基准，只伸缩底部：自定义高度插值（顶部恒定、不超屏幕；双向都动画）
             let startH = frame.height
             let start = CACurrentMediaTime()
             let duration: CFTimeInterval = 0.55   // 用户要求更慢、更优雅
@@ -230,7 +237,7 @@ final class SettingsWindow: NSWindow {
                 // easeInOutCubic：先缓入再缓出（优雅变化曲线）
                 let eased: CGFloat = p < 0.5 ? 4 * p * p * p : 1 - 4 * pow(1 - p, 3)
                 let h = startH + (targetHeight - startH) * eased
-                self.setFrame(NSRect(x: self.frame.minX, y: oldMaxY - h,
+                self.setFrame(NSRect(x: self.frame.minX, y: topY - h,
                                      width: Self.windowWidth, height: h), display: true)
                 if p >= 1 { t.invalidate() }
             }

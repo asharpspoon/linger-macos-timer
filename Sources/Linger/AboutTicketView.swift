@@ -59,69 +59,47 @@ final class AboutTicketView: NSView {
         stack.setCustomSpacing(22, after: footer)
     }
 
-    /// 离屏缓存：点状纹理 + 锯齿边只渲染一次（否则逐点 12 万个 oval 每帧重绘，
-    /// 会在窗口高度动画期间卡死主线程 → 从矮到高看起来「瞬间跳变」）
-    private var backgroundCache: CGImage?
-
     override func draw(_ dirtyRect: NSRect) {
         guard bounds.width > 0, bounds.height > 0 else { return }
-        if backgroundCache == nil {
-            backgroundCache = makeBackgroundCache(size: bounds.size)
-        }
-        if let cg = backgroundCache, let ctx = NSGraphicsContext.current?.cgContext {
-            ctx.draw(cg, in: bounds)   // 缩放 blit，动画期间快
-        }
-    }
 
-    private func makeBackgroundCache(size: NSSize) -> CGImage? {
-        let w = max(1, Int(size.width.rounded()))
-        let h = max(1, Int(size.height.rounded()))
-        guard let rep = NSBitmapImageRep(bitmapDataPlanes: nil, pixelsWide: w, pixelsHigh: h,
-                                         bitsPerSample: 8, samplesPerPixel: 4, hasAlpha: true,
-                                         isPlanar: false, colorSpaceName: .deviceRGB,
-                                         bytesPerRow: 0, bitsPerPixel: 0) else { return nil }
-        NSGraphicsContext.saveGraphicsState()
-        let ctx = NSGraphicsContext(bitmapImageRep: rep)
-        NSGraphicsContext.current = ctx
-
-        let bw = size.width, bh = size.height
         // 白纸底
         LingerTheme.nsColor(LingerTheme.Color.ticketPaper).setFill()
-        NSRect(x: 0, y: 0, width: bw, height: bh).fill()
+        NSRect(x: 0, y: 0, width: bounds.width, height: bounds.height).fill()
 
-        // 点状纹理（双层）
+        // 点状纹理（双层）—— 所有点合进一个路径，一次 fill，避免逐点 fill 的状态切换开销
         let dotColor = NSColor(calibratedWhite: 0, alpha: 0.015)
         dotColor.setFill()
-        for yy in stride(from: 1, to: Int(bh), by: 3) {
-            for xx in stride(from: 1, to: Int(bw), by: 3) {
-                NSBezierPath(ovalIn: NSRect(x: CGFloat(xx), y: CGFloat(yy), width: 1, height: 1)).fill()
+        let dots = NSBezierPath()
+        for yy in stride(from: 1, to: Int(bounds.height), by: 4) {
+            for xx in stride(from: 1, to: Int(bounds.width), by: 4) {
+                dots.appendOval(in: NSRect(x: CGFloat(xx), y: CGFloat(yy), width: 1, height: 1))
             }
         }
+        dots.fill()
+
         let dot2 = NSColor(calibratedWhite: 0, alpha: 0.010)
         dot2.setFill()
-        for yy in stride(from: 2, to: Int(bh), by: 7) {
-            for xx in stride(from: 2, to: Int(bw), by: 7) {
-                NSBezierPath(ovalIn: NSRect(x: CGFloat(xx), y: CGFloat(yy), width: 1, height: 1)).fill()
+        let dots2 = NSBezierPath()
+        for yy in stride(from: 2, to: Int(bounds.height), by: 9) {
+            for xx in stride(from: 2, to: Int(bounds.width), by: 9) {
+                dots2.appendOval(in: NSRect(x: CGFloat(xx), y: CGFloat(yy), width: 1, height: 1))
             }
         }
+        dots2.fill()
 
-        // 上下锯齿边：黑点圆心与白纸上下边缘对齐（圆心 y=0 / y=bh）
+        // 上下锯齿边：黑点圆心与白纸上下边缘对齐（圆心 y=0 / y=bounds.height）
         let notch = LingerTheme.nsColor(LingerTheme.Color.panelBgDark)
         notch.setFill()
         var x: CGFloat = 8
-        while x < bw {
+        while x < bounds.width {
             NSBezierPath(ovalIn: NSRect(x: x - 5, y: -5, width: 10, height: 10)).fill()
             x += 16
         }
         x = 8
-        while x < bw {
-            NSBezierPath(ovalIn: NSRect(x: x - 5, y: bh - 5, width: 10, height: 10)).fill()
+        while x < bounds.width {
+            NSBezierPath(ovalIn: NSRect(x: x - 5, y: bounds.height - 5, width: 10, height: 10)).fill()
             x += 16
         }
-
-        ctx?.flushGraphics()
-        NSGraphicsContext.restoreGraphicsState()
-        return rep.cgImage
     }
 
     // MARK: - 头部
