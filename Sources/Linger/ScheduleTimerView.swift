@@ -63,6 +63,8 @@ final class ScheduleTimerView: NSView {
         datePicker.isBordered = false
         datePicker.font = LingerTheme.labelFont(size: 12)
         datePicker.textColor = LingerTheme.ink
+        // 强制 ISO 格式 yyyy-MM-dd（避免中文 locale 显示「8月5日」）
+        datePicker.locale = Locale(identifier: "en_US_POSIX")
         datePicker.dateValue = initialStartDate
 
         timePicker = NSDatePicker()
@@ -71,6 +73,8 @@ final class ScheduleTimerView: NSView {
         timePicker.isBordered = false
         timePicker.font = LingerTheme.timeFont(size: 12)
         timePicker.textColor = LingerTheme.ink
+        // 强制 24h HH:mm
+        timePicker.locale = Locale(identifier: "en_US_POSIX")
         timePicker.dateValue = initialStartDate
 
         durationField = NSTextField()

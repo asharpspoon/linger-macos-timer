@@ -449,10 +449,13 @@ final class HoverListView: NSView {
         if !isScheduling {
             calendarButton.startHintPulse()
         }
-        // 内联预约区：悬浮窗最底部；高度由展开/收起动画控制（layout 只保持位置/宽度）
+        // 内联预约区：位于底栏上方（原型：计时列表 → 编辑区 → 底栏）。
+        // HoverListView isFlipped（y 向下、原点左上），底部 = bounds.height，
+        // 底栏高约 40pt，编辑区底边贴底栏顶。
         if let sv = scheduleView {
+            let bottomBarTop = HoverDesign.bottomAreaHeight + HoverDesign.bottomPadding - 4
             sv.frame = NSRect(x: HoverDesign.cardPaddingX,
-                              y: 0,
+                              y: bounds.height - bottomBarTop - sv.frame.height,
                               width: bounds.width - HoverDesign.cardPaddingX * 2,
                               height: sv.frame.height)
         }
@@ -1155,6 +1158,7 @@ final class HoverListView: NSView {
         addSubview(v)
         scheduleView = v
         isScheduling = true
+        window?.makeKey()   // 编辑区控件需要窗口成为 key 才能输入
         NSLog("LingerDiag schedule expand: view=%@ size=%.0fx%.0f",
               String(describing: v), v.bounds.width, v.bounds.height)
         notifyHeightChange()             // 浮窗高度延长（0.38s，与编辑区同步）
@@ -1177,10 +1181,14 @@ final class HoverListView: NSView {
         let duration: CFTimeInterval = 0.38
         let timer = Timer(timeInterval: 1.0 / 60.0, repeats: true) { [weak sv] t in
             guard let sv else { t.invalidate(); return }
-            let p = min(1, (CACurrentMediaTime() - start) / duration)
-            let eased = 1 - pow(1 - p, 3)   // cubic-bezier(.2,.8,.2,1) 近似：先快后慢
+            let p = CGFloat(min(1, (CACurrentMediaTime() - start) / duration))
+            let eased = CGFloat(1 - pow(1 - Double(p), 3))   // cubic-bezier(.2,.8,.2,1) 近似
             let hh = startH + (h - startH) * eased
-            sv.frame = NSRect(x: sv.frame.minX, y: 0, width: sv.frame.width, height: hh)
+            let bottomBarTop = HoverDesign.bottomAreaHeight + HoverDesign.bottomPadding - 4
+            let superH: CGFloat = sv.superview?.bounds.height ?? hh
+            sv.frame = NSRect(x: sv.frame.minX,
+                              y: superH - bottomBarTop - hh,
+                              width: sv.frame.width, height: hh)
             if p >= 1 { t.invalidate() }
         }
         RunLoop.main.add(timer, forMode: .common)
