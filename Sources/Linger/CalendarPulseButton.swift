@@ -85,6 +85,7 @@ final class CalendarPulseButton: NSView {
     }
 
     override func mouseDown(with event: NSEvent) {
+        NSLog("LingerDiag calendar button clicked frame=%@", NSStringFromRect(frame))
         playTap()
         onClick?()
     }

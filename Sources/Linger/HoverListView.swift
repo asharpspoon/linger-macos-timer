@@ -437,6 +437,7 @@ final class HoverListView: NSView {
                 self?.toggleInlineSchedule()
             }
             addSubview(calendarButton)
+            NSLog("LingerDiag calendar button installed")
         }
         let topY = bounds.height - HoverDesign.bottomAreaHeight - HoverDesign.bottomPadding + 4
         let btnSize: CGFloat = 28
