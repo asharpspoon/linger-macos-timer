@@ -27,9 +27,9 @@ final class SettingsWindow: NSWindow {
     // MARK: - 布局常量
 
     private static let windowWidth: CGFloat = 520
-    private let tabBarHeight: CGFloat = 52
+    private let tabBarHeight: CGFloat = 60
     private let contentHPadding: CGFloat = 24
-    private let contentVSpacing: CGFloat = 16
+    private let contentVSpacing: CGFloat = 24   // 底部留白加大（用户要求）
     private static let defaultWindowHeight: CGFloat = 520
 
     // MARK: - 视图引用
@@ -120,7 +120,7 @@ final class SettingsWindow: NSWindow {
 
         let tabStack = NSStackView()
         tabStack.orientation = .horizontal
-        tabStack.spacing = 6
+        tabStack.spacing = LingerTheme.space3   // 用户要求间距加宽
         tabStack.alignment = .centerY
         tabBar.addSubview(tabStack)
         tabStack.translatesAutoresizingMaskIntoConstraints = false
@@ -172,9 +172,9 @@ final class SettingsWindow: NSWindow {
     private func makeTabButton(title: String, icon: String, tag: Int) -> NSButton {
         let btn = NSButton()
         btn.tag = tag
-        // 原型 lg-tab：icon 18pt + label 10pt
+        // 原型 lg-tab：icon 27pt（用户要求大 50%）+ label 10pt
         if let img = NSImage(systemSymbolName: icon, accessibilityDescription: title)?
-            .withSymbolConfiguration(NSImage.SymbolConfiguration(pointSize: 18, weight: .medium)) {
+            .withSymbolConfiguration(NSImage.SymbolConfiguration(pointSize: 27, weight: .medium)) {
             btn.image = img
             btn.image?.isTemplate = true
         }
@@ -205,8 +205,8 @@ final class SettingsWindow: NSWindow {
             return
         }
         currentIndex = index
-        // 原型：窗口标题随 tab 切换（如「操作」「关于」）
-        title = tabTitles[index]
+        // 用户要求：标题统一定为「设置」（不随 tab 变化）
+        title = "设置"
         updateTabStyles()
 
         // 替换容器内的面板视图
@@ -233,11 +233,12 @@ final class SettingsWindow: NSWindow {
             // 以最上方边为基准，只伸缩底部：自定义高度插值（顶部 maxY 恒定，不抽搐）
             let startH = frame.height
             let start = CACurrentMediaTime()
-            let duration: CFTimeInterval = 0.4
+            let duration: CFTimeInterval = 0.55   // 用户要求更慢、更优雅
             let timer = Timer(timeInterval: 1.0 / 60.0, repeats: true) { [weak self] t in
                 guard let self else { t.invalidate(); return }
                 let p = min(1, (CACurrentMediaTime() - start) / duration)
-                let eased = 1 - pow(1 - p, 3)   // cubic-bezier(.32,.72,0,1) 近似
+                // easeInOutCubic：先缓入再缓出（优雅变化曲线）
+                let eased: CGFloat = p < 0.5 ? 4 * p * p * p : 1 - 4 * pow(1 - p, 3)
                 let h = startH + (targetHeight - startH) * eased
                 self.setFrame(NSRect(x: self.frame.minX, y: oldMaxY - h,
                                      width: Self.windowWidth, height: h), display: true)
@@ -279,7 +280,8 @@ final class SettingsWindow: NSWindow {
         btn.layer?.sublayers?
             .filter { $0.name == "tabIndicator" }
             .forEach { l in
-                l.frame = NSRect(x: 0, y: 0, width: btn.bounds.width, height: 2)
+                // 用户反馈：横条太低了，往上移到 tab 内容下方（距顶 18pt），加高到 3pt
+                l.frame = NSRect(x: 0, y: btn.bounds.height - 18, width: btn.bounds.width, height: 3)
                 l.autoresizingMask = [.layerWidthSizable]
                 l.isHidden = !visible
             }
