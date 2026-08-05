@@ -14,6 +14,16 @@ s=d² 曲线 + 整分钟吸附），松手即开始计时。AppKit 原生、暗�
 > 每次交接/里程碑后在此**顶部**追加一段（最新在上），格式见 `.agents/skills/linger-handoff/`。
 > 上次交接见 git 历史；当前状态以「最新进度」为准。
 
+- **2026-08-05 下午 · 预约计时内联化 + 进度整理（Codex）**
+  - 本次完成：预约计时改为 hover 列表内联展开（schedule-timer-expand.html）；胶囊三行编辑区（日期/时间/时长/名称/预计结束+确认/取消）；
+    NSDatePicker 支持任意日期时间（en_US_POSIX → yyyy-MM-dd / HH:mm）；展开/收起动画（日历按钮脉动/点击缩放、编辑区高度+滑入+淡入）；
+    修复：编辑区位置（isFlipped 坐标下曾顶到最上方压住计时行，现锚定底栏上方）、输入失效（展开时 makeKey）、格式、高度动画改用 timer 防 animator 不生效
+  - 测试环境：Xcode 可跑（SwiftPM 缓存清理 + NotificationManager bundle 兜底防 UNUserNotificationCenter 无 bundle 崩溃 + .swiftpm gitignore）
+  - 未完成/卡点：本轮 4 个修复（位置/输入/格式）待实机确认；**通知横幅方向未定**（原型自定义玻璃横幅 vs 现状系统通知）；**图标三风格（Ring/Classic/timer）实际渲染未做**（设置里只有三选一选择器）；UI 统一性留最后
+  - 下一步：确认预约计时 → 拍板通知横幅 → 图标三风格实装
+  - 如何验证：Xcode ⌘R（Console 看 LingerDiag）或 `./script/build_and_run.sh`（.app，含通知）
+  - 给下一位：HoverListView 是 **isFlipped**（坐标 y 向下、原点左上）；scheduleView 高度动画用**手动 timer**（animator 曾失效）；NSDatePicker 用 en_US_POSIX；编辑区在底栏上方；`statusItem.view` deprecation 是刻意保留（吞 mouseUp 老 bug 根治，勿改）
+
 - **2026-08-05 · 预约计时按 schedule-timer-expand.html 规范实现（Codex）**
   - 本次完成：ScheduleTimerView 胶囊化三行（日期/时间、时长/名称、预计结束+确认/取消，input 底+图标，
     琥珀实底确认圆）；展开动画（日历按钮脉动 1.8s / 点击 scale 1→1.2→1.05 / 展开态激活 → 浮窗延长 0.38s
@@ -156,6 +166,10 @@ Linger2.5/
 - [ ] 剩余页面对齐：about、schedule-timer、notification
 - [ ] 按原型逐页对齐：hover-list（悬停列表）、toast、settings×4、about、schedule-timer、notification
 - [ ] 通知/日历权限、预约计时、图标三风格（Ring/Classic/timer）
+- [x] **预约计时内联化 + 修复**（2026-08-05）：hover 列表底部内联展开编辑区（胶囊三行 / NSDatePicker 任意日期时间 / 展开收起动画）；修复位置（isFlipped 坐标）、输入失效（makeKey）、日期时间格式（en_US_POSIX）、高度动画（timer）
+- [x] **Xcode 测试环境就绪**（2026-08-05）：SwiftPM 缓存清理、NotificationManager bundle 兜底（无 .app 时防崩溃）、.swiftpm gitignore
+- [ ] **通知横幅方向待定**（2026-08-05）：原型是自定义玻璃横幅，现状是系统通知（UNUserNotificationCenter）——待用户拍板
+- [ ] **图标三风格实际渲染**（Ring/Classic/timer）：设置通用页有三选一选择器，但状态栏图标尚未按风格渲染
 - [x] **设置窗口统一原型 `settings-window.html` 落地**（2026-08-04 下午，Trae）：5 tab 合一（操作/通知/日历/通用/关于），Tab 栏改贴底分割线+琥珀指示线，新增「关于」票据白底面板；同步在 HANDOFF 新增「设置窗口开发指引」章节
 - [ ] 按 `settings-window.html` 重构 `SettingsWindow.swift`：4→5 tab、Tab 栏样式重写、关于票据面板、面板统一 section/row 范式
 
