@@ -226,11 +226,33 @@ Linger2.5/
 - `row`：flex 两端对齐，min-height 34px，padding 6px 0，底部 1px 分隔线（末行无）
 - `row-label`：13px ink；`row-hint`：11px ink-3
 
+### 4b. 控件自定义绘制铁律（Codex 上一轮做丑的根因）
+
+> 照搬 `pages/settings-window.html` 第 9-49 行铁律块。违反即丑。
+
+**实现铁律**
+1. 所有颜色走 `LingerTheme`，禁止硬编码 `#F5A623` / 裸 NSColor
+2. Switch 必须自定义绘制胶囊（36×20），**禁止** `NSButton(.switch)` 复选框 → `LingerSwitch(NSView/NSControl)`，关 `rgba(255,255,255,0.16)`、开 `amberGold`、滑块 16 白、0.2s easeInOut
+3. Select 必须自定义外观（surface2 底 24pt 高 圆角 4），**禁止** NSPopUpButton 默认 bezel → `.inline` + `isBordered=false` + layer 自绘底/边框（`styleSelect`）
+4. 标题栏保持系统原生（`.titled + .closable`），勿回退透明
+5. 间距用 `LingerTheme.space1~6`（4/8/12/16/24/32），禁止任意值
+6. 字号用 `LingerTheme.labelFont(size:)` / `timeFont(size:)`
+
+**令牌映射**：primary `#F5A623`→`amberGold/Color.amber`；light `#FFC966`→`amberLight`；bg `#0C0C0E`→窗口底（hudWindow）；surface `#16161A`→`Color.surface`；surface2 `#1F1F25`→`Color.surface2`；ink `#F5F5F3`→`ink(.labelColor)`；ink2→`ink2`；ink3→`ink3`；line→`Color.line`；success→`stateSuccess`；info→系统链接色
+
+**字号阶梯**：10 tab/kbd/票据label · 11 section标题/提示 · 12 控件值/select/票据value · 13 行标签 · 20 票据App名
+
+**间距阶梯**：4→space1 · 8→space2 · 12→space3 · 16→space4 · 20→(space4+4) · 24→space5
+
+**圆角**：4→radiusXS · 8→radiusSM · 12→radiusMD · 16→radiusLG
+
+**关键尺寸**：窗口宽 520 · 标题栏 38 · Tab 栏 48 · 面板内边距 20H/24V · Section 间距 20 · Row 高 36 · Row padding 8 · Switch 36×20(滑块16) · Select 高 24 · Stepper 框 56×24 · Slider 轨道高4 宽160 · Kbd 20高 圆角5 · 状态点 6×6
+
 ### 5. 控件样式
 
 - switch：36×20，圆角 full，关 `rgba(255,255,255,0.16)`，开琥珀金，滑块 16px 白
-- select：高 22px，surface-2 底，1px 线边框，圆角 4px，12px 字
-- stepper：22×56 数字框 + chevron-up/down
+- select：高 24px，surface-2 底，1px 线边框，圆角 4px，12px 字
+- stepper：56×24 数字框 + chevron-up/down
 - slider：accent 琥珀金
 - kbd 键帽：圆角 5px，surface-2 底，10px mono
 
