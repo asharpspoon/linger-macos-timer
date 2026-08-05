@@ -794,7 +794,6 @@ final class HoverListView: NSView {
 
     private func drawRowContent(entry: TimerEntry, rowRect: NSRect) {
         let contentX = rowRect.minX
-        let rightEdge = rowRect.maxX
         let centerY = rowRect.midY
 
         // 右侧控件（按钮/badge），返回时间文本右对齐锚点

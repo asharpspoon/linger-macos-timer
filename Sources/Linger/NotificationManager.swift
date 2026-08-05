@@ -27,7 +27,15 @@ final class NotificationManager: NSObject, UNUserNotificationCenterDelegate {
     static let shared = NotificationManager()
 
     private let log = OSLog(subsystem: "com.linger.notification", category: "NotificationManager")
-    private let center = UNUserNotificationCenter.current()
+    /// 通知中心（lazy + bundle 兜底）：Xcode 直接跑可执行文件（无 .app bundle）时
+    /// `UNUserNotificationCenter.current()` 会抛异常崩溃，此处无 bundle 返回 nil 禁用通知。
+    private lazy var center: UNUserNotificationCenter? = {
+        guard Bundle.main.bundleIdentifier != nil else {
+            os_log("No app bundle (raw executable) - notifications disabled", log: log, type: .debug)
+            return nil
+        }
+        return UNUserNotificationCenter.current()
+    }()
 
     // MARK: - Category / Action 标识
 
@@ -49,7 +57,7 @@ final class NotificationManager: NSObject, UNUserNotificationCenterDelegate {
 
     override init() {
         super.init()
-        center.delegate = self
+        center?.delegate = self
         registerCategories()
         startObservingFinish()
     }
@@ -60,11 +68,11 @@ final class NotificationManager: NSObject, UNUserNotificationCenterDelegate {
     /// - 仅当状态为 `.notDetermined` 时弹窗；其余状态（含 `.denied`）不重复弹窗。
     /// - 拒绝场景下由 `playFinishSoundIfEnabled()` 的 `NSSound` 回退提示音（不依赖系统通知权限）。
     func requestAuthorizationIfNeeded() {
-        center.getNotificationSettings { [weak self] settings in
+        center?.getNotificationSettings { [weak self] settings in
             guard let self = self else { return }
             switch settings.authorizationStatus {
             case .notDetermined:
-                self.center.requestAuthorization(options: [.alert, .sound, .badge]) { granted, error in
+                self.center?.requestAuthorization(options: [.alert, .sound, .badge]) { granted, error in
                     os_log("Notification auth result granted=%{public}@ error=%{public}@",
                            log: self.log, type: .info,
                            String(describing: granted), error?.localizedDescription ?? "nil")
@@ -109,7 +117,7 @@ final class NotificationManager: NSObject, UNUserNotificationCenterDelegate {
             intentIdentifiers: [],
             options: [.customDismissAction])
 
-        center.setNotificationCategories([dragCategory, scheduledCategory])
+        center?.setNotificationCategories([dragCategory, scheduledCategory])
     }
 
     // MARK: - 订阅计时归零
@@ -168,7 +176,7 @@ final class NotificationManager: NSObject, UNUserNotificationCenterDelegate {
         content.sound = nil   // 提示音由 NSSound 手动播放，避免与系统通知音叠加
 
         let request = UNNotificationRequest(identifier: UUID().uuidString, content: content, trigger: nil)
-        center.add(request) { error in
+        center?.add(request) { error in
             if let error = error {
                 os_log("Failed to deliver finish notification: %{public}@",
                        log: self.log, type: .error, error.localizedDescription)
@@ -255,7 +263,7 @@ final class NotificationManager: NSObject, UNUserNotificationCenterDelegate {
 
     /// 异步返回当前通知授权状态（主线程回调）
     func fetchAuthorizationStatus(completion: @escaping (UNAuthorizationStatus) -> Void) {
-        center.getNotificationSettings { settings in
+        center?.getNotificationSettings { settings in
             DispatchQueue.main.async { completion(settings.authorizationStatus) }
         }
     }
