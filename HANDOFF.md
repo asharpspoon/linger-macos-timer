@@ -14,6 +14,18 @@ s=d² 曲线 + 整分钟吸附），松手即开始计时。AppKit 原生、暗�
 > 每次交接/里程碑后在此**顶部**追加一段（最新在上），格式见 `.agents/skills/linger-handoff/`。
 > 上次交接见 git 历史；当前状态以「最新进度」为准。
 
+- **2026-08-05 下午 · 预约计时内联展开 spec 对齐（Solo/Trae）**
+  - 本次完成：按 `schedule-timer-expand-handoff.md` spec 对齐 4 处偏差
+    1. 编辑区垂直 padding 14→10pt（拆分 `sidePadding`(14,水平) / `verticalPadding`(10,垂直)，对齐 spec §6 `py-2.5=10`）；`preferredHeight` 132→124
+    2. `revealContent` 时序拆分：opacity delay 100ms / translateY delay 120ms（原合并 100ms，对齐 spec §3.1）
+    3. 确认时序对齐 spec §13.4：编辑区收回 → 420ms 后 `onScheduleConfirm`（原立即添加+同时收回）
+    4. expand 路径补 `prefers-reduced-motion` 支持（原仅 close 路径有；新增 `contentContainerTransformIdentity()` 方法）
+  - 编译：`swift build --disable-sandbox` 通过；`swift test` 12/12 绿
+  - 未完成/卡点：步骤指示器 + 自动演示循环是原型演示辅助（生产省略，HANDOFF 已记录）；新日程项滑入依赖 TimerManager 添加后的 FLIP 动画（spec §3.4 的 max-height 0→72 + translateY -8→0 由列表 FLIP 覆盖）；实机验收待用户跑 `./script/build_and_run.sh`
+  - 下一步：实机验收预约计时内联展开（点日历图标 → 220ms 后编辑区滑入 → 确认 → 420ms 后新日程出现）；之后拍板通知横幅方向 + 图标三风格实装
+  - 如何验证：`./script/build_and_run.sh` → hover 列表 → 点日历按钮 → 展开动画 + 胶囊编辑区 → 确认/取消
+  - 给下一位：revealContent 用两个 asyncAfter 分开 opacity/translateY 时序；确认时序在 `HoverListView.expandInlineSchedule` 的 `v.onConfirm` 闭包（closeInlineSchedule + 0.42s 延迟 onScheduleConfirm）；reduced-motion 在 expand/close 两条路径都处理；`ScheduleTimerView.contentContainerTransformIdentity()` 供 reduced-motion 跳过动画
+
 - **2026-08-05 下午 · 预约计时内联化 + 进度整理（Codex）**
   - 本次完成：预约计时改为 hover 列表内联展开（schedule-timer-expand.html）；胶囊三行编辑区（日期/时间/时长/名称/预计结束+确认/取消）；
     NSDatePicker 支持任意日期时间（en_US_POSIX → yyyy-MM-dd / HH:mm）；展开/收起动画（日历按钮脉动/点击缩放、编辑区高度+滑入+淡入）；

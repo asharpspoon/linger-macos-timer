@@ -1149,8 +1149,11 @@ final class HoverListView: NSView {
         v.layer?.masksToBounds = true    // clipsToBounds：编辑区从底部「长出来」
         v.onConfirm = { [weak self] start, dur, title in
             guard let self else { return }
-            self.onScheduleConfirm?(start, dur, title)
+            // spec §13.4 / §2.5：编辑区收回 → 420ms 后新日程滑入
             self.closeInlineSchedule()
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.42) { [weak self] in
+                self?.onScheduleConfirm?(start, dur, title)
+            }
         }
         v.onCancel = { [weak self] in
             self?.closeInlineSchedule()
@@ -1161,6 +1164,19 @@ final class HoverListView: NSView {
         window?.makeKey()   // 编辑区控件需要窗口成为 key 才能输入
         NSLog("LingerDiag schedule expand: view=%@ size=%.0fx%.0f",
               String(describing: v), v.bounds.width, v.bounds.height)
+
+        // reduced-motion：跳过动画直接设最终高度 + 显示内容
+        if NSWorkspace.shared.accessibilityDisplayShouldReduceMotion {
+            let bottomBarTop = HoverDesign.bottomAreaHeight + HoverDesign.bottomPadding - 4
+            let superH = bounds.height
+            v.frame = NSRect(x: pad, y: superH - bottomBarTop - h,
+                             width: bounds.width - pad * 2, height: h)
+            v.alphaValue = 1
+            v.contentContainerTransformIdentity()
+            notifyHeightChange()
+            return
+        }
+
         notifyHeightChange()             // 浮窗高度延长（0.38s，与编辑区同步）
 
         // 220ms 后编辑区高度 0→preferredHeight（380ms）+ 内容滑入/淡入
@@ -1200,19 +1216,39 @@ final class HoverListView: NSView {
         isScheduling = false
         // 编辑区收回（高度→0 + 内容淡出）与浮窗变矮并行
         sv.hideContent()
-        NSAnimationContext.runAnimationGroup { ctx in
-            ctx.duration = 0.38
-            ctx.timingFunction = CAMediaTimingFunction(controlPoints: 0.2, 0.8, 0.2, 1)
-            sv.animator().frame = NSRect(x: sv.frame.minX, y: 0,
-                                         width: sv.frame.width, height: 0)
-            sv.animator().alphaValue = 0
+        // reduced-motion：跳过动画直接收起
+        if NSWorkspace.shared.accessibilityDisplayShouldReduceMotion {
+            sv.frame.size.height = 0
+            sv.alphaValue = 0
+            notifyHeightChange()
+            sv.removeFromSuperview()
+            scheduleView = nil
+            return
         }
+        // 高度动画用手动 timer（与 expand 一致；animator 在此场景可能不生效导致高度停在原值）
+        let startH = sv.frame.height
+        let targetH: CGFloat = 0
+        let start = CACurrentMediaTime()
+        let duration: CFTimeInterval = 0.38
+        let timer = Timer(timeInterval: 1.0 / 60.0, repeats: true) { [weak self, weak sv] t in
+            guard let self, let sv else { t.invalidate(); return }
+            let p = CGFloat(min(1, (CACurrentMediaTime() - start) / duration))
+            let eased = CGFloat(1 - pow(1 - Double(p), 3))   // cubic-bezier(.2,.8,.2,1) 近似
+            let hh = startH + (targetH - startH) * eased
+            let bottomBarTop = HoverDesign.bottomAreaHeight + HoverDesign.bottomPadding - 4
+            let superH: CGFloat = sv.superview?.bounds.height ?? hh
+            sv.frame = NSRect(x: sv.frame.minX,
+                              y: superH - bottomBarTop - hh,
+                              width: sv.frame.width, height: hh)
+            if p >= 1 {
+                t.invalidate()
+                sv.removeFromSuperview()
+                self.scheduleView = nil
+            }
+        }
+        RunLoop.main.add(timer, forMode: .common)
+        heightAnimTimer = timer
         notifyHeightChange()
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) { [weak self] in
-            guard let self, !self.isScheduling else { return }
-            self.scheduleView?.removeFromSuperview()
-            self.scheduleView = nil
-        }
     }
 
     private func notifyHeightChange() {

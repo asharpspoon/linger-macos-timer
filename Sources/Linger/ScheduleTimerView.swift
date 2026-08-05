@@ -21,8 +21,14 @@ final class ScheduleTimerView: NSView {
 
     static let panelWidth: CGFloat = 300
     private let rowHeight: CGFloat = 30
-    private let rowGap: CGFloat = 8
-    private let sidePadding: CGFloat = 12
+    /// 行间距（对齐原型 mt-1.5=6 / mt-2=8，非统一 8pt 网格）
+    private let row1TopGap: CGFloat = 6
+    private let row2TopGap: CGFloat = 8
+    /// 同行胶囊间距（原型 gap-1.5=6）
+    private let capsuleGap: CGFloat = 6
+    private let sidePadding: CGFloat = 14          // 原型 px-3.5（水平）
+    /// 编辑区内层垂直 padding（原型 py-2.5=10，与水平 14 区分）
+    private let verticalPadding: CGFloat = 10
     private let capsuleHeight: CGFloat = 28
 
     // MARK: - 状态
@@ -58,17 +64,17 @@ final class ScheduleTimerView: NSView {
 
         // macOS 官方日期/时间选择器：支持任意一天任意时间（NSDatePicker）
         datePicker = NSDatePicker()
-        datePicker.datePickerStyle = .textFieldAndStepper
+        datePicker.datePickerStyle = .textField        // 原型胶囊纯文本视觉（无 stepper）
         datePicker.datePickerElements = [.yearMonthDay]
         datePicker.isBordered = false
         datePicker.font = LingerTheme.labelFont(size: 12)
         datePicker.textColor = LingerTheme.ink
-        // 强制 ISO 格式 yyyy-MM-dd（避免中文 locale 显示「8月5日」）
-        datePicker.locale = Locale(identifier: "en_US_POSIX")
+        // 中文 locale 显示「2026年8月5日」（贴近原型「8月3日 周一」，NSDatePicker 无星期元素）
+        datePicker.locale = Locale(identifier: "zh_CN")
         datePicker.dateValue = initialStartDate
 
         timePicker = NSDatePicker()
-        timePicker.datePickerStyle = .textFieldAndStepper
+        timePicker.datePickerStyle = .textField        // 原型胶囊纯文本视觉（无 stepper）
         timePicker.datePickerElements = [.hourMinute]
         timePicker.isBordered = false
         timePicker.font = LingerTheme.timeFont(size: 12)
@@ -110,7 +116,7 @@ final class ScheduleTimerView: NSView {
         if let raw = NSImage(systemSymbolName: "checkmark", accessibilityDescription: "确认") {
             confirmButton.image = raw.withSymbolConfiguration(NSImage.SymbolConfiguration(pointSize: 14, weight: .bold))
         }
-        confirmButton.contentTintColor = NSColor(calibratedWhite: 0.10, alpha: 1)
+        confirmButton.contentTintColor = LingerTheme.nsColor(LingerTheme.Color.primaryForeground)
 
         // 取消：灰 x 圆，hover surface2 底
         cancelButton = NSButton()
@@ -118,7 +124,7 @@ final class ScheduleTimerView: NSView {
         cancelButton.wantsLayer = true
         cancelButton.layer?.cornerRadius = 12
         if let raw = NSImage(systemSymbolName: "xmark", accessibilityDescription: "取消") {
-            cancelButton.image = raw.withSymbolConfiguration(NSImage.SymbolConfiguration(pointSize: 13, weight: .medium))
+            cancelButton.image = raw.withSymbolConfiguration(NSImage.SymbolConfiguration(pointSize: 14, weight: .medium))
         }
         cancelButton.contentTintColor = LingerTheme.ink3
 
@@ -151,13 +157,13 @@ final class ScheduleTimerView: NSView {
     private func layoutSubviews() {
         let w = bounds.width
         let innerW = w - sidePadding * 2
-        let halfW = (innerW - rowGap) / 2
+        let halfW = (innerW - capsuleGap) / 2
 
         // 行1：日期胶囊（左）+ 时间胶囊（右）—— NSDatePicker 支持任意日期/时间
         let dateCap = makeCapsule(icon: "calendar", content: datePicker)
         placeCapsule(dateCap, x: sidePadding, y: topY(forRow: 0), width: halfW)
         let timeCap = makeCapsule(icon: "clock", content: timePicker)
-        placeCapsule(timeCap, x: sidePadding + halfW + rowGap, y: topY(forRow: 0), width: halfW)
+        placeCapsule(timeCap, x: sidePadding + halfW + capsuleGap, y: topY(forRow: 0), width: halfW)
 
         // 行2：时长胶囊（左，窄）+ 日程名称（右，沿用 hover 列表输入语言：铅笔 + 输入 + 回车，无胶囊底）
         let durW: CGFloat = 92
@@ -170,7 +176,7 @@ final class ScheduleTimerView: NSView {
 
         let pencil = NSImageView()
         pencil.image = NSImage(systemSymbolName: "pencil", accessibilityDescription: nil)?
-            .withSymbolConfiguration(NSImage.SymbolConfiguration(pointSize: 12, weight: .medium))
+            .withSymbolConfiguration(NSImage.SymbolConfiguration(pointSize: 13, weight: .medium))
         pencil.contentTintColor = LingerTheme.ink3
         let returnIcon = NSImageView()
         returnIcon.image = NSImage(systemSymbolName: "return", accessibilityDescription: nil)?
@@ -180,15 +186,15 @@ final class ScheduleTimerView: NSView {
         nameStack.orientation = .horizontal
         nameStack.spacing = 6
         nameStack.alignment = .centerY
-        nameStack.frame = NSRect(x: sidePadding + durW + rowGap, y: topY(forRow: 1),
-                                 width: innerW - durW - rowGap, height: capsuleHeight)
+        nameStack.frame = NSRect(x: sidePadding + durW + capsuleGap, y: topY(forRow: 1),
+                                 width: innerW - durW - capsuleGap, height: capsuleHeight)
         contentContainer.addSubview(nameStack)
 
         // 行3：预计结束（左）+ 取消 / 确认（右）
         let arrow = NSImageView()
         arrow.image = NSImage(systemSymbolName: "arrow.right",
                               accessibilityDescription: nil)?
-            .withSymbolConfiguration(NSImage.SymbolConfiguration(pointSize: 10, weight: .medium))
+            .withSymbolConfiguration(NSImage.SymbolConfiguration(pointSize: 11, weight: .medium))
         arrow.contentTintColor = LingerTheme.ink3
         let endStack = NSStackView(views: [arrow, estimatedEndLabel])
         endStack.orientation = .horizontal
@@ -223,7 +229,7 @@ final class ScheduleTimerView: NSView {
 
         let iconView = NSImageView()
         iconView.image = NSImage(systemSymbolName: icon, accessibilityDescription: nil)?
-            .withSymbolConfiguration(NSImage.SymbolConfiguration(pointSize: 12, weight: .medium))
+            .withSymbolConfiguration(NSImage.SymbolConfiguration(pointSize: 13, weight: .medium))
         iconView.contentTintColor = LingerTheme.ink3
         iconView.frame = NSRect(x: 8, y: (capsuleHeight - 16) / 2, width: 16, height: 16)
         cap.addSubview(iconView)
@@ -242,12 +248,18 @@ final class ScheduleTimerView: NSView {
     }
 
     private func topY(forRow row: Int) -> CGFloat {
-        return sidePadding + CGFloat(row) * (rowHeight + rowGap)
+        switch row {
+        case 0: return verticalPadding
+        case 1: return verticalPadding + rowHeight + row1TopGap
+        case 2: return verticalPadding + rowHeight + row1TopGap + rowHeight + row2TopGap
+        default: return verticalPadding
+        }
     }
 
-    /// 面板总高度（三行 + 上下 padding）
+    /// 面板总高度（三行 + 上下 padding + 行间距）
     static func preferredHeight() -> CGFloat {
-        return 12 + CGFloat(3 * 30) + CGFloat(2 * 8) + 12
+        // 10(top, py-2.5) + 30(row0) + 6(gap1) + 30(row1) + 8(gap2) + 30(row2) + 10(bottom, py-2.5)
+        return 10 + 30 + 6 + 30 + 8 + 30 + 10
     }
 
     // 2026-08-05：内联进 hover 列表后不画独立背景，透明融入列表
@@ -262,6 +274,7 @@ final class ScheduleTimerView: NSView {
     // MARK: - 展开动画（原型 .schedule-expand__content translateY + opacity）
 
     /// 展开：内容从 translateY(10) 滑入 0（340ms delay 120ms）+ 自身淡入（300ms delay 100ms）。
+    /// spec §3.1：opacity 300ms ease-out delay 100ms；translateY 340ms cubic-bezier(.2,.8,.2,1) delay 120ms。
     /// 用 view.alphaValue + asyncAfter，避免 CABasicAnimation beginTime/fillMode 失效导致整块透明。
     func revealContent() {
         wantsLayer = true
@@ -272,7 +285,7 @@ final class ScheduleTimerView: NSView {
               subviews.count, contentContainer.subviews.count,
               NSStringFromRect(bounds), alphaValue)
 
-        // 淡入 + 滑入：先设终值再加 CABasicAnimation（立即，无 beginTime；animator 在此场景可能不生效）
+        // 淡入：opacity 0→1，300ms ease-out，delay 100ms
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { [weak self] in
             guard let self else { return }
             self.alphaValue = 1
@@ -282,7 +295,11 @@ final class ScheduleTimerView: NSView {
             oa.duration = 0.3
             oa.timingFunction = CAMediaTimingFunction(name: .easeOut)
             self.layer?.add(oa, forKey: "revealOpacity")
+        }
 
+        // 滑入：translateY 10→0，340ms cubic-bezier(.2,.8,.2,1)，delay 120ms
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.12) { [weak self] in
+            guard let self else { return }
             let ta = CABasicAnimation(keyPath: "transform.translation.y")
             ta.fromValue = 10
             ta.toValue = 0
@@ -315,6 +332,14 @@ final class ScheduleTimerView: NSView {
             self.contentContainer.layer?.add(ta, forKey: "hideY")
             self.contentContainer.layer?.setAffineTransform(CGAffineTransform(translationX: 0, y: 10))
         }
+    }
+
+    /// reduced-motion 用：跳过动画直接显示内容（alpha=1 + transform identity）
+    func contentContainerTransformIdentity() {
+        wantsLayer = true
+        contentContainer.wantsLayer = true
+        alphaValue = 1
+        contentContainer.layer?.setAffineTransform(.identity)
     }
 
     // MARK: - 数据同步

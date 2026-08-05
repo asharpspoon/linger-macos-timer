@@ -72,6 +72,8 @@ enum LingerTheme {
         static let switchTrackOff = RGBA(255, 255, 255, 0.16)
         // 输入胶囊底（schedule-timer-expand 原型 --linger-input）
         static let input = RGBA(255, 255, 255, 0.08)
+        // 琥珀填充上的前景文字（原型 --linger-primary-foreground #1A1406，确认按钮 check 图标色）
+        static let primaryForeground = RGBA(26, 20, 6)
         // 关于票据（settings-window.html .ticket 深色文字）
         static let ticketPaper = RGBA(250, 249, 246)   // #faf9f6
         static let ticketInk  = RGBA(29, 29, 31)       // #1d1d1f
