@@ -1089,7 +1089,13 @@ final class HoverListView: NSView {
             }
         }
 
-        // ② 底栏「全部暂停」按钮（日历按钮由 CalendarPulseButton 自行处理）
+        // ② 底栏日历按钮（CalendarPulseButton 视觉 + 此处区域判定兜底，确保点击必触发）
+        if calendarButton.frame.contains(point) {
+            calendarButton.playTap()
+            toggleInlineSchedule()
+            return
+        }
+        // ② 底栏「全部暂停」按钮
         if pauseAllBtnRect.contains(point) {
             onToggleAllPause?()
             return

@@ -87,6 +87,7 @@ final class CalendarPulseButton: NSView {
     override func mouseDown(with event: NSEvent) {
         NSLog("LingerDiag calendar button clicked frame=%@", NSStringFromRect(frame))
         playTap()
+        // 点击判定由 HoverListView.mouseDown 统一处理（更可靠，避免本类 mouseDown 未送达时失效）
         onClick?()
     }
 }
