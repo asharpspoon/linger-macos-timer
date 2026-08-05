@@ -62,6 +62,7 @@ final class ScheduleTimerView: NSView {
         datePicker.datePickerElements = [.yearMonthDay]
         datePicker.isBordered = false
         datePicker.font = LingerTheme.labelFont(size: 12)
+        datePicker.textColor = LingerTheme.ink
         datePicker.dateValue = initialStartDate
 
         timePicker = NSDatePicker()
@@ -69,6 +70,7 @@ final class ScheduleTimerView: NSView {
         timePicker.datePickerElements = [.hourMinute]
         timePicker.isBordered = false
         timePicker.font = LingerTheme.timeFont(size: 12)
+        timePicker.textColor = LingerTheme.ink
         timePicker.dateValue = initialStartDate
 
         durationField = NSTextField()
@@ -250,63 +252,61 @@ final class ScheduleTimerView: NSView {
     // 2026-08-05：内联进 hover 列表后不画独立背景，透明融入列表
     override func draw(_ dirtyRect: NSRect) {}
 
+    // 内容容器始终匹配自身 bounds（高度动画期间 autoresize 可能不更新，手动同步保证内容不裁）
+    override func layout() {
+        super.layout()
+        contentContainer.frame = bounds
+    }
+
     // MARK: - 展开动画（原型 .schedule-expand__content translateY + opacity）
 
-    /// 展开：内容从 translateY(10) 滑入 0（340ms delay 120ms）+ 自身 opacity 0→1（300ms delay 100ms）
+    /// 展开：内容从 translateY(10) 滑入 0（340ms delay 120ms）+ 自身淡入（300ms delay 100ms）。
+    /// 用 view.alphaValue + asyncAfter，避免 CABasicAnimation beginTime/fillMode 失效导致整块透明。
     func revealContent() {
         wantsLayer = true
         contentContainer.wantsLayer = true
-
-        // 先设起始态
-        layer?.opacity = 0
+        alphaValue = 0
         contentContainer.layer?.setAffineTransform(CGAffineTransform(translationX: 0, y: 10))
 
-        let now = CACurrentMediaTime()
-        // opacity
-        let oa = CABasicAnimation(keyPath: "opacity")
-        oa.fromValue = 0
-        oa.toValue = 1
-        oa.duration = 0.3
-        oa.beginTime = now + 0.1
-        oa.timingFunction = CAMediaTimingFunction(name: .easeOut)
-        oa.isRemovedOnCompletion = false
-        oa.fillMode = .forwards
-        layer?.add(oa, forKey: "revealOpacity")
-
-        // translateY 滑入
-        let ta = CABasicAnimation(keyPath: "transform.translation.y")
-        ta.fromValue = 10
-        ta.toValue = 0
-        ta.duration = 0.34
-        ta.beginTime = now + 0.12
-        ta.timingFunction = CAMediaTimingFunction(controlPoints: 0.2, 0.8, 0.2, 1)
-        ta.isRemovedOnCompletion = false
-        ta.fillMode = .forwards
-        contentContainer.layer?.add(ta, forKey: "revealY")
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { [weak self] in
+            guard let self else { return }
+            NSAnimationContext.runAnimationGroup { ctx in
+                ctx.duration = 0.3
+                ctx.timingFunction = CAMediaTimingFunction(name: .easeOut)
+                self.animator().alphaValue = 1
+            }
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.12) { [weak self] in
+            guard let self else { return }
+            let ta = CABasicAnimation(keyPath: "transform.translation.y")
+            ta.fromValue = 10
+            ta.toValue = 0
+            ta.duration = 0.34
+            ta.timingFunction = CAMediaTimingFunction(controlPoints: 0.2, 0.8, 0.2, 1)
+            self.contentContainer.layer?.add(ta, forKey: "revealY")
+            self.contentContainer.layer?.setAffineTransform(.identity)
+        }
     }
 
-    /// 收回：内容下移 10 + 淡出（供收起动画使用）
+    /// 收回：内容下移 10 + 淡出
     func hideContent() {
-        let now = CACurrentMediaTime()
-        let oa = CABasicAnimation(keyPath: "opacity")
-        oa.fromValue = 1
-        oa.toValue = 0
-        oa.duration = 0.28
-        oa.beginTime = now
-        oa.timingFunction = CAMediaTimingFunction(name: .easeOut)
-        oa.isRemovedOnCompletion = false
-        oa.fillMode = .forwards
-        layer?.add(oa, forKey: "hideOpacity")
-
-        let ta = CABasicAnimation(keyPath: "transform.translation.y")
-        ta.fromValue = 0
-        ta.toValue = 10
-        ta.duration = 0.34
-        ta.beginTime = now
-        ta.timingFunction = CAMediaTimingFunction(controlPoints: 0.2, 0.8, 0.2, 1)
-        ta.isRemovedOnCompletion = false
-        ta.fillMode = .forwards
-        contentContainer.layer?.add(ta, forKey: "hideY")
+        wantsLayer = true
+        contentContainer.wantsLayer = true
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.02) { [weak self] in
+            guard let self else { return }
+            NSAnimationContext.runAnimationGroup { ctx in
+                ctx.duration = 0.28
+                ctx.timingFunction = CAMediaTimingFunction(name: .easeOut)
+                self.animator().alphaValue = 0
+            }
+            let ta = CABasicAnimation(keyPath: "transform.translation.y")
+            ta.fromValue = 0
+            ta.toValue = 10
+            ta.duration = 0.34
+            ta.timingFunction = CAMediaTimingFunction(controlPoints: 0.2, 0.8, 0.2, 1)
+            self.contentContainer.layer?.add(ta, forKey: "hideY")
+            self.contentContainer.layer?.setAffineTransform(CGAffineTransform(translationX: 0, y: 10))
+        }
     }
 
     // MARK: - 数据同步
