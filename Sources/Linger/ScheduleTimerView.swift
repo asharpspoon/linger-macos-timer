@@ -157,15 +157,17 @@ final class ScheduleTimerView: NSView {
     private func layoutSubviews() {
         let w = bounds.width
         let innerW = w - sidePadding * 2
-        let halfW = (innerW - capsuleGap) / 2
 
-        // 行1：日期胶囊（左）+ 时间胶囊（右）—— NSDatePicker 支持任意日期/时间
+        // 行1：日期胶囊（左，flex-1 自适应）+ 时间胶囊（右，shrink-0 紧凑）
+        // 原型：日期 min-w-0 flex-1，时间 shrink-0；HH:mm 紧凑约 56pt，日期占剩余
+        let timeW: CGFloat = 78
+        let dateW = innerW - timeW - capsuleGap
         let dateCap = makeCapsule(icon: "calendar", content: datePicker)
-        placeCapsule(dateCap, x: sidePadding, y: topY(forRow: 0), width: halfW)
+        placeCapsule(dateCap, x: sidePadding, y: topY(forRow: 0), width: dateW)
         let timeCap = makeCapsule(icon: "clock", content: timePicker)
-        placeCapsule(timeCap, x: sidePadding + halfW + capsuleGap, y: topY(forRow: 0), width: halfW)
+        placeCapsule(timeCap, x: sidePadding + dateW + capsuleGap, y: topY(forRow: 0), width: timeW)
 
-        // 行2：时长胶囊（左，窄）+ 日程名称（右，沿用 hover 列表输入语言：铅笔 + 输入 + 回车，无胶囊底）
+        // 行2：时长胶囊（左，窄）+ 日程名称胶囊（右，flex-1）—— 原型两胶囊都有 bg-input 底色
         let durW: CGFloat = 92
         let durationContent = NSStackView(views: [durationField, makeUnitLabel("分")])
         durationContent.orientation = .horizontal
@@ -174,21 +176,10 @@ final class ScheduleTimerView: NSView {
         let durCap = makeCapsule(icon: "timer", content: durationContent)
         placeCapsule(durCap, x: sidePadding, y: topY(forRow: 1), width: durW)
 
-        let pencil = NSImageView()
-        pencil.image = NSImage(systemSymbolName: "pencil", accessibilityDescription: nil)?
-            .withSymbolConfiguration(NSImage.SymbolConfiguration(pointSize: 13, weight: .medium))
-        pencil.contentTintColor = LingerTheme.ink3
-        let returnIcon = NSImageView()
-        returnIcon.image = NSImage(systemSymbolName: "return", accessibilityDescription: nil)?
-            .withSymbolConfiguration(NSImage.SymbolConfiguration(pointSize: 10, weight: .medium))
-        returnIcon.contentTintColor = LingerTheme.ink3
-        let nameStack = NSStackView(views: [pencil, nameField, returnIcon])
-        nameStack.orientation = .horizontal
-        nameStack.spacing = 6
-        nameStack.alignment = .centerY
-        nameStack.frame = NSRect(x: sidePadding + durW + capsuleGap, y: topY(forRow: 1),
-                                 width: innerW - durW - capsuleGap, height: capsuleHeight)
-        contentContainer.addSubview(nameStack)
+        // 原型：日程名称胶囊 = pen-line 图标 + input（无 return 图标，gap-1.5=6）
+        let nameCap = makeCapsule(icon: "pencil", content: nameField)
+        placeCapsule(nameCap, x: sidePadding + durW + capsuleGap, y: topY(forRow: 1),
+                     width: innerW - durW - capsuleGap)
 
         // 行3：预计结束（左）+ 取消 / 确认（右）
         let arrow = NSImageView()
@@ -234,7 +225,8 @@ final class ScheduleTimerView: NSView {
         iconView.frame = NSRect(x: 8, y: (capsuleHeight - 16) / 2, width: 16, height: 16)
         cap.addSubview(iconView)
 
-        content.frame = NSRect(x: 30, y: 0, width: max(20, cap.bounds.width - 38), height: capsuleHeight)
+        // content 初始用占位 frame，placeCapsule 设 cap.frame 后由 layoutContent 手动修正
+        content.frame = NSRect(x: 30, y: 0, width: 60, height: capsuleHeight)
         content.autoresizingMask = [.width]
         cap.addSubview(content)
         return cap
@@ -243,7 +235,12 @@ final class ScheduleTimerView: NSView {
     private func placeCapsule(_ cap: NSView, x: CGFloat, y: CGFloat, width: CGFloat) {
         cap.frame = NSRect(x: x, y: y, width: width, height: capsuleHeight)
         contentContainer.addSubview(cap)
-        // 确保胶囊内部 frame 布局应用（icon/content autoresize）
+        // cap.bounds.width 现在是实际值，手动修正 content frame（autoresize 在某些控件上不可靠）
+        if let content = cap.subviews.dropFirst().first {
+            content.frame = NSRect(x: 30, y: 0,
+                                   width: max(20, cap.bounds.width - 38),
+                                   height: capsuleHeight)
+        }
         cap.layoutSubtreeIfNeeded()
     }
 

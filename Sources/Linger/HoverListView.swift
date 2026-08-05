@@ -1165,7 +1165,10 @@ final class HoverListView: NSView {
         addSubview(v)
         scheduleView = v
         isScheduling = true
-        window?.makeKey()   // 编辑区控件需要窗口成为 key 才能输入
+        // 菜单栏 app（.accessory）必须 activate 才能 makeKey + firstResponder 接收键盘输入
+        // 仅 makeKey 不够：NSTextField 需 app 处于 active 状态才能成为 firstResponder
+        NSApp.activate(ignoringOtherApps: true)
+        window?.makeKey()
         NSLog("LingerDiag schedule expand: view=%@ size=%.0fx%.0f",
               String(describing: v), v.bounds.width, v.bounds.height)
 
