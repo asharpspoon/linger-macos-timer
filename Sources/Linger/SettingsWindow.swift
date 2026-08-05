@@ -35,6 +35,9 @@ final class SettingsWindow: NSWindow {
     // MARK: - 视图引用
 
     private var tabButtons: [NSButton] = []
+    /// 激活 tab 顶部琥珀指示线（tabBar 层）
+    private var tabIndicator: NSView!
+    private var tabBar: NSView!
     private var panelContainer: NSView!
 
     // 通知面板实时引用
@@ -109,6 +112,7 @@ final class SettingsWindow: NSWindow {
 
         // Tab 栏（图标 + 文字，居中，激活态琥珀金高亮）—— 系统标题栏之下
         let tabBar = NSView()
+        self.tabBar = tabBar
         root.addSubview(tabBar)
         tabBar.translatesAutoresizingMaskIntoConstraints = false
         NSLayoutConstraint.activate([
@@ -126,8 +130,17 @@ final class SettingsWindow: NSWindow {
         tabStack.translatesAutoresizingMaskIntoConstraints = false
         NSLayoutConstraint.activate([
             tabStack.centerXAnchor.constraint(equalTo: tabBar.centerXAnchor),
-            tabStack.centerYAnchor.constraint(equalTo: tabBar.centerYAnchor)
+            // 图标下移，给 tab 顶部指示线留出空隙（icon 上方 9pt）
+            tabStack.topAnchor.constraint(equalTo: tabBar.topAnchor, constant: 14)
         ])
+
+        // 激活 tab 顶部指示线（独立视图，布局后按按钮 frame 定位，不依赖按钮 bounds）
+        tabIndicator = NSView()
+        tabIndicator.wantsLayer = true
+        tabIndicator.layer?.backgroundColor = LingerTheme.amberGold.cgColor
+        tabIndicator.layer?.cornerRadius = 1.5
+        tabIndicator.isHidden = true
+        tabBar.addSubview(tabIndicator)
 
         // PRD §6.3 P2：仅遍历恰好 4 个标签
         for index in 0..<tabTitles.count {
@@ -212,6 +225,15 @@ final class SettingsWindow: NSWindow {
         // 替换容器内的面板视图
         panelContainer.subviews.forEach { $0.removeFromSuperview() }
         let panel = panelView(at: index)
+        // 先测 panel 理想高度（此时未加入容器，不受当前矮窗口约束干扰，
+        // 保证从低 tab → 高 tab 时 targetHeight 正确，动画两个方向都生效）
+        let panelFit = panel.fittingSize.height
+        let panelHeight = max(panelFit, 100)
+        let targetHeight = tabBarHeight + panelHeight + contentVSpacing * 2
+        let oldMaxY = frame.maxY
+        let targetFrame = NSRect(x: frame.minX, y: oldMaxY - targetHeight,
+                                 width: Self.windowWidth, height: targetHeight)
+
         panel.translatesAutoresizingMaskIntoConstraints = false
         panelContainer.addSubview(panel)
         NSLayoutConstraint.activate([
@@ -220,16 +242,6 @@ final class SettingsWindow: NSWindow {
             panel.trailingAnchor.constraint(equalTo: panelContainer.trailingAnchor, constant: -contentHPadding),
             panel.bottomAnchor.constraint(lessThanOrEqualTo: panelContainer.bottomAnchor, constant: -contentVSpacing)
         ])
-
-        panelContainer.layoutSubtreeIfNeeded()
-        // 用 panel 自身 fittingSize（不含容器/窗口高度约束），
-        // 否则从低 tab 切到高 tab 时 targetHeight 被当前矮窗口约束算错 → 突然无动画
-        let panelFit = panel.fittingSize.height
-        let panelHeight = max(panelFit, 100)
-        let targetHeight = tabBarHeight + panelHeight + contentVSpacing * 2
-        let oldMaxY = frame.maxY
-        let targetFrame = NSRect(x: frame.minX, y: oldMaxY - targetHeight,
-                                 width: Self.windowWidth, height: targetHeight)
 
         if animated && abs(targetHeight - frame.height) > 1 {
             // 以最上方边为基准，只伸缩底部：自定义高度插值（顶部 maxY 恒定，不抽搐）
@@ -251,6 +263,11 @@ final class SettingsWindow: NSWindow {
             setFrame(targetFrame, display: true)
         }
 
+        // 布局后定位激活 tab 顶部指示线（按钮 frame 此刻才确定）
+        panelContainer.layoutSubtreeIfNeeded()
+        tabBar.layoutSubtreeIfNeeded()
+        positionTabIndicator()
+
         refreshPermissionStatuses()
     }
 
@@ -258,35 +275,23 @@ final class SettingsWindow: NSWindow {
         for btn in tabButtons {
             let active = btn.tag == currentIndex
             if active {
-                // 原型 lg-tab.is-active：微琥珀底 + 琥珀 icon/文字 + 底部 2pt 琥珀指示线
+                // 原型 lg-tab.is-active：微琥珀底 + 琥珀 icon/文字（指示线由 positionTabIndicator 单独管理）
                 btn.contentTintColor = LingerTheme.amberGold
                 btn.layer?.backgroundColor = LingerTheme.amberGold.withAlphaComponent(0.08).cgColor
-                setTabIndicator(on: btn, visible: true)
             } else {
                 btn.contentTintColor = LingerTheme.ink3
                 btn.layer?.backgroundColor = NSColor.clear.cgColor
-                setTabIndicator(on: btn, visible: false)
             }
         }
     }
 
-    /// 底部 2pt 琥珀指示线（原型 .lg-tab.is-active::after）
-    private func setTabIndicator(on btn: NSButton, visible: Bool) {
-        if visible {
-            let line = CALayer()
-            line.name = "tabIndicator"
-            line.backgroundColor = LingerTheme.amberGold.cgColor
-            line.cornerRadius = 1
-            btn.layer?.addSublayer(line)
-        }
-        btn.layer?.sublayers?
-            .filter { $0.name == "tabIndicator" }
-            .forEach { l in
-                // 用户反馈：横线要在 icon 上方，中间留一点空隙（顶部指示，距按钮顶 5-8pt）
-                l.frame = NSRect(x: 0, y: btn.bounds.height - 8, width: btn.bounds.width, height: 3)
-                l.autoresizingMask = [.layerWidthSizable]
-                l.isHidden = !visible
-            }
+    /// 激活 tab 顶部指示线：位于 tab 栏顶部、icon 上方（独立视图，按按钮 frame 定位）
+    private func positionTabIndicator() {
+        guard tabButtons.indices.contains(currentIndex), let tabIndicator else { return }
+        let btn = tabButtons[currentIndex]
+        let frameInBar = tabBar.convert(btn.bounds, from: btn)
+        tabIndicator.frame = NSRect(x: frameInBar.minX, y: 2, width: frameInBar.width, height: 3)
+        tabIndicator.isHidden = false
     }
 
     /// 惰性构建并返回面板视图。`index` 越界时返回空视图（边界 guard）。
