@@ -34,7 +34,7 @@ final class SettingsWindow: NSWindow {
 
     // MARK: - 视图引用
 
-    private var tabButtons: [NSButton] = []
+    private var tabButtons: [TabButtonView] = []
     /// 激活 tab 顶部琥珀指示线（tabBar 层）
     private var tabIndicator: NSView!
     private var tabBar: NSView!
@@ -142,9 +142,11 @@ final class SettingsWindow: NSWindow {
         tabIndicator.isHidden = true
         tabBar.addSubview(tabIndicator)
 
-        // PRD §6.3 P2：仅遍历恰好 4 个标签
+        // PRD §6.3 P2：仅遍历恰好 5 个标签
         for index in 0..<tabTitles.count {
-            let btn = makeTabButton(title: tabTitles[index], icon: tabIcons[index], tag: index)
+            let btn = TabButtonView(title: tabTitles[index], icon: tabIcons[index], index: index) { [weak self] i in
+                self?.selectTab(i, animated: true)
+            }
             tabButtons.append(btn)
             tabStack.addArrangedSubview(btn)
         }
@@ -182,34 +184,6 @@ final class SettingsWindow: NSWindow {
         ])
     }
 
-    private func makeTabButton(title: String, icon: String, tag: Int) -> NSButton {
-        let btn = NSButton()
-        btn.tag = tag
-        // 原型 lg-tab：icon 27pt（用户要求大 50%）+ label 10pt
-        if let img = NSImage(systemSymbolName: icon, accessibilityDescription: title)?
-            .withSymbolConfiguration(NSImage.SymbolConfiguration(pointSize: 27, weight: .medium)) {
-            btn.image = img
-            btn.image?.isTemplate = true
-        }
-        btn.title = title
-        btn.imagePosition = .imageAbove
-        btn.isBordered = false
-        btn.setButtonType(NSButton.ButtonType.momentaryChange)
-        btn.target = self
-        btn.action = #selector(tabClicked(_:))
-        btn.font = LingerTheme.labelFont(size: 10, weight: .medium)
-        btn.wantsLayer = true
-        btn.contentTintColor = LingerTheme.ink3
-        return btn
-    }
-
-    // MARK: - Tab 切换
-
-    @objc private func tabClicked(_ sender: NSButton) {
-        // 高度动画只伸缩底部（顶部固定），由 selectTab 内自定义插值实现，不再抽搐
-        selectTab(sender.tag, animated: true)
-    }
-
     /// 切换面板。`index` 越界时直接返回（PRD §6.3 P2 边界 guard）。
     private func selectTab(_ index: Int, animated: Bool) {
         guard index >= 0, index < tabTitles.count else {
@@ -243,8 +217,10 @@ final class SettingsWindow: NSWindow {
             panel.bottomAnchor.constraint(lessThanOrEqualTo: panelContainer.bottomAnchor, constant: -contentVSpacing)
         ])
 
-        if animated && abs(targetHeight - frame.height) > 1 {
-            // 以最上方边为基准，只伸缩底部：自定义高度插值（顶部 maxY 恒定，不抽搐）
+        os_log("LingerDiag selectTab idx=%d animated=%d panelFit=%.1f targetH=%.1f frameH=%.1f",
+               log: log, type: .info, index, animated ? 1 : 0, panelFit, targetHeight, frame.height)
+        if animated {
+            // 以最上方边为基准，只伸缩底部：自定义高度插值（顶部 maxY 恒定，不抽搐；双向都动画）
             let startH = frame.height
             let start = CACurrentMediaTime()
             let duration: CFTimeInterval = 0.55   // 用户要求更慢、更优雅
@@ -272,16 +248,8 @@ final class SettingsWindow: NSWindow {
     }
 
     private func updateTabStyles() {
-        for btn in tabButtons {
-            let active = btn.tag == currentIndex
-            if active {
-                // 原型 lg-tab.is-active：微琥珀底 + 琥珀 icon/文字（指示线由 positionTabIndicator 单独管理）
-                btn.contentTintColor = LingerTheme.amberGold
-                btn.layer?.backgroundColor = LingerTheme.amberGold.withAlphaComponent(0.08).cgColor
-            } else {
-                btn.contentTintColor = LingerTheme.ink3
-                btn.layer?.backgroundColor = NSColor.clear.cgColor
-            }
+        for (i, btn) in tabButtons.enumerated() {
+            btn.isActive = (i == currentIndex)
         }
     }
 
