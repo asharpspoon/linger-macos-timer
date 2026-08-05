@@ -184,16 +184,8 @@ final class ScheduleTimerView: NSView {
         return h
     }
 
-    override func draw(_ dirtyRect: NSRect) {
-        // 玻璃胶囊背景
-        let path = NSBezierPath(roundedRect: bounds, xRadius: LingerTheme.radiusMD, yRadius: LingerTheme.radiusMD)
-        LingerTheme.panelBackgroundDark.withAlphaComponent(0.96).setFill()
-        path.fill()
-        // 琥珀金描边
-        LingerTheme.amberGold.withAlphaComponent(0.35).setStroke()
-        path.lineWidth = 1
-        path.stroke()
-    }
+    // 2026-08-05：内联进 hover 列表后不再画独立玻璃胶囊背景，透明融入列表（用户要求）
+    override func draw(_ dirtyRect: NSRect) {}
 
     // MARK: - 数据同步
 

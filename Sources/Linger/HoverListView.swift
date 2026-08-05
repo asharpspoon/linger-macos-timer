@@ -284,6 +284,8 @@ final class HoverListView: NSView {
     // 最后 10s 提醒：时间文本闪烁状态
     private var urgentBlinkOn = false
     private var urgentBlinkTimer: Timer?
+    /// 悬浮窗高度动画 timer（内联预约展开/收起）
+    private var heightAnimTimer: Timer?
 
     static func panelHeight(runningPausedCount rp: Int, scheduledCount sc: Int) -> CGFloat {
         // 兼容旧调用: rp = running + paused
@@ -430,12 +432,11 @@ final class HoverListView: NSView {
         if !isAnimating {
             layoutRows()
         }
-        // 内联预约区：底栏上方（原型 hover-list 底部内联展开）
+        // 内联预约区：悬浮窗最底部（用户要求填写内容在最下方）
         if let sv = scheduleView {
             let h = ScheduleTimerView.preferredHeight()
-            let topY = bounds.height - HoverDesign.bottomAreaHeight - HoverDesign.bottomPadding + 4
             sv.frame = NSRect(x: HoverDesign.cardPaddingX,
-                              y: topY - h - 4,
+                              y: 0,
                               width: bounds.width - HoverDesign.cardPaddingX * 2,
                               height: h)
         }
@@ -510,6 +511,7 @@ final class HoverListView: NSView {
 
     deinit {
         urgentBlinkTimer?.invalidate()
+        heightAnimTimer?.invalidate()
     }
 
     private func updateProgressBarsAnimated() {
@@ -1159,7 +1161,28 @@ final class HoverListView: NSView {
     }
 
     private func notifyHeightChange() {
-        onHeightAnimation?(currentContentHeight())
+        animateHeight(to: currentContentHeight())
+    }
+
+    /// 悬浮窗高度变化动画（0.3s，顶部固定由 MenuBarManager 保证）
+    private func animateHeight(to target: CGFloat) {
+        heightAnimTimer?.invalidate()
+        let startH = bounds.height
+        let start = CACurrentMediaTime()
+        let duration: CFTimeInterval = 0.3
+        let timer = Timer(timeInterval: 1.0 / 60.0, repeats: true) { [weak self] t in
+            guard let self else { t.invalidate(); return }
+            let p = min(1, (CACurrentMediaTime() - start) / duration)
+            let eased = 1 - pow(1 - p, 3)
+            let h = startH + (target - startH) * eased
+            self.onHeightAnimation?(h)
+            if p >= 1 {
+                t.invalidate()
+                self.heightAnimTimer = nil
+            }
+        }
+        RunLoop.main.add(timer, forMode: .common)
+        heightAnimTimer = timer
     }
 
     private func currentContentHeight() -> CGFloat {
