@@ -268,16 +268,17 @@ final class ScheduleTimerView: NSView {
               subviews.count, contentContainer.subviews.count,
               NSStringFromRect(bounds), alphaValue)
 
+        // 淡入 + 滑入：先设终值再加 CABasicAnimation（立即，无 beginTime；animator 在此场景可能不生效）
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { [weak self] in
             guard let self else { return }
-            NSAnimationContext.runAnimationGroup { ctx in
-                ctx.duration = 0.3
-                ctx.timingFunction = CAMediaTimingFunction(name: .easeOut)
-                self.animator().alphaValue = 1
-            }
-        }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.12) { [weak self] in
-            guard let self else { return }
+            self.alphaValue = 1
+            let oa = CABasicAnimation(keyPath: "opacity")
+            oa.fromValue = 0
+            oa.toValue = 1
+            oa.duration = 0.3
+            oa.timingFunction = CAMediaTimingFunction(name: .easeOut)
+            self.layer?.add(oa, forKey: "revealOpacity")
+
             let ta = CABasicAnimation(keyPath: "transform.translation.y")
             ta.fromValue = 10
             ta.toValue = 0
@@ -294,11 +295,14 @@ final class ScheduleTimerView: NSView {
         contentContainer.wantsLayer = true
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.02) { [weak self] in
             guard let self else { return }
-            NSAnimationContext.runAnimationGroup { ctx in
-                ctx.duration = 0.28
-                ctx.timingFunction = CAMediaTimingFunction(name: .easeOut)
-                self.animator().alphaValue = 0
-            }
+            self.alphaValue = 0
+            let oa = CABasicAnimation(keyPath: "opacity")
+            oa.fromValue = 1
+            oa.toValue = 0
+            oa.duration = 0.28
+            oa.timingFunction = CAMediaTimingFunction(name: .easeOut)
+            self.layer?.add(oa, forKey: "hideOpacity")
+
             let ta = CABasicAnimation(keyPath: "transform.translation.y")
             ta.fromValue = 0
             ta.toValue = 10

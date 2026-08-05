@@ -1168,15 +1168,22 @@ final class HoverListView: NSView {
         }
     }
 
-    /// 编辑区高度动画（0→h，380ms cubic-bezier(.2,.8,.2,1)）
+    /// 编辑区高度动画（0→h，380ms cubic-bezier(.2,.8,.2,1) 近似）。
+    /// 用手动 timer 插值 frame（animator 在此场景可能不生效导致高度停在 0 → 内容被裁空白）。
     private func animateScheduleViewHeight(to h: CGFloat) {
         guard let sv = scheduleView else { return }
-        NSAnimationContext.runAnimationGroup { ctx in
-            ctx.duration = 0.38
-            ctx.timingFunction = CAMediaTimingFunction(controlPoints: 0.2, 0.8, 0.2, 1)
-            sv.animator().frame = NSRect(x: sv.frame.minX, y: 0,
-                                         width: sv.frame.width, height: h)
+        let startH = sv.frame.height
+        let start = CACurrentMediaTime()
+        let duration: CFTimeInterval = 0.38
+        let timer = Timer(timeInterval: 1.0 / 60.0, repeats: true) { [weak sv] t in
+            guard let sv else { t.invalidate(); return }
+            let p = min(1, (CACurrentMediaTime() - start) / duration)
+            let eased = 1 - pow(1 - p, 3)   // cubic-bezier(.2,.8,.2,1) 近似：先快后慢
+            let hh = startH + (h - startH) * eased
+            sv.frame = NSRect(x: sv.frame.minX, y: 0, width: sv.frame.width, height: hh)
+            if p >= 1 { t.invalidate() }
         }
+        RunLoop.main.add(timer, forMode: .common)
     }
 
     private func closeInlineSchedule() {
