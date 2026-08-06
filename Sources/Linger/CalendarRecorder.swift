@@ -166,6 +166,22 @@ final class CalendarRecorder {
         }
     }
 
+    // MARK: - 删除预约（同步清理日历事件）
+
+    /// 删除预约计时时调用：若已写入日历则同步删除对应事件，并清除「已记录」标记
+    func deleteRecorded(_ entry: TimerEntry) {
+        if let eventId = entry.calendarEventId {
+            if CalendarManager.shared.deleteEvent(eventIdentifier: eventId) {
+                os_log("Scheduled delete: calendar event removed %{public}@", log: log, type: .info, eventId)
+            } else {
+                os_log("Scheduled delete: calendar event not removed (no auth/not found)", log: log, type: .info)
+            }
+        }
+        entry.calendarEventId = nil
+        entry.hasRecorded = false
+        CalendarManager.shared.unmarkRecorded(entry.id)
+    }
+
     // MARK: - 辅助
 
     private func resolveStart(_ entry: TimerEntry) -> Date {

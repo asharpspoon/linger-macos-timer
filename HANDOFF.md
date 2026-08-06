@@ -14,6 +14,16 @@ s=d² 曲线 + 整分钟吸附），松手即开始计时。AppKit 原生、暗�
 > 每次交接/里程碑后在此**顶部**追加一段（最新在上），格式见 `.agents/skills/linger-handoff/`。
 > 上次交接见 git 历史；当前状态以「最新进度」为准。
 
+- **2026-08-06 · 预约删除按钮 + 日历同步（Codex）**
+  - 本次完成：hover 列表预约行右侧新增 ✕ 删除按钮；点击 = 删计时 + 同步删除已写入的日历事件
+    1. `CalendarManager.deleteEvent(eventIdentifier:)`（按 eventIdentifier 删事件，未授权/找不到返回 false）+ `unmarkRecorded`
+    2. `CalendarRecorder.deleteRecorded(entry)`：有 calendarEventId 先删日历事件，再清标记
+    3. `HoverListView`：预约行画 ✕（右缘）+「待开始」徽标左移；`onDeleteScheduled` 回调 + hit rect
+    4. `MenuBarManager.deleteScheduledTimer(id)`：CalendarRecorder.deleteRecorded → stopEntry → refresh
+  - 编译 15/15 绿
+  - 待验收：hover 列表创建预约 → 日历出现事件 → 点 ✕ → 计时消失 + 日历事件同步删除
+  - 给下一位：只有预约走「删除同步删日历」；运行中/暂停的拖拽计时 stop 按钮保持原语义（不删历史事件）
+
 - **2026-08-06 · 日历记录实机修复 2（仍无事件：calendar not authorized）**
   - 现象：迁移生效（`Migrated legacy writeMode manual -> auto`），记录路径跑到，但 `Auto record skipped: calendar not authorized`
   - 根因（TCC 实测确认）：**Xcode/SwiftPM 裸跑的可执行文件没有 bundle identifier**（日志 `No app bundle (raw executable)`），macOS 的 `EKEventStore.authorizationStatus(for:)` 无法为无 bundle 进程归因 TCC 权限 → status 恒 notDetermined，即使 TCC 里已有该路径条目（TCC.db 显示 debug 二进制 auth_value=2、01:53 已授权）也读不到

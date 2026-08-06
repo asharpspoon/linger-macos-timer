@@ -872,6 +872,10 @@ final class MenuBarManager: NSObject {
             }
             self.refreshHoverList()
         }
+        // 预约行删除：删计时 + 同步删日历事件
+        view.onDeleteScheduled = { [weak self] id in
+            self?.deleteScheduledTimer(id)
+        }
         view.onTitleEdit = { [weak self] id, title in
             guard let entry = TimerManager.shared.allDisplayEntries.first(where: { $0.id == id }) else { return }
             entry.predefinedTitle = title.isEmpty ? nil : title
@@ -951,6 +955,18 @@ final class MenuBarManager: NSObject {
     // MARK: - 菜单动作（Step 2 版本见文件上部 showAbout(_:)/showSettings(_:)/quitApp(_:)）
 
     // MARK: - 日历预约面板（T5: ScheduleTimerView）
+
+    /// 删除预约计时：先同步删除已写入的日历事件，再移除计时条目
+    private func deleteScheduledTimer(_ id: UUID) {
+        guard let entry = TimerManager.shared.allDisplayEntries.first(where: { $0.id == id }), entry.isScheduled else {
+            os_log("Delete scheduled: entry not found / not scheduled", log: log, type: .info)
+            return
+        }
+        CalendarRecorder.shared.deleteRecorded(entry)
+        _ = TimerManager.shared.stopEntry(id)
+        refreshHoverList()
+        os_log("Scheduled timer deleted (calendar synced): %{public}@", log: log, type: .info, id.uuidString)
+    }
 
     /// 弹出内联日历预约面板（ScheduleTimerView），确认后创建预约计时。
     /// 用 ScheduleTimerView 回填的起止时间创建预约计时；

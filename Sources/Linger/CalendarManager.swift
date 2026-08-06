@@ -162,6 +162,34 @@ final class CalendarManager {
                                   forKey: LingerTheme.UserDefaultsKey.recordedCalendarEntries.rawValue)
     }
 
+    /// 取消「已记录」标记（删除预约时同步移除日历事件后调用）
+    func unmarkRecorded(_ entryID: UUID) {
+        recordedEntryIDs.remove(entryID.uuidString)
+        UserDefaults.standard.set(Array(recordedEntryIDs),
+                                  forKey: LingerTheme.UserDefaultsKey.recordedCalendarEntries.rawValue)
+    }
+
+    /// 按 eventIdentifier 删除日历事件（预约删除时同步清理；未授权/找不到返回 false）
+    func deleteEvent(eventIdentifier: String) -> Bool {
+        guard isAuthorized || grantedByRequest else {
+            os_log("Delete event skipped: calendar not authorized", log: log, type: .error)
+            return false
+        }
+        guard let event = store.event(withIdentifier: eventIdentifier) else {
+            os_log("Delete event: event %{public}@ not found (maybe already removed)", log: log, type: .info, eventIdentifier)
+            return false
+        }
+        do {
+            try store.remove(event, span: .thisEvent, commit: true)
+            os_log("Calendar event deleted: %{public}@", log: log, type: .info, eventIdentifier)
+            return true
+        } catch {
+            os_log("Failed to delete event %{public}@: %{public}@",
+                   log: log, type: .error, eventIdentifier, error.localizedDescription)
+            return false
+        }
+    }
+
     private func loadRecordedEntries() {
         if let ids = UserDefaults.standard.array(
             forKey: LingerTheme.UserDefaultsKey.recordedCalendarEntries.rawValue) as? [String] {

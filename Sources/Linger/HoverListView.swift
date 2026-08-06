@@ -247,6 +247,8 @@ final class HoverListView: NSView {
     // ① 按钮点击: 记录每个按钮的 hit rect (比图标大一倍防误触)
     private var pauseRects: [UUID: NSRect] = [:]
     private var stopRects: [UUID: NSRect] = [:]
+    /// 预约行的删除按钮 hit rect
+    private var deleteScheduledRects: [UUID: NSRect] = [:]
 
     // ④ hover 高亮: 当前鼠标悬停的卡片 entry ID
     private var hoveredEntryID: UUID?
@@ -276,6 +278,8 @@ final class HoverListView: NSView {
     // ① 按钮回调
     var onPauseToggle: ((UUID) -> Void)?
     var onStop: ((UUID) -> Void)?
+    /// 预约行删除按钮（删除计时 + 同步删除日历事件）
+    var onDeleteScheduled: ((UUID) -> Void)?
     // ② 底栏回调
     var onToggleAllPause: (() -> Void)?
     /// 内联预约确认（start, duration, title）—— 由 MenuBarManager 创建预约计时
@@ -805,6 +809,7 @@ final class HoverListView: NSView {
         if alpha < 1.0 {
             pauseRects.removeValue(forKey: entry.id)
             stopRects.removeValue(forKey: entry.id)
+            deleteScheduledRects.removeValue(forKey: entry.id)
         }
 
         ctx.restoreGState()
@@ -900,18 +905,32 @@ final class HoverListView: NSView {
         if entry.isScheduled {
             pauseRects.removeValue(forKey: entry.id)
             stopRects.removeValue(forKey: entry.id)
+            // 右侧：删除按钮（xmark，点击删除计时 + 同步删日历事件）+ 「待开始」徽标在左
+            let iconSize = HoverDesign.symbolPointSize
+            drawTintedSFSymbol("xmark",
+                               color: HoverDesign.textTertiary,
+                               pointSize: iconSize,
+                               rightAnchor: rightEdge,
+                               centerY: centerY)
+            let hitPad: CGFloat = iconSize
+            let delRect = NSRect(x: rightEdge - iconSize,
+                                 y: centerY - iconSize / 2,
+                                 width: iconSize,
+                                 height: iconSize)
+            deleteScheduledRects[entry.id] = delRect.insetBy(dx: -hitPad, dy: -hitPad)
+
             let text = "待开始"
             let attr: [NSAttributedString.Key: Any] = [
                 .font: NSFont.systemFont(ofSize: HoverDesign.badgeFontSize, weight: .medium),
                 .foregroundColor: HoverDesign.textTertiary
             ]
             let size = (text as NSString).size(withAttributes: attr)
-            let rect = NSRect(x: rightEdge - size.width,
+            let rect = NSRect(x: rightEdge - iconSize - 12 - size.width,
                               y: centerY - size.height / 2,
                               width: size.width,
                               height: size.height)
             (text as NSString).draw(in: rect, withAttributes: attr)
-            return rightEdge - size.width
+            return rect.minX
         }
 
         let isPaused = entry.isPaused
@@ -1094,6 +1113,10 @@ final class HoverListView: NSView {
         }
         for (id, rect) in stopRects where rect.contains(point) {
             onStop?(id)
+            return
+        }
+        for (id, rect) in deleteScheduledRects where rect.contains(point) {
+            onDeleteScheduled?(id)
             return
         }
 
