@@ -289,7 +289,8 @@ final class MenuBarManager: NSObject {
         // 每次右键时重建菜单，确保日历权限状态实时更新
         rightClickMenu.removeAllItems()
 
-        // 2026-08-05：关于已集成进设置 tab，右键菜单不再单独提供「关于 Linger」入口
+        // 2026-08-06 上线规范：右键菜单只保留两项——「设置…」+「系统授权」。
+        // 已授权时「系统授权」变「已获取授权」并灰显不可点（isEnabled=false 系统自动置灰）。
         let settingsItem = NSMenuItem(title: "设置…",
                                      action: #selector(showSettings(_:)),
                                      keyEquivalent: "")
@@ -297,22 +298,14 @@ final class MenuBarManager: NSObject {
         rightClickMenu.addItem(settingsItem)
 
         let calAuth = CalendarManager.shared.hasAccess
-        // 2026-08-06：已授权 → "已完成授权"灰显不可点；未授权 → "日历授权"可点触发主动授权
-        // 用 hasAccess 兜底裸 bundle 场景（isAuthorized 恒 false，grantedByRequest 才是真实状态）
-        let calItem = NSMenuItem(title: calAuth ? "已完成授权" : "日历授权",
+        // 用 hasAccess（isAuthorized || grantedByRequest）兜底裸 bundle 场景：
+        // isAuthorized 在无 bundle 裸跑时恒 false，grantedByRequest 才是真实状态（已持久化）
+        let calItem = NSMenuItem(title: calAuth ? "已获取授权" : "系统授权",
                                  action: #selector(openCalendarSettings(_:)),
                                  keyEquivalent: "")
         calItem.target = self
         calItem.isEnabled = !calAuth
         rightClickMenu.addItem(calItem)
-
-        rightClickMenu.addItem(NSMenuItem.separator())
-
-        let quitItem = NSMenuItem(title: "退出",
-                                  action: #selector(quitApp(_:)),
-                                  keyEquivalent: "q")
-        quitItem.target = self
-        rightClickMenu.addItem(quitItem)
 
         let location = NSPoint(x: 0, y: statusItemView.bounds.height)
         rightClickMenu.popUp(positioning: nil, at: location, in: statusItemView)
