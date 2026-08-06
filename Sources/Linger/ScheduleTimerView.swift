@@ -21,14 +21,14 @@ final class ScheduleTimerView: NSView {
 
     static let panelWidth: CGFloat = 300
     private let rowHeight: CGFloat = 30
-    /// 行间距（对齐原型 mt-1.5=6 / mt-2=8，非统一 8pt 网格）
+    /// 行间距（缩短：gap1=6 / gap2=5，更紧凑）
     private let row1TopGap: CGFloat = 6
-    private let row2TopGap: CGFloat = 8
+    private let row2TopGap: CGFloat = 5
     /// 同行胶囊间距（原型 gap-1.5=6）
     private let capsuleGap: CGFloat = 6
     private let sidePadding: CGFloat = 14          // 原型 px-3.5（水平）
-    /// 编辑区内层垂直 padding（原型 py-2.5=10，与水平 14 区分）
-    private let verticalPadding: CGFloat = 10
+    /// 编辑区内层垂直 padding（缩短：8，整体更紧凑）
+    private let verticalPadding: CGFloat = 8
     private let capsuleHeight: CGFloat = 28
 
     // MARK: - 状态
@@ -265,9 +265,10 @@ final class ScheduleTimerView: NSView {
     }
 
     /// 面板总高度（三行 + 上下 padding + 行间距）
+    /// 精确匹配 autolayout：row1/2=capsuleHeight(28), row3=button(24), top/bottom=verticalPadding(8)
     static func preferredHeight() -> CGFloat {
-        // 10(top, py-2.5) + 30(row0) + 6(gap1) + 30(row1) + 8(gap2) + 30(row2) + 10(bottom, py-2.5)
-        return 10 + 30 + 6 + 30 + 8 + 30 + 10
+        // 8(top) + 28(row0) + 6(gap1) + 28(row1) + 5(gap2) + 24(row2) + 8(bottom) = 107
+        return 107
     }
 
     // 2026-08-05：内联进 hover 列表后不画独立背景，透明融入列表

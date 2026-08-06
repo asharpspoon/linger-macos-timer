@@ -7,7 +7,7 @@ private enum HoverDesign {
     static let panelBg = NSColor(calibratedRed: 24/255.0, green: 24/255.0, blue: 28/255.0, alpha: 0.72)
     static let rowHover = NSColor(calibratedWhite: 1.0, alpha: 0.06)       // hover 行淡高亮
     static let rowDivider = NSColor(calibratedWhite: 1.0, alpha: 0.07)     // 行间 1px 分隔线（弱，突出分组线）
-    static let groupSeparator = NSColor(calibratedWhite: 1.0, alpha: 0.14)  // 分组分隔线（略强，层级分明）
+    static let groupSeparator = NSColor(calibratedWhite: 0.5, alpha: 0.22)  // 分组分隔线（灰色，克制）
     static let bottomSeparator = NSColor(calibratedWhite: 1.0, alpha: 0.10)
     static let progressTrack = NSColor(calibratedWhite: 1.0, alpha: 0.06)  // 原型 timer-progress
 
@@ -365,11 +365,12 @@ final class HoverListView: NSView {
             }
         }
 
-        // 3. 更新数据（原有逻辑）
+        // 3. 更新数据（原有逻辑 + 修复：已激活的预约 isRunning=true 但 isScheduled 仍为 true，
+        //    需按 isRunning 归入 running/paused，未触发的留 scheduled）
         let sorted = newFiltered.sorted { $0.remainingTime < $1.remainingTime }
-        running = sorted.filter { !$0.isScheduled && !$0.isPaused }
-        paused = sorted.filter { !$0.isScheduled && $0.isPaused }
-        scheduled = sorted.filter { $0.isScheduled }
+        running = sorted.filter { (!$0.isScheduled || $0.isRunning) && !$0.isPaused }
+        paused = sorted.filter { (!$0.isScheduled || $0.isRunning) && $0.isPaused }
+        scheduled = sorted.filter { $0.isScheduled && !$0.isRunning }
 
         rebuildProgressBars()
         layoutRows()  // 同步布局到目标位置
@@ -725,12 +726,12 @@ final class HoverListView: NSView {
         }
     }
 
-    /// 统一的分组分隔线：发丝线优化方案（缩短到 40pt 居中 + 降到 0.08 alpha）
+    /// 统一的分组分隔线：发丝线优化方案（40pt 居中，灰色 0.22 alpha）
     /// 设计意图：最克制的视觉锚点，仅暗示分组边界，不抢内容焦点
     private func drawGroupSeparator(at y: CGFloat, alpha: CGFloat) {
         let lineLength: CGFloat = 40
         let x = (bounds.width - lineLength) / 2
-        HoverDesign.groupSeparator.withAlphaComponent(alpha * 0.57).setFill()  // 0.14 × 0.57 ≈ 0.08
+        HoverDesign.groupSeparator.withAlphaComponent(alpha).setFill()
         NSRect(x: x, y: y, width: lineLength, height: 1).fill()
     }
 
@@ -871,7 +872,8 @@ final class HoverListView: NSView {
         let hasTitle = !(entry.predefinedTitle ?? "").isEmpty
         var x = contentX
 
-        if entry.isRunning && !entry.isScheduled {
+        // running（含已激活的预约）= 铅笔 + 可编辑文本；paused/scheduled = 名称文本（灰色暗示未运行）
+        if entry.isRunning && !entry.isPaused {
             // 铅笔
             if let pencil = makeTintedSFSymbol("pencil", color: HoverDesign.textTertiary, pointSize: 12) {
                 pencil.draw(in: NSRect(x: x, y: centerY - pencil.size.height / 2,
@@ -891,10 +893,11 @@ final class HoverListView: NSView {
                                                width: drawW, height: textSize.height),
                                     withAttributes: attr)
         } else {
+            // paused（已暂停）和 scheduled（未开始）：标题用灰色 textTertiary 暗示非运行态
             let text = hasTitle ? entry.predefinedTitle! : (entry.scheduledTitle ?? "")
             let attr: [NSAttributedString.Key: Any] = [
                 .font: NSFont.systemFont(ofSize: 13, weight: .semibold),
-                .foregroundColor: HoverDesign.textPrimary
+                .foregroundColor: HoverDesign.textTertiary
             ]
             let textSize = (text as NSString).size(withAttributes: attr)
             let drawW = min(textSize.width, max(20, maxWidth))
