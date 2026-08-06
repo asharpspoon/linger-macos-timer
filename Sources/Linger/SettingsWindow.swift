@@ -786,11 +786,30 @@ final class SettingsWindow: NSWindow {
         return makePanel(sections: [
             makeSection(title: "启动", rows: [makeRow(label: "开机自启", control: launchSwitch)]),
             makeSection(title: "维护", rows: [makeRow(label: "自动清理", control: cleanupPopup)]),
+            makeSection(title: "日期与时间", rows: [buildDateLocaleRow()]),
             makeSection(title: "菜单栏图标", rows: [
                 makeRow(label: "图标风格", control: iconPopup),
                 buildIconStylePicker()   // 三选一预览，左对齐（原型）
             ])
         ])
+    }
+
+    /// 通用页：日期格式地区选择（跟随系统区域习惯，影响预约计时的日期显示；时间恒为 24 小时制）
+    private func buildDateLocaleRow() -> NSView {
+        let popup = NSPopUpButton()
+        styleSelect(popup)
+        popup.addItems(withTitles: [
+            "国际标准 ISO（2026-08-01）",
+            "中国（2026/8/1）",
+            "美国（8/1/2026）",
+            "日本（2026/8/1）"
+        ])
+        let raws = ["sv_SE", "zh_CN", "en_US", "ja_JP"]
+        let stored = UserDefaults.standard.string(forKey: LingerTheme.UserDefaultsKey.dateLocale.rawValue) ?? "sv_SE"
+        if let idx = raws.firstIndex(of: stored) { popup.selectItem(at: idx) }
+        popup.target = self
+        popup.action = #selector(dateLocaleChanged(_:))
+        return makeRow(label: "日期格式", control: popup, hint: "预约计时中日期显示的地区习惯（时间为 24 小时制）")
     }
 
     // MARK: - 面板 4：关于（票据风格）
@@ -921,6 +940,15 @@ final class SettingsWindow: NSWindow {
         guard raws.indices.contains(sender.indexOfSelectedItem) else { return }
         UserDefaults.standard.set(raws[sender.indexOfSelectedItem],
                                   forKey: LingerTheme.UserDefaultsKey.cleanupInterval.rawValue)
+    }
+
+    @objc private func dateLocaleChanged(_ sender: NSPopUpButton) {
+        let raws = ["sv_SE", "zh_CN", "en_US", "ja_JP"]
+        guard raws.indices.contains(sender.indexOfSelectedItem) else { return }
+        let localeID = raws[sender.indexOfSelectedItem]
+        UserDefaults.standard.set(localeID, forKey: LingerTheme.UserDefaultsKey.dateLocale.rawValue)
+        // 通知下次创建的预约编辑区按新地区渲染（编辑区每次展开重建，通知仅作广播一致性）
+        NotificationCenter.default.post(name: Notification.Name("linger.dateLocaleChanged"), object: nil, userInfo: ["locale": localeID])
     }
 
     @objc private func iconStyleChanged(_ sender: NSPopUpButton) {

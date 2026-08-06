@@ -202,6 +202,8 @@ enum LingerTheme {
         case dualRailMode = "linger_dualRailMode"
         /// 2026-08-04: 拖拽预览计时字号（18–30pt，默认 22）
         case dragPreviewFontSize = "linger_dragPreviewFontSize"
+        /// 2026-08-05: 日期格式地区（sv_SE ISO / zh_CN / en_US / ja_JP，默认 sv_SE = yyyy-MM-dd）
+        case dateLocale = "linger_dateLocale"
         /// 2026-08-04: 拖拽引导提示已显示次数（前 3 次显示，之后永久隐藏）
         case dragHintUsageCount = "linger_dragHintUsageCount"
 

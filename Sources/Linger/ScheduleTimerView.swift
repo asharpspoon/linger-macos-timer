@@ -69,8 +69,10 @@ final class ScheduleTimerView: NSView {
         datePicker.isBordered = false
         datePicker.font = LingerTheme.labelFont(size: 12)
         datePicker.textColor = LingerTheme.ink
-        // 中文 locale 显示「2026年8月5日」（贴近原型「8月3日 周一」，NSDatePicker 无星期元素）
-        datePicker.locale = Locale(identifier: "zh_CN")
+        // 日期格式跟随设置（通用 → 日期格式），默认 ISO 国际标准 yyyy-MM-dd（sv_SE 提供 2026-08-01 零填充）
+        let localeID = UserDefaults.standard.string(forKey: LingerTheme.UserDefaultsKey.dateLocale.rawValue)
+        let resolvedLocale = (localeID?.isEmpty ?? true) ? "sv_SE" : localeID!
+        datePicker.locale = Locale(identifier: resolvedLocale)
         datePicker.dateValue = initialStartDate
 
         timePicker = NSDatePicker()
@@ -92,6 +94,10 @@ final class ScheduleTimerView: NSView {
         durationField.textColor = LingerTheme.ink
         durationField.alignment = .center
         durationField.formatter = IntegerFormatter()
+        // 显式可编辑/可选中（杜绝任何 disabled 状态导致点不进去）
+        durationField.isEditable = true
+        durationField.isSelectable = true
+        durationField.isEnabled = true
 
         nameField = NSTextField()
         nameField.isBordered = false
@@ -101,6 +107,9 @@ final class ScheduleTimerView: NSView {
         nameField.font = LingerTheme.labelFont(size: 12, weight: .medium)
         nameField.textColor = LingerTheme.ink
         nameField.placeholderString = "日程"
+        nameField.isEditable = true
+        nameField.isSelectable = true
+        nameField.isEnabled = true
 
         estimatedEndLabel = NSTextField(labelWithString: "")
         estimatedEndLabel.font = LingerTheme.timeFont(size: 11)
@@ -168,23 +177,18 @@ final class ScheduleTimerView: NSView {
         let durCap = makeCapsule(icon: "timer", content: durContent)
         let nameCap = makeCapsule(icon: "pencil", content: nameField)
 
-        // —— 行1：日期胶囊 flex（占剩余）+ 时间胶囊紧凑 ——
+        // —— 行1/行2：4 个输入框等宽（fillEqually，用户要求）——
         let row1 = NSStackView(views: [dateCap, timeCap])
         row1.orientation = .horizontal
         row1.spacing = capsuleGap
         row1.alignment = .centerY
-        timeCap.widthAnchor.constraint(equalToConstant: 80).isActive = true   // HH:mm 紧凑
-        dateCap.setContentHuggingPriority(.defaultLow, for: .horizontal)
-        dateCap.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+        row1.distribution = .fillEqually
 
-        // —— 行2：时长胶囊固定 + 名称胶囊 flex ——
         let row2 = NSStackView(views: [durCap, nameCap])
         row2.orientation = .horizontal
         row2.spacing = capsuleGap
         row2.alignment = .centerY
-        durCap.widthAnchor.constraint(equalToConstant: 96).isActive = true
-        nameCap.setContentHuggingPriority(.defaultLow, for: .horizontal)
-        nameCap.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+        row2.distribution = .fillEqually
 
         // —— 行3：预计结束（左）+ spacer + 取消/确认（右），全部垂直居中 ——
         let arrow = NSImageView()
@@ -268,6 +272,19 @@ final class ScheduleTimerView: NSView {
 
     // 2026-08-05：内联进 hover 列表后不画独立背景，透明融入列表
     override func draw(_ dirtyRect: NSRect) {}
+
+    // 点击编辑区任意位置（含胶囊空白）都确保窗口成为 key window + app 激活，
+    // 否则 .accessory 应用在窗口非 key 时点击 NSTextField 无法成为 firstResponder。
+    // 同时打印命中诊断，便于排查「点不进去」。
+    override func mouseDown(with event: NSEvent) {
+        let p = convert(event.locationInWindow, from: nil)
+        NSLog("LingerDiag schedule mouseDown: point=%@ bounds=%@ keyWindow=%d",
+              NSStringFromPoint(p), NSStringFromRect(bounds),
+              (window?.isKeyWindow ?? false) ? 1 : 0)
+        NSApp.activate(ignoringOtherApps: true)
+        window?.makeKeyAndOrderFront(nil)
+        super.mouseDown(with: event)
+    }
 
     // 关键：手动 timer 改 frame 时 layout() 不一定触发，导致 contentContainer.bounds
     // 跟不上 scheduleView.bounds → 子 view 在 bounds 外 → hitTest 返回 nil → 无法编辑。
@@ -358,6 +375,17 @@ final class ScheduleTimerView: NSView {
     /// 诊断用：返回 contentContainer 的 bounds（验证动画期间是否同步）
     func contentContainerBounds() -> NSRect {
         return contentContainer.bounds
+    }
+
+    /// 诊断用：布局完成后打印 4 个输入控件的真实 frame（排查「点不进去」）
+    func logEditorState() {
+        NSLog("LingerDiag schedule editor: content=%@ name=%@ dur=%@ date=%@ time=%@ editable=%d",
+              NSStringFromRect(contentContainer.frame),
+              NSStringFromRect(nameField.frame),
+              NSStringFromRect(durationField.frame),
+              NSStringFromRect(datePicker.frame),
+              NSStringFromRect(timePicker.frame),
+              nameField.isEditable ? 1 : 0)
     }
 
     // MARK: - 数据同步

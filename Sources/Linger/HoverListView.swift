@@ -67,6 +67,17 @@ final class HoverListWindow: NSWindow {
     }
 
     override var canBecomeKey: Bool { true }
+
+    /// .accessory 应用 + 无边框 statusBar 窗口的已知坑：点击窗口内的文本控件时，
+    /// 窗口不一定自动成为 key window，导致 NSTextField 无法成为 firstResponder。
+    /// 在事件派发前强制 makeKey + activate，保证点击任意输入框都能直接输入。
+    override func sendEvent(_ event: NSEvent) {
+        if event.type == .leftMouseDown, !isKeyWindow {
+            NSApp.activate(ignoringOtherApps: true)
+            makeKeyAndOrderFront(nil)
+        }
+        super.sendEvent(event)
+    }
 }
 
 // MARK: - HoverProgressBar（CALayer 动画进度条）
@@ -1106,6 +1117,14 @@ final class HoverListView: NSView {
             onToggleAllPause?()
             return
         }
+
+        // 诊断：点击落在预约编辑区但没被任何子控件命中 → 说明编辑区 hitTest 失效
+        if let sv = scheduleView, sv.frame.contains(point) {
+            let hit = sv.hitTest(sv.convert(point, from: self))
+            NSLog("LingerDiag schedule click fell through: point=%@ svFrame=%@ hit=%@",
+                  NSStringFromPoint(point), NSStringFromRect(sv.frame),
+                  hit.map { String(describing: type(of: $0)) } ?? "nil")
+        }
     }
 
     /// 根据 entry 在当前列表中的位置计算卡片 rect (三组版本)
@@ -1220,8 +1239,15 @@ final class HoverListView: NSView {
             if p >= 1 {
                 t.invalidate()
                 self.scheduleHeightAnimTimer = nil
+                // 强制解析子树 autolayout，保证胶囊/输入框 frame 正确、可命中
+                sv.layoutSubtreeIfNeeded()
+                sv.window?.contentView?.layoutSubtreeIfNeeded()
+                // 动画结束再确认一次 key window（保险）
+                NSApp.activate(ignoringOtherApps: true)
+                sv.window?.makeKeyAndOrderFront(nil)
                 NSLog("LingerDiag schedule height anim done: frame=%@ contentContainer.bounds=%@",
                       NSStringFromRect(sv.frame), NSStringFromRect(sv.contentContainerBounds()))
+                sv.logEditorState()
             }
         }
         RunLoop.main.add(timer, forMode: .common)
