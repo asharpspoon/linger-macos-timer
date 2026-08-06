@@ -725,12 +725,13 @@ final class HoverListView: NSView {
         }
     }
 
-    /// 统一的分组分隔线：与行分隔线同内缩（cardPaddingX），略强于行线（层级分明）
+    /// 统一的分组分隔线：发丝线优化方案（缩短到 40pt 居中 + 降到 0.08 alpha）
+    /// 设计意图：最克制的视觉锚点，仅暗示分组边界，不抢内容焦点
     private func drawGroupSeparator(at y: CGFloat, alpha: CGFloat) {
-        let x = HoverDesign.cardPaddingX
-        let w = bounds.width - HoverDesign.cardPaddingX * 2
-        HoverDesign.groupSeparator.withAlphaComponent(alpha).setFill()
-        NSRect(x: x, y: y, width: w, height: 1).fill()
+        let lineLength: CGFloat = 40
+        let x = (bounds.width - lineLength) / 2
+        HoverDesign.groupSeparator.withAlphaComponent(alpha * 0.57).setFill()  // 0.14 × 0.57 ≈ 0.08
+        NSRect(x: x, y: y, width: lineLength, height: 1).fill()
     }
 
     private func drawCardInterpolated(entry: TimerEntry, targetY: CGFloat, drawDivider: Bool = true) {
@@ -941,13 +942,15 @@ final class HoverListView: NSView {
 
         let isPaused = entry.isPaused
         // stop 在右缘；pause/play 在 stop 左 20pt（原型：square 14 / pause|play 15）
+        // 操作按钮图标用次级中性色，不抢时间数字的琥珀强调焦点
+        // （琥珀仅用于 running 时间数字 + 进度条 fill 这类 active 核心数据）
         drawTintedSFSymbol("stop.fill",
                            color: HoverDesign.textTertiary,
                            pointSize: HoverDesign.symbolPointSize,
                            rightAnchor: rightEdge,
                            centerY: centerY)
         drawTintedSFSymbol(isPaused ? "play.fill" : "pause.fill",
-                           color: isPaused ? HoverDesign.textSecondary : HoverDesign.amber,
+                           color: HoverDesign.textSecondary,
                            pointSize: HoverDesign.symbolPointSize,
                            rightAnchor: rightEdge - 20,
                            centerY: centerY)
