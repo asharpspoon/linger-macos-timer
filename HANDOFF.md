@@ -14,13 +14,55 @@ s=d² 曲线 + 整分钟吸附），松手即开始计时。AppKit 原生、暗�
 > 每次交接/里程碑后在此**顶部**追加一段（最新在上），格式见 `.agents/skills/linger-handoff/`。
 > 上次交接见 git 历史；当前状态以「最新进度」为准。
 
+- **2026-08-06 · 🔴 未修复交接：已授权后右键菜单"已完成授权"仍可点击（Trae，3 轮未根治）**
+  - **现象**：用户已授予日历权限后，右键菜单栏 → "已完成授权" 菜单项**仍可点击**，未灰显禁用。期望：已授权时该菜单项 `isEnabled=false` 系统自动灰显不可点。用户 3 次反馈"还没修复好"。
+  - **已尝试 3 轮修复（均编译通过但实机仍未解决）**：
+    1. **第 1 轮**：菜单项文案改"已完成授权" + `calItem.isEnabled = !calAuth`，`calAuth = CalendarManager.shared.isAuthorized`。未解决——因为 `isAuthorized` 在裸 bundle 下恒返回 false（`authorizationStatus(for:)` 对无 bundle 进程无法归因 TCC，恒 notDetermined，即使已授权）。代码注释 [CalendarManager.swift L93-97](file:///Users/dawang/Downloads/vibecoding/Linger2.5/Sources/Linger/CalendarManager.swift#L93-L97) 已说明此行为。
+    2. **第 2 轮**：新增 `hasAccess = isAuthorized || grantedByRequest`，5 处外部调用点（MenuBarManager 2 处 / SettingsWindow 2 处 / CalendarRecorder 1 处）全部替换为 `hasAccess`。未解决——因为 `grantedByRequest` 是**内存变量**，app 重启后重置为 false，而 `isAuthorized` 又恒 false → `hasAccess` 重启后恒 false。
+    3. **第 3 轮**：`grantedByRequest` 改为持久化到 UserDefaults（`linger_calendarGrantedByRequest` key）+ `probeAccessOnLaunch()` 在 init 时静默调 `requestFullAccessToEvents` 探测真实状态 + setter 发 `lingerCalendarAccessDidRefresh` 通知驱动 UI 刷新。**用户反馈仍未修复**。
+  - **关键疑点（下一位必须先用日志验证再改）**：
+    - **疑点 A**：用户用 `./script/build_and_run.sh` 打包正式 bundle（`com.linger.app`）跑，按理 `isAuthorized` 应正常工作（不是裸 bundle）。但用户说仍未灰显 → 可能 `authorizationStatus(for:)` 在这个 bundle/签名状态下仍返回 notDetermined，或 `probeAccessOnLaunch` 的 guard `status != .notDetermined` 挡住了探测（status 恒 notDetermined → 永不探测 → grantedByRequest 永不更新）。
+    - **疑点 B**：`probeAccessOnLaunch` 异步回调未回来时，用户已打开右键菜单 → `hasAccess` 读到旧值。但 `grantedByRequest` 已持久化，重启后应读到上次的 true——除非 UserDefaults 域不对（swift build 裸跑 vs .app 用不同 defaults 域）。
+    - **疑点 C**：`requestFullAccessToEvents` 在已授权状态下回调是否真的 granted=true？可能 TCC 状态和 EKEventStore 回调不同步。
+    - **疑点 D**：右键菜单 `showRightClickMenu` 重建时读 `hasAccess`，但 `CalendarManager.shared` 单例 init 时机 vs 菜单首次打开时机——如果菜单先打开，`probeAccessOnLaunch` 回调还没回来。
+  - **本次完成（代码已改，但未解决问题）**：
+    1. `CalendarManager.grantedByRequest` 改为 UserDefaults 持久化计算属性（key=`linger_calendarGrantedByRequest`）
+    2. 新增 `probeAccessOnLaunch()`：init 时若 `authorizationStatus != .notDetermined` 则静默调 `requestFullAccessToEvents` 探测真实状态，回调更新 `grantedByRequest`
+    3. 新增 `hasAccess` 公共属性（`isAuthorized || grantedByRequest`），外部统一调用
+    4. `requestPermissionIfNeeded` 改为按 status 分流：notDetermined 调一次系统弹窗；denied 弹 NSAlert；granted 直接返回（修复"首次写入弹三次授权两次重复"）
+    5. `MenuBarManager.openCalendarSettings` + `SettingsWindow.openCalSettings` 改为主动授权（调 `requestPermissionIfNeeded` 触发系统对话框，denied 才 fallback NSAlert）
+    6. `SettingsWindow` 监听 `lingerCalendarAccessDidRefresh` 通知刷新授权状态显示；按钮标题动态化"去授权…"/"管理…"；状态文字"✓ 已授权"/"⚠ 未授权"
+  - **未完成/卡点**：**主 bug 未修复**——已授权菜单项仍可点。3 轮都在猜根因，没有拿运行时日志验证。下一位**必须先拿日志**。
+  - **下一步（按优先级）**：
+    1. **先拿日志**：`./script/build_and_run.sh --telemetry` → 授权日历 → 看日志里 `CalendarManager init: bundleID=... status=... grantedByRequest=...` 和 `probeAccessOnLaunch: status=...` 的实际值
+    2. **根据日志分流修复**：
+       - 若 `status=0`(notDetermined) 且 `grantedByRequest=0` → `probeAccessOnLaunch` 的 guard 挡住了，改为**无条件**调 `requestFullAccessToEvents`（已授权/已拒绝都不弹窗，只有 notDetermined 才弹）
+       - 若 `grantedByRequest=1` 但菜单仍可点 → `hasAccess` 逻辑或菜单读取时机问题，检查 `showRightClickMenu` 里 `calAuth` 的值
+       - 若 `status=3`(fullAccess/authorized) 但 `isAuthorized` 返回 false → `isAuthorized` 的 status 判断逻辑有 bug
+    3. 修复后实机验收：授权 → 重启 app → 右键菜单"已完成授权"应灰显
+  - **如何验证**：
+    - `./script/build_and_run.sh --telemetry`（启动 + 流式 telemetry 日志）
+    - 授权日历后看日志：`probeAccessOnLaunch: status=X` / `probeAccessOnLaunch result: granted=...` / `grantedByRequest=Y`
+    - 右键菜单栏 → 看"已完成授权"是否灰显不可点
+    - 重启 app → 再看菜单项状态（验证持久化）
+  - **给下一位的提示**：
+    - **关键决策**：`grantedByRequest` 持久化 key 是 `linger_calendarGrantedByRequest`；通知名 `lingerCalendarAccessDidRefresh`（[CalendarManager.swift L596-599](file:///Users/dawang/Downloads/vibecoding/Linger2.5/Sources/Linger/CalendarManager.swift#L596-L599)）
+    - **关键决策**：`probeAccessOnLaunch` 的 guard `status != .notDetermined` 可能是 bug 源头——如果系统某种状态下恒返回 notDetermined，探测永不触发。考虑改为无条件调用（requestFullAccessToEvents 在已授权/已拒绝时不弹窗）
+    - **关键决策**：`isAuthorized` 的实现 [CalendarManager.swift L229-L237](file:///Users/dawang/Downloads/vibecoding/Linger2.5/Sources/Linger/CalendarManager.swift#L229-L237) 只看 `authorizationStatus(for:)`，裸 bundle 下不可靠——这是注释 L93-97 已知行为，但正式 bundle 下应可靠，需日志确认
+    - **关键决策**：`showRightClickMenu` 每次右键都重建菜单，实时读 `hasAccess`——所以问题不在菜单重建时机，而在 `hasAccess` 返回值本身
+    - **易踩坑**：UserDefaults 在 swift build 裸跑（无 bundle）和 .app（有 bundle）下是不同域，`grantedByRequest` 持久化值可能跨运行方式丢失——但这不是当前主 bug（用户用 .app 跑）
+    - **易踩坑**：`requestFullAccessToEvents` 回调在后台线程，所有 `grantedByRequest` 赋值都在 `DispatchQueue.main.async` 内，setter 内部发通知也用 `DispatchQueue.main.async`——无死锁，但有时序延迟
+    - **前两轮的教训**：不要只读代码猜根因，UI bug 必须拿运行时日志（bug-fixing skill Rule 8）；前两轮都在症状层改，没挖到 `grantedByRequest` 内存变量 + `probeAccessOnLaunch` guard 的根因
+    - 相关文件：[CalendarManager.swift](file:///Users/dawang/Downloads/vibecoding/Linger2.5/Sources/Linger/CalendarManager.swift) / [MenuBarManager.swift](file:///Users/dawang/Downloads/vibecoding/Linger2.5/Sources/Linger/MenuBarManager.swift) / [SettingsWindow.swift](file:///Users/dawang/Downloads/vibecoding/Linger2.5/Sources/Linger/SettingsWindow.swift) / [CalendarRecorder.swift](file:///Users/dawang/Downloads/vibecoding/Linger2.5/Sources/Linger/CalendarRecorder.swift)
+    - 编译：`export DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer && swift build --disable-sandbox`（当前代码编译通过）
+
 - **2026-08-06 · 交接给 Trae：上线前设计清单（Codex 整理，未动代码）**
   - 本次交接：用户列了 22 项上线前待办，已分类 + 定优先级 + 分批，供 Trae 接手执行。**本段无代码改动**（仅整理），接手前先读本文件顶部「最新进度」了解已完成能力。
   - **P0 上线阻断（先做）**
-    1. **无法粘贴复制**（Bug）：排查所有输入框（hover 标题编辑 / 预约编辑区 / 完成弹窗内联输入）为何不能 Cmd+V；疑点：`.accessory` + 无边框 statusBar 窗口的 field editor 粘贴路径，先复现再修
-    2. **计时中显示小 bug**：需用户提供具体现象/截图（现象未知，先找用户要）
-    3. **Intel 版本转译**：`swift build -c release --arch arm64 --arch x86_64` 打 universal，真机/虚拟机验证 x86_64 能跑
-    4. **关于页内容填充**：⏳ 卡用户提供信息（小红书 / Instagram / 邮箱 / GitHub / 捐赠 / 见见开发者）；结构在 AboutTicketView，填真实值即可
+    1. **无法粘贴复制**（Bug）：排查所有输入框（hover 标题编辑 / 预约编辑区 / 完成弹窗内联输入）为何不能 Cmd+V；疑点：`.accessory` + 无边框 statusBar 窗口的 field editor 粘贴路径，先复现再修✅
+    2. **计时中显示小 bug**：需用户提供具体现象/截图（现象未知，先找用户要）✅ 
+    3. **Intel 版本转译**：`swift build -c release --arch arm64 --arch x86_64` 打 universal，真机/虚拟机验证 x86_64 能跑 🔴 不做了，不提供 Intel 版本
+    4. **关于页内容填充**：⏳ 卡用户提供信息（小红书 / Instagram / 邮箱 / GitHub / 捐赠 / 见见开发者）；结构在 AboutTicketView，填真实值即可 🔴 最后做
   - **P1 第一印象 / 核心体验**
     5. 菜单栏 icon 设计（现为自绘 Ring，`MenuBarManager.buildRingIcon`）
     6. 菜单栏 icon 计时交互动画（计时中 icon 动态反馈）
@@ -265,6 +307,7 @@ Linger2.5/
 ## 最新进度（2026-08-06 增补）
 
 - [ ] **上线前清单（已交接 Trae，2026-08-06）**：P0 粘贴复制 bug / 计时显示 bug / Intel 转译 / 关于页信息；P1 icon+动画+引导+快捷键+更新检查+重复日程；P2 设置重设计+弹窗菜单+参数设置+md 格式等，详见「最近交接」顶部段落
+- [ ] **🔴 未修复：已授权后右键菜单"已完成授权"仍可点击（3 轮未根治，2026-08-06）**：用户反馈授权后菜单项应灰显不可点，3 轮修复均未解决。详见「最近交接」顶部交接段。下一位**先用 `./script/build_and_run.sh --telemetry` 拿运行时日志**确认 `probeAccessOnLaunch`/`grantedByRequest`/`hasAccess` 实际值，再决定修复方向，勿盲改
 - [x] **Markdown 记录导出 + 每周清理升级**（2026-08-06）：RecordExporter 归档到「文稿/Linger 计时记录.md」（按天去重）；设置开关 + 立即导出；entriesToPrune 不再要求 hasRecorded（僵尸条目一并清）
 - [x] **唯一图标**（2026-08-06）：去掉三选一，用 Support/LingerIcon.png（菜单栏 + bundle icns）
 - [x] **空态悬浮窗**（2026-08-06）：无计时也显示 hover 面板（含底栏日历按钮），计时清空不再自动隐藏
