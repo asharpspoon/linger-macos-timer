@@ -854,8 +854,14 @@ final class MenuBarManager: NSObject {
             self?.refreshHoverList()
         }
         view.onStop = { [weak self] id in
-            TimerManager.shared.stopEntry(id)
-            self?.refreshHoverList()
+            guard let self else { return }
+            // 停止运行中的预约计时 → 同步删除已写入的日历事件（与「待开始」✕ 删除一致）
+            if let entry = TimerManager.shared.allDisplayEntries.first(where: { $0.id == id }),
+               entry.isScheduled {
+                CalendarRecorder.shared.deleteRecorded(entry)
+            }
+            _ = TimerManager.shared.stopEntry(id)
+            self.refreshHoverList()
         }
         view.onToggleAllPause = { [weak self] in
             guard let self = self else { return }

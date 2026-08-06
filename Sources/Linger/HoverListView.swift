@@ -614,7 +614,8 @@ final class HoverListView: NSView {
         let progressW = contentW
         pb.frame = NSRect(x: progressX, y: progressY, width: progressW, height: HoverDesign.progressBarHeight)
         // ⑦ 状态: running=渐变+发光+流动, paused=降透明, scheduled=灰色
-        if entry.isScheduled {
+        // 预约「待开始」= 灰色；已激活运行/暂停的预约按实际状态渲染
+        if entry.isScheduled && !entry.isRunning && !entry.isPaused {
             pb.style = .scheduled
             pb.urgent = false
         } else if entry.isPaused {
@@ -826,7 +827,7 @@ final class HoverListView: NSView {
         let timeText = entry.displayTime
         let timeColor: NSColor
         let timeWeight: NSFont.Weight
-        if entry.isScheduled {
+        if entry.isScheduled && !entry.isRunning && !entry.isPaused {
             timeColor = NSColor(calibratedWhite: 1.0, alpha: 0.4)
             timeWeight = .regular
         } else if entry.isPaused {
@@ -902,7 +903,8 @@ final class HoverListView: NSView {
     private func drawRightControls(entry: TimerEntry, rowRect: NSRect, centerY: CGFloat) -> CGFloat {
         let rightEdge = rowRect.maxX
 
-        if entry.isScheduled {
+        // 预约「待开始」：✕ 删除按钮 + 徽标；已激活运行的预约走正常控制
+        if entry.isScheduled && !entry.isRunning && !entry.isPaused {
             pauseRects.removeValue(forKey: entry.id)
             stopRects.removeValue(forKey: entry.id)
             // 右侧：删除按钮（xmark，点击删除计时 + 同步删日历事件）+ 「待开始」徽标在左
