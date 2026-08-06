@@ -90,9 +90,62 @@ final class CalendarManager {
     // 已记录的 entry ID 集合（持久化到 UserDefaults，防止 app 重启后重复写入）
     private var recordedEntryIDs: Set<String> = []
 
+    /// 内存级授权标记：macOS 对「无 bundle 的裸可执行文件」无法用 authorizationStatus(for:)
+    /// 正确归因 TCC 权限（status 恒 notDetermined，即使 TCC 已放行路径），但
+    /// requestFullAccessToEvents 的回调会如实返回 granted。用回调结果驱动写入，
+    /// 让 Xcode 裸跑调试也能写日历（正式包 com.linger.app 走 status 正常路径）。
+    private var grantedByRequest = false
+
     private init() {
         loadRecordedEntries()
         migrateLegacyWriteModeDefault()
+        os_log("CalendarManager init: bundleID=%@ status=%d",
+               log: log, type: .info,
+               Bundle.main.bundleIdentifier ?? "nil",
+               currentAuthorizationStatus().rawValue)
+    }
+
+    /// 确保完全访问：已授权/已请求过 → 直接 true；notDetermined → 发起系统授权；
+    /// denied/restricted → false（不弹窗）。回调主线程。
+    func ensureFullAccess(completion: @escaping (Bool) -> Void) {
+        if isAuthorized || grantedByRequest {
+            completion(true)
+            return
+        }
+        let status = currentAuthorizationStatus()
+        let canRequest: Bool = {
+            if status == .notDetermined || status == .authorized { return true }
+            if #available(macOS 14.0, *), status == .fullAccess { return true }
+            return false
+        }()
+        guard canRequest else {
+            os_log("Calendar access denied/restricted (status=%d), skip request",
+                   log: log, type: .info, status.rawValue)
+            completion(false)
+            return
+        }
+        os_log("ensureFullAccess: requesting full access (status=%d)", log: log, type: .info, status.rawValue)
+        if #available(macOS 14.0, *) {
+            store.requestFullAccessToEvents { granted, error in
+                DispatchQueue.main.async {
+                    self.grantedByRequest = granted
+                    os_log("ensureFullAccess result: granted=%{public}@ error=%{public}@",
+                           log: self.log, type: .info,
+                           String(describing: granted), error?.localizedDescription ?? "nil")
+                    completion(granted)
+                }
+            }
+        } else {
+            store.requestAccess(to: .event) { granted, error in
+                DispatchQueue.main.async {
+                    self.grantedByRequest = granted
+                    os_log("ensureFullAccess result (legacy): granted=%{public}@ error=%{public}@",
+                           log: self.log, type: .info,
+                           String(describing: granted), error?.localizedDescription ?? "nil")
+                    completion(granted)
+                }
+            }
+        }
     }
 
     // MARK: - 已记录追踪
@@ -396,8 +449,9 @@ final class CalendarManager {
     ///   - endDate: 计时结束时间
     /// - Returns: eventIdentifier（成功）或 nil（失败）
     func writeEvent(title: String, startDate: Date, endDate: Date) -> String? {
-        guard isAuthorized else {
-            os_log("No calendar permission, skip write", log: log, type: .error)
+        guard isAuthorized || grantedByRequest else {
+            os_log("No calendar permission (status=%d), skip write", log: log, type: .error,
+                   currentAuthorizationStatus().rawValue)
             return nil
         }
 

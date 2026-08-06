@@ -14,6 +14,17 @@ s=d² 曲线 + 整分钟吸附），松手即开始计时。AppKit 原生、暗�
 > 每次交接/里程碑后在此**顶部**追加一段（最新在上），格式见 `.agents/skills/linger-handoff/`。
 > 上次交接见 git 历史；当前状态以「最新进度」为准。
 
+- **2026-08-06 · 日历记录实机修复 2（仍无事件：calendar not authorized）**
+  - 现象：迁移生效（`Migrated legacy writeMode manual -> auto`），记录路径跑到，但 `Auto record skipped: calendar not authorized`
+  - 根因（TCC 实测确认）：**Xcode/SwiftPM 裸跑的可执行文件没有 bundle identifier**（日志 `No app bundle (raw executable)`），macOS 的 `EKEventStore.authorizationStatus(for:)` 无法为无 bundle 进程归因 TCC 权限 → status 恒 notDetermined，即使 TCC 里已有该路径条目（TCC.db 显示 debug 二进制 auth_value=2、01:53 已授权）也读不到
+  - 修复：
+    1. **请求回调驱动授权**：`CalendarManager.ensureFullAccess` —— 已授权/已请求过直接 true；notDetermined 时调 `requestFullAccessToEvents` 并**用回调 granted 结果**（该回调对无 bundle 进程也如实返回，01:53 实测 granted=true），不再只看 status API；`writeEvent` 守卫改为 `isAuthorized || grantedByRequest`
+    2. `CalendarRecorder.writeCompletion`（auto）改用 `ensureFullAccess`（PRD §3.5.1 按需授权），不再静默跳过
+    3. CalendarManager.init 打诊断：bundleID + status（一眼看出是哪种运行方式）
+    4. **重新打包 dist/Linger.app（com.linger.app，TCC 08-05 已授权）** —— 正式包走 bundle ID 正常路径，日历记录最稳
+  - 编译 15/15 绿
+  - 给下一位：macOS TCC 对无 bundle 裸可执行文件不可靠，日历/通知等系统权限功能测试一律用 `./script/build_and_run.sh` 打包 app；Xcode 裸跑靠 grantedByRequest 兜底（写 EventKit 是否真成功待实机确认）
+
 - **2026-08-06 · 日历记录实机修复（用户实测：1 分钟计时无事件）**
   - 现象：日志 `Manual write mode: completion record skipped (user records manually)` —— 记录逻辑已跑，但写入方式还是老的 manual
   - 根因：老版本把默认 `manual` 持久化进 `linger_calendarWriteMode`，新默认 auto 对老用户不生效
@@ -167,7 +178,7 @@ Linger2.5/
 ## 最新进度（2026-08-06 增补）
 
 - [x] **计时→macOS 日历记录**（2026-08-06，重要功能）：新增 CalendarRecorder 协调器；拖拽计时完成按写入方式记录（默认 auto，已从 manual 改）；预约计时创建即按日期-时间-时长记录；横幅 Confirm/✎ 防重复；日历记录与通知开关解耦
-- [ ] **日历记录实机验收**（写入方式已做 manual→auto 一次性迁移）：跑 `./script/build_and_run.sh` → 拖拽计时归零 / 创建预约 → 打开日历 app 看「Linger」日历事件
+- [ ] **日历记录实机验收**（写入方式已做 manual→auto 一次性迁移；**用 build_and_run.sh 打包 app 测**，Xcode 裸跑 TCC 不可靠已加 ensureFullAccess 兜底）：拖拽计时归零 / 创建预约 → 打开日历 app 看「Linger」日历事件
 - [x] **预约编辑区 5 项反馈**（2026-08-06）：4 输入框等宽（fillEqually）；时间恒 24h；日程/时长输入框点击加固（HoverListWindow.sendEvent 强制 key + 动画后 layoutSubtreeIfNeeded + mouseDown 诊断）；日期格式地区设置（通用页选择器，默认 ISO sv_SE）；新增 ScheduleEditorLayoutTests 3 个
 - [ ] **预约编辑区输入实机验收**：跑 `./script/build_and_run.sh` 确认 4 输入框可点击输入，看 LingerDiag 日志，通过后清诊断日志
 

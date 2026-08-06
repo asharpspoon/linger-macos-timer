@@ -58,18 +58,23 @@ final class CalendarRecorder {
         }
     }
 
-    /// auto：直接写入（未授权时静默跳过 + 日志，设置页负责授权引导）
+    /// auto：完成即写入（未授权时按需发起系统授权，PRD §3.5.1「首次尝试写入时请求权限」；
+    /// 已授权/已请求过则直接写）
     private func writeCompletion(_ entry: TimerEntry) {
-        guard CalendarManager.shared.isAuthorized else {
-            os_log("Auto record skipped: calendar not authorized", log: log, type: .info)
-            return
-        }
-        let title = entry.predefinedTitle ?? ""
-        let start = resolveStart(entry)
-        let end = resolveEnd(entry, start: start)
-        if let eventId = CalendarManager.shared.writeEventOnFinish(title: title, start: start, end: end) {
-            markRecorded(entry, eventId: eventId)
-            os_log("Auto record written: %{public}@", log: log, type: .info, title.isEmpty ? "(default)" : title)
+        let manager = CalendarManager.shared
+        manager.ensureFullAccess { [weak self] granted in
+            guard granted else {
+                os_log("Auto record skipped: calendar not authorized", log: self?.log ?? OSLog(subsystem: "com.linger.timer", category: "CalendarRecorder"), type: .info)
+                return
+            }
+            guard let self else { return }
+            let title = entry.predefinedTitle ?? ""
+            let start = self.resolveStart(entry)
+            let end = self.resolveEnd(entry, start: start)
+            if let eventId = manager.writeEventOnFinish(title: title, start: start, end: end) {
+                self.markRecorded(entry, eventId: eventId)
+                os_log("Auto record written: %{public}@", log: self.log, type: .info, title.isEmpty ? "(default)" : title)
+            }
         }
     }
 
