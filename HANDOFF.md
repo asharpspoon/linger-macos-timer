@@ -14,6 +14,32 @@ s=d² 曲线 + 整分钟吸附），松手即开始计时。AppKit 原生、暗�
 > 每次交接/里程碑后在此**顶部**追加一段（最新在上），格式见 `.agents/skills/linger-handoff/`。
 > 上次交接见 git 历史；当前状态以「最新进度」为准。
 
+- **2026-08-06 晚 · ✅ 已授权菜单项灰显修复（Codex，真凶落定：NSMenu.autoenablesItems）**
+  - **结论**：主 bug 已修复并经用户实机确认（右键 → 灰显「已获取授权」不可点）。3 轮未根治的真凶**不是授权状态判断**，而是菜单渲染层。
+  - **根因链（运行时日志一步步实锤）**：
+    1. **TCC 归因漂移**：`authorizationStatus(for:)` 在 ad-hoc 签名（每次重建签名都变）下恒返回 `notDetermined(status=0)`，即使 TCC.db 显示 com.linger.app 已授权 → `isAuthorized` 恒 false。日志：`CalendarManager init: bundleID=com.linger.app status=0 grantedByRequest=1`
+    2. **授权状态只能靠回调持久化**：`requestFullAccessToEvents` 回调 granted 是唯一可靠信号 → `grantedByRequest` 持久化（key=`linger_calendarGrantedByRequest`，com.linger.app 域=1）→ `hasAccess = isAuthorized || grantedByRequest` = true
+    3. **真凶（前 3 轮全漏在这）**：`NSMenu` 默认 `autoenablesItems=true`，菜单弹出时按「target 是否响应 action」**自动重新启用所有菜单项** → 覆盖手动 `isEnabled=false`。RIGHTCLICK 日志 `title=已获取授权 enabled=0`（确实设了禁用），但弹出瞬间被系统重启用 → 用户看到可点。
+  - **本次完成**：
+    1. `rightClickMenu.autoenablesItems = false`（手动 isEnabled 成为唯一权威）—— 一行动效
+    2. 右键菜单按上线规范：`设置…` / 未授权=`系统授权`·已授权=灰显`已获取授权` / `退出⌘Q`
+    3. 授权检测加固：CalendarManager 启动即初始化（AppEntry 触达）；status=notDetermined 且历史有成功写入记录（recordedCalendarEntries 非空）→ grantedByRequest 补 true（防重建后回退可点）
+    4. `build_and_run.sh --telemetry` 过滤条件修复：原只匹配 `com.linger.app`，CalendarManager 日志在 `com.linger.timer` subsystem → 之前诊断日志永远看不到（前 3 轮"猜根因"的部分原因）
+    5. 新增 RIGHTCLICK 诊断日志 + buildStamp（`menu-v3-20260806`），右键一次即可确认运行构建 + 授权状态 + 菜单项最终状态
+  - **未完成/卡点**：上线前清单其余项未动（P0 关于页内容待用户提供、P1 icon 动画/引导/快捷键清单/更新检查、P2 打磨）；3 项实机验收待用户跑（完成弹窗 / 日历记录 / 预约编辑区输入——日历记录 12 条已实证工作正常）
+  - **下一步（按优先级）**：
+    1. 确认是否清理诊断日志（RIGHTCLICK/buildStamp，建议上线前清）
+    2. 上线前清单按批次推进（P0 剩余 → P1）
+  - **如何验证**：
+    - `./script/build_and_run.sh` → 右键菜单栏 → 已授权=灰显「已获取授权」不可点；未授权=「系统授权」可点 → 点击弹系统授权框
+    - 日志：`./script/build_and_run.sh --telemetry` → 右键一次看 `RIGHTCLICK build=... status=... granted=... hasAccess=... title=... enabled=...`
+    - `swift test --disable-sandbox` 19/19 绿；`xcodebuild -scheme Linger` BUILD SUCCEEDED
+  - **给下一位的提示**：
+    - **授权状态唯一可靠信号 = requestFullAccessToEvents 回调 + grantedByRequest 持久化**；`authorizationStatus(for:)` 在 ad-hoc 签名下恒 notDetermined，别信它、别在它上面加逻辑
+    - **菜单项 isEnabled 必须配合 `menu.autoenablesItems=false`**，否则弹出时被系统按 target 响应重启用——"灰显失效"类 bug 的通病
+    - 持久化 key `linger_calendarGrantedByRequest` 在 com.linger.app（.app 跑）和 Linger（裸跑）两个 defaults 域都可能存在
+    - 关键文件：MenuBarManager.swift（`showRightClickMenu` / init autoenablesItems）、CalendarManager.swift（init / hasAccess / requestPermissionIfNeeded / probeAccessOnLaunch）、AppEntry.swift（启动触达）
+
 - **2026-08-06 · 🔴 未修复交接：已授权后右键菜单"已完成授权"仍可点击（Trae，3 轮未根治）**
   - **现象**：用户已授予日历权限后，右键菜单栏 → "已完成授权" 菜单项**仍可点击**，未灰显禁用。期望：已授权时该菜单项 `isEnabled=false` 系统自动灰显不可点。用户 3 次反馈"还没修复好"。
   - **已尝试 3 轮修复（均编译通过但实机仍未解决）**：
@@ -307,7 +333,7 @@ Linger2.5/
 ## 最新进度（2026-08-06 增补）
 
 - [ ] **上线前清单（已交接 Trae，2026-08-06）**：P0 粘贴复制 bug / 计时显示 bug / Intel 转译 / 关于页信息；P1 icon+动画+引导+快捷键+更新检查+重复日程；P2 设置重设计+弹窗菜单+参数设置+md 格式等，详见「最近交接」顶部段落
-- [ ] **🔴 未修复：已授权后右键菜单"已完成授权"仍可点击（3 轮未根治，2026-08-06）**：用户反馈授权后菜单项应灰显不可点，3 轮修复均未解决。详见「最近交接」顶部交接段。下一位**先用 `./script/build_and_run.sh --telemetry` 拿运行时日志**确认 `probeAccessOnLaunch`/`grantedByRequest`/`hasAccess` 实际值，再决定修复方向，勿盲改
+- [x] **已授权菜单项灰显不可点（修复完成 + 用户实机确认，2026-08-06 晚）**：真凶 = NSMenu 默认 autoenablesItems=true 弹出时重启用菜单项，覆盖 isEnabled=false；修复 = `rightClickMenu.autoenablesItems=false`。授权状态靠 grantedByRequest 回调持久化兜底（authorizationStatus 在 ad-hoc 签名下恒 notDetermined）。详见「最近交接」顶部交接段
 - [x] **Markdown 记录导出 + 每周清理升级**（2026-08-06）：RecordExporter 归档到「文稿/Linger 计时记录.md」（按天去重）；设置开关 + 立即导出；entriesToPrune 不再要求 hasRecorded（僵尸条目一并清）
 - [x] **唯一图标**（2026-08-06）：去掉三选一，用 Support/LingerIcon.png（菜单栏 + bundle icns）
 - [x] **空态悬浮窗**（2026-08-06）：无计时也显示 hover 面板（含底栏日历按钮），计时清空不再自动隐藏
