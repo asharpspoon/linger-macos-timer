@@ -68,9 +68,10 @@ cat >"$INFO_PLIST" <<PLIST
 </plist>
 PLIST
 
-# 打包应用图标：Support/LingerIcon.png → Resources/LingerIcon.png + LingerIcon.icns
-ICON_SRC="$ROOT_DIR/Support/LingerIcon.png"
+# 打包应用图标：优先用铺满版（无透明留白边），回退原版 → Resources/LingerIcon.png + LingerIcon.icns
 APP_RESOURCES="$APP_CONTENTS/Resources"
+ICON_SRC="$ROOT_DIR/Support/LingerIcon-Fullbleed.png"
+[ -f "$ICON_SRC" ] || ICON_SRC="$ROOT_DIR/Support/LingerIcon.png"
 if [ -f "$ICON_SRC" ]; then
   mkdir -p "$APP_RESOURCES"
   cp "$ICON_SRC" "$APP_RESOURCES/LingerIcon.png"
