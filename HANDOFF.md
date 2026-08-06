@@ -14,6 +14,25 @@ s=d² 曲线 + 整分钟吸附），松手即开始计时。AppKit 原生、暗�
 > 每次交接/里程碑后在此**顶部**追加一段（最新在上），格式见 `.agents/skills/linger-handoff/`。
 > 上次交接见 git 历史；当前状态以「最新进度」为准。
 
+- **2026-08-06 · 倒计时完成通知：自绘玻璃横幅（Codex）**
+  - 本次完成（`swift build` 通过，`swift test` 17/17 绿）：
+    1. **新增 `CompletionBanner.swift`**：完成弹窗（强提醒）—— 300pt 右上角毛玻璃横幅，替换系统通知
+       - 标题行：Ring 图标 + Linger + ✓ 绿 + 「现在」+ ✕ 关闭
+       - 内容行：日程模块（有标题显名 / 无标题铅笔+内联输入 placeholder=日程 + ↩ 提交）+ 记录时间 mm:ss 琥珀等宽 + 重复 ↻ + 确认 ✓（圆钮 hover 琥珀）
+       - 交互全程横幅内完成；8s 无交互自动淡出；多条右上角堆叠；无边框 statusBar 窗口 + sendEvent 强制 key（复用 hover 列表经验，点击输入不抢焦点）
+    2. **NotificationManager 重构为仅提示音**：删掉 UNUserNotificationCenter（categories/actions/授权/横幅）；系统通知权限不再申请
+    3. **设置 → 通知**：删「通知授权」区（不再需要）；「计时完成时通知」开关改名为 **「完成弹窗（强提醒）」** + hint（关闭后仅保留菜单栏倒计时与提示音）；仍写 `linger_notifyOnComplete`（默认开，无需迁移）
+    4. **CalendarRecorder**：ask 模式改由横幅 ✓/输入承担（不再弹 NSAlert）；新增 `recordFromBanner(entry, title:)`（auto 已写跳过 / ask/manual 写 + 标记）
+    5. AppEntry 初始化 CompletionBannerManager
+    6. 新增 CompletionBannerTests 2 个（有/无标题构建+布局）；OCR 验证标题行/内容行渲染正确
+  - 未完成/卡点：**实机验收**（build_and_run.sh）—— 拖一个计时跑完看右上角弹窗：标题行、mm:ss、无标题时内联输入、↻ 同长重开、✓ 写入日历、8s 自动消失、设置开关关闭后不再弹
+  - 下一步：验收 → 之后可做 toast.html 视觉统一 / UI 整体打磨
+  - 给下一位：
+    - **关键决策**：完成反馈三层 = 菜单栏倒计时（常驻）+ 提示音（开关）+ 完成弹窗（开关，默认开）；弹窗与日历记录解耦（CalendarRecorder 独立）
+    - **关键决策**：系统通知彻底移除（自绘横幅 + NSSound 都不需要通知权限），设置「通知授权」区已删
+    - 弹窗开关复用 `linger_notifyOnComplete`（旧「计时完成时通知」键，默认开）；`NotificationManager.bannerAvailable` 等旧 API 已删
+    - 弹窗 UI 在 `CompletionBanner.swift`；显示入口 CompletionBannerManager.handleTimerDidFinish；确认写入 CalendarRecorder.recordFromBanner
+
 - **2026-08-06 · 预约删除按钮 + 日历同步（Codex）**
   - 本次完成：hover 列表预约行右侧新增 ✕ 删除按钮；点击 = 删计时 + 同步删除已写入的日历事件
     1. `CalendarManager.deleteEvent(eventIdentifier:)`（按 eventIdentifier 删事件，未授权/找不到返回 false）+ `unmarkRecorded`
@@ -187,6 +206,9 @@ Linger2.5/
 
 ## 最新进度（2026-08-06 增补）
 
+- [x] **倒计时完成通知（自绘玻璃横幅）**（2026-08-06）：CompletionBanner 替换系统通知；NotificationManager 仅保留提示音；设置「完成弹窗（强提醒）」开关；ask 模式由横幅承担；17/17 绿
+- [ ] **完成弹窗实机验收**：build_and_run.sh → 计时归零看右上角横幅（标题行/25:00/内联输入/↻/✓/8s 消失/开关）
+- [x] **预约删除按钮 + 日历同步**（2026-08-06）：预约行 ✕ 删除 = 删计时 + 同步删日历事件
 - [x] **计时→macOS 日历记录**（2026-08-06，重要功能）：新增 CalendarRecorder 协调器；拖拽计时完成按写入方式记录（默认 auto，已从 manual 改）；预约计时创建即按日期-时间-时长记录；横幅 Confirm/✎ 防重复；日历记录与通知开关解耦
 - [ ] **日历记录实机验收**（写入方式已做 manual→auto 一次性迁移；**用 build_and_run.sh 打包 app 测**，Xcode 裸跑 TCC 不可靠已加 ensureFullAccess 兜底）：拖拽计时归零 / 创建预约 → 打开日历 app 看「Linger」日历事件
 - [x] **预约编辑区 5 项反馈**（2026-08-06）：4 输入框等宽（fillEqually）；时间恒 24h；日程/时长输入框点击加固（HoverListWindow.sendEvent 强制 key + 动画后 layoutSubtreeIfNeeded + mouseDown 诊断）；日期格式地区设置（通用页选择器，默认 ISO sv_SE）；新增 ScheduleEditorLayoutTests 3 个

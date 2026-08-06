@@ -30,11 +30,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // 提前初始化 TimerManager（避免首次 addTimer 时 .shared init 阻塞主线程）
         _ = TimerManager.shared
 
-        // T6: 初始化通知系统（注册 category + 设置 delegate），并首次启动请求通知授权
+        // T6: 初始化完成反馈（提示音）+ 完成弹窗（强提醒，自绘玻璃横幅）+ 日历记录协调器
         _ = NotificationManager.shared
-        NotificationManager.shared.requestAuthorizationIfNeeded()
-
-        // 2026-08-06: 初始化计时→日历记录协调器（完成/预约记录，独立于通知开关）
+        _ = CompletionBannerManager.shared
         _ = CalendarRecorder.shared
 
         menuBarManager = MenuBarManager()

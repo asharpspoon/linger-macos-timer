@@ -51,7 +51,12 @@ final class CalendarRecorder {
         case .auto:
             writeCompletion(entry)
         case .ask:
-            presentAskIfBannerUnavailable(entry)
+            // 完成弹窗开启时由横幅 ✓/输入承担「每次询问」；弹窗关闭则不打扰、静默跳过
+            let key = LingerTheme.UserDefaultsKey.notifyOnComplete.rawValue
+            let bannerOn = UserDefaults.standard.object(forKey: key) == nil
+                ? true
+                : UserDefaults.standard.bool(forKey: key)
+            os_log("Ask mode: banner handles ask (bannerOn=%d)", log: log, type: .debug, bannerOn ? 1 : 0)
         case .manual:
             // 手动：由 hover 标题编辑 / 横幅 Confirm/✎ 动作写入
             os_log("Manual write mode: completion record skipped (user records manually)", log: log, type: .debug)
@@ -77,62 +82,6 @@ final class CalendarRecorder {
             }
         }
     }
-
-    /// ask：通知横幅可用时由横幅承担询问（✓/✎ 写），横幅不可用时应用内弹窗，保证询问一定发生
-    private func presentAskIfBannerUnavailable(_ entry: TimerEntry) {
-        let notifyKey = LingerTheme.UserDefaultsKey.notifyOnComplete.rawValue
-        let notifyOn = UserDefaults.standard.object(forKey: notifyKey) == nil
-            ? true
-            : UserDefaults.standard.bool(forKey: notifyKey)
-        // 通知已关 / 无 bundle → 横幅必然不出现 → 直接应用内询问
-        guard notifyOn, NotificationManager.shared.bannerAvailable else {
-            presentAskPrompt(entry)
-            return
-        }
-        // 通知开着但权限可能被拒 → 异步查一次，被拒则应用内询问
-        NotificationManager.shared.fetchAuthorizationStatus { [weak self] status in
-            let ok = (status == .authorized || status == .provisional)
-            if !ok {
-                self?.presentAskPrompt(entry)
-            }
-        }
-    }
-
-    /// 应用内「每次询问」弹窗：可编辑标题，确认后写入
-    private func presentAskPrompt(_ entry: TimerEntry) {
-        guard CalendarManager.shared.isAuthorized else {
-            CalendarManager.shared.requestPermissionIfNeeded { [weak self] granted in
-                if granted { self?.writeCompletion(entry) }
-            }
-            return
-        }
-        let alert = NSAlert()
-        alert.messageText = "计时完成"
-        alert.informativeText = "是否将这段计时记录到日历？"
-        let titleField = NSTextField(frame: NSRect(x: 0, y: 0, width: 260, height: 24))
-        titleField.stringValue = entry.predefinedTitle ?? CalendarManager.shared.defaultTitle
-        titleField.placeholderString = "日程"
-        alert.accessoryView = titleField
-        alert.addButton(withTitle: "记录")
-        alert.addButton(withTitle: "不记录")
-        alert.alertStyle = .informational
-        let response = alert.runModal()
-        guard response == .alertFirstButtonReturn else {
-            os_log("Ask prompt declined, skip record", log: log, type: .info)
-            return
-        }
-        let typed = titleField.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
-        let start = resolveStart(entry)
-        let end = resolveEnd(entry, start: start)
-        if let eventId = CalendarManager.shared.writeEventOnFinish(
-            title: typed.isEmpty ? CalendarManager.shared.defaultTitle : typed,
-            start: start, end: end
-        ) {
-            markRecorded(entry, eventId: eventId)
-            os_log("Ask record written: %{public}@", log: log, type: .info, typed)
-        }
-    }
-
     // MARK: - 预约创建即记录（Req 2）
 
     /// 预约计时确认创建时调用：按记录的日期-时间-时长写入日历（精确时间，不 5 分钟取整）
@@ -163,6 +112,35 @@ final class CalendarRecorder {
                    log: log, type: .info, title, start.description, end.description)
         } else {
             os_log("Scheduled record failed (not authorized or error)", log: log, type: .error)
+        }
+    }
+
+    // MARK: - 横幅确认写入
+
+    /// 完成弹窗的「确认/输入日程」调用：auto 已自动写则跳过；ask/manual 写并标记。
+    /// title 传 nil 表示用条目自带标题（或默认标题）。
+    func recordFromBanner(_ entry: TimerEntry, title: String?) {
+        guard !entry.hasRecorded else {
+            os_log("Banner confirm: already recorded, skip", log: log, type: .debug)
+            return
+        }
+        if CalendarManager.shared.writeMode == .auto {
+            os_log("Banner confirm in auto mode: already auto-written, skip", log: log, type: .info)
+            return
+        }
+        let resolved: String
+        if let title, !title.isEmpty {
+            resolved = title
+        } else if let t = entry.predefinedTitle, !t.isEmpty {
+            resolved = t
+        } else {
+            resolved = CalendarManager.shared.defaultTitle
+        }
+        let start = resolveStart(entry)
+        let end = resolveEnd(entry, start: start)
+        if let eventId = CalendarManager.shared.writeEventOnFinish(title: resolved, start: start, end: end) {
+            markRecorded(entry, eventId: eventId)
+            os_log("Banner confirm record written: %{public}@", log: log, type: .info, resolved)
         }
     }
 

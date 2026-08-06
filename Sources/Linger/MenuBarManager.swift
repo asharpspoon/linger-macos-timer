@@ -254,8 +254,8 @@ final class MenuBarManager: NSObject {
             self?.refreshHoverList()
         }
 
-        // T6: 计时归零的 UI 反馈改由 NotificationManager 通过原生横幅呈现，
-        //     此处不再弹出 Toast，避免与通知横幅重复。
+        // T6: 计时归零的 UI 反馈改由 CompletionBanner（自绘玻璃横幅）+ 提示音呈现，
+        //     此处不再弹出 Toast，避免与完成弹窗重复。
     }
 
     // MARK: - 菜单栏显示同步

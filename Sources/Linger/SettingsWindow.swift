@@ -47,9 +47,7 @@ final class SettingsWindow: NSWindow {
     private var previewFontSizeValueLabel: NSTextField?
     private var soundPopup: NSPopUpButton?
     private var defaultTitleField: NSTextField?
-    private var notifAuthLabel: NSTextField?
     private var calAuthLabel: NSTextField?
-    private var notifAuthDot: NSView?
     private var calAuthDot: NSView?
     private var maxDurationStepper: NSStepper?
     private var iconPopup: NSPopUpButton?
@@ -634,23 +632,11 @@ final class SettingsWindow: NSWindow {
     // MARK: - 面板 1：通知
 
     private func buildNotificationsPanel() -> NSView {
-        let authStatus = NSTextField(labelWithString: "检查中…")
-        authStatus.font = LingerTheme.labelFont(size: 12)
-        authStatus.textColor = LingerTheme.ink2
-        notifAuthLabel = authStatus
-        let authDot = makeStatusDot()
-        notifAuthDot = authDot
-        let authBtn = NSButton(title: "管理…", target: self, action: #selector(openNotifSettings(_:)))
-        authBtn.bezelStyle = .rounded
-        authBtn.controlSize = .small
-        let authControl = NSStackView(views: [makeAuthStatusView(label: authStatus, dot: authDot), authBtn])
-        authControl.orientation = .horizontal
-        authControl.spacing = 10
-        authControl.alignment = .centerY
-
-        let notifyRow = makeRow(label: "计时完成时通知",
+        // 完成弹窗（强提醒）：自绘玻璃横幅，可选开启（用户已有菜单栏倒计时 + 提示音）
+        let bannerRow = makeRow(label: "完成弹窗（强提醒）",
                                 control: makeSwitch(initial: currentNotifyOnComplete(),
-                                                    action: #selector(notifyChanged(_:))))
+                                                    action: #selector(notifyChanged(_:))),
+                                hint: "计时完成时在屏幕右上角弹出横幅；关闭后仅保留菜单栏倒计时与提示音")
         let playSwitch = makeSwitch(initial: currentPlaySound(), action: #selector(playSoundChanged(_:)))
         let soundPopup = NSPopUpButton()
         styleSelect(soundPopup)
@@ -669,8 +655,7 @@ final class SettingsWindow: NSWindow {
         soundControl.alignment = .centerY
 
         return makePanel(sections: [
-            makeSection(title: "授权", rows: [makeRow(label: "通知授权", control: authControl)]),
-            makeSection(title: "提醒方式", rows: [notifyRow, makeRow(label: "播放提示音", control: soundControl)])
+            makeSection(title: "提醒方式", rows: [bannerRow, makeRow(label: "播放提示音", control: soundControl)])
         ])
     }
 
@@ -969,10 +954,6 @@ final class SettingsWindow: NSWindow {
         }
     }
 
-    @objc private func openNotifSettings(_ sender: Any?) {
-        NotificationManager.shared.openSystemSettings()
-    }
-
     // MARK: - 授权状态刷新
 
     func refreshPermissionStatuses() {
@@ -982,18 +963,6 @@ final class SettingsWindow: NSWindow {
             cal.stringValue = ok ? "已授权" : "未授权"
             cal.textColor = ok ? LingerTheme.stateSuccess : LingerTheme.ink2
             calAuthDot?.layer?.backgroundColor = (ok ? LingerTheme.stateSuccess : LingerTheme.ink3).cgColor
-        }
-        // 通知（异步）
-        NotificationManager.shared.fetchAuthorizationStatus { [weak self] status in
-            guard let self = self else { return }
-            let ok = (status == .authorized)
-            DispatchQueue.main.async {
-                if let nf = self.notifAuthLabel {
-                    nf.stringValue = ok ? "已授权" : "未授权"
-                    nf.textColor = ok ? LingerTheme.stateSuccess : LingerTheme.ink2
-                    self.notifAuthDot?.layer?.backgroundColor = (ok ? LingerTheme.stateSuccess : LingerTheme.ink3).cgColor
-                }
-            }
         }
     }
 
