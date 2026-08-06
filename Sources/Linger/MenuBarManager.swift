@@ -183,7 +183,12 @@ final class MenuBarManager: NSObject {
     }
 
     @objc private func openCalendarSettings(_ sender: Any?) {
-        if CalendarManager.shared.isAuthorized {
+        // 2026-08-06 修复"点日历授权不主动授权"bug：
+        // 旧版未授权时只弹 NSAlert 引导去系统设置，但 macOS TCC 机制要求 app 首次调
+        // requestFullAccessToEvents 才会登记到 TCC 并弹系统对话框；不调这个 API，
+        // 用户去系统设置也找不到 Linger 开关。新版先主动触发系统对话框，denied 再 fallback。
+        // 用 hasAccess（isAuthorized || grantedByRequest）兜底裸 bundle 场景。
+        if CalendarManager.shared.hasAccess {
             let alert = NSAlert()
             alert.messageText = "日历权限已开启"
             alert.informativeText = "Linger 已获得日历访问权限，计时标题会实时写入 Linger 日历。"
@@ -191,16 +196,19 @@ final class MenuBarManager: NSObject {
             alert.runModal()
             return
         }
-        let alert = NSAlert()
-        alert.messageText = "需要开启日历权限"
-        alert.informativeText = "请在「系统设置 → 隐私与安全性 → 日历」中为 Linger 开启权限。\n开启后返回 Linger，编辑计时标题即可自动写入日历。"
-        alert.alertStyle = .warning
-        alert.addButton(withTitle: "打开系统设置")
-        alert.addButton(withTitle: "取消")
-        if alert.runModal() == .alertFirstButtonReturn {
-            if let url = URL(string: "x-apple.systempreferences:com.apple.settings.PrivacySecurity?Privacy_Calendars") {
-                NSWorkspace.shared.open(url)
+        // 未授权 → 走统一入口（notDetermined 触发系统对话框；denied 弹 NSAlert 引导去系统设置）
+        CalendarManager.shared.requestPermissionIfNeeded { [weak self] granted in
+            guard let self = self else { return }
+            if granted {
+                // 授权成功 → 刷新设置窗口状态（若已打开）+ 提示
+                self.settingsWindow?.refreshPermissionStatuses()
+                let alert = NSAlert()
+                alert.messageText = "日历权限已开启"
+                alert.informativeText = "现在 Linger 会把计时记录自动写入 Linger 日历。"
+                alert.addButton(withTitle: "好的")
+                alert.runModal()
             }
+            // denied/restricted 路径 requestPermissionIfNeeded 内部已弹 NSAlert 引导，这里不再重复
         }
     }
 
@@ -288,8 +296,10 @@ final class MenuBarManager: NSObject {
         settingsItem.target = self
         rightClickMenu.addItem(settingsItem)
 
-        let calAuth = CalendarManager.shared.isAuthorized
-        let calItem = NSMenuItem(title: calAuth ? "✅ 日历已授权" : "日历授权 → 去设置",
+        let calAuth = CalendarManager.shared.hasAccess
+        // 2026-08-06：已授权 → "已完成授权"灰显不可点；未授权 → "日历授权"可点触发主动授权
+        // 用 hasAccess 兜底裸 bundle 场景（isAuthorized 恒 false，grantedByRequest 才是真实状态）
+        let calItem = NSMenuItem(title: calAuth ? "已完成授权" : "日历授权",
                                  action: #selector(openCalendarSettings(_:)),
                                  keyEquivalent: "")
         calItem.target = self

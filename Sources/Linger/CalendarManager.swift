@@ -90,19 +90,66 @@ final class CalendarManager {
     // 已记录的 entry ID 集合（持久化到 UserDefaults，防止 app 重启后重复写入）
     private var recordedEntryIDs: Set<String> = []
 
-    /// 内存级授权标记：macOS 对「无 bundle 的裸可执行文件」无法用 authorizationStatus(for:)
-    /// 正确归因 TCC 权限（status 恒 notDetermined，即使 TCC 已放行路径），但
-    /// requestFullAccessToEvents 的回调会如实返回 granted。用回调结果驱动写入，
-    /// 让 Xcode 裸跑调试也能写日历（正式包 com.linger.app 走 status 正常路径）。
-    private var grantedByRequest = false
+    /// 授权标记（持久化于 UserDefaults）。
+    /// 2026-08-06 修复"重启后已授权菜单项仍可点"bug：
+    /// 旧版是内存变量，app 重启后重置为 false。裸 bundle 下 isAuthorized 恒 false，
+    /// 重启后 hasAccess 恒 false → 菜单项永远可点。改为持久化后，只要曾经授权过，
+    /// 重启后 hasAccess 仍返回 true。
+    /// macOS 对「无 bundle 的裸可执行文件」无法用 authorizationStatus(for:)
+    /// 正确归因 TCC 权限（status 恒 notDetermined），但 requestFullAccessToEvents
+    /// 的回调会如实返回 granted。用回调结果驱动写入，让 Xcode 裸跑调试也能写日历。
+    private static let grantedByRequestKey = "linger_calendarGrantedByRequest"
+    private var grantedByRequest: Bool {
+        get { UserDefaults.standard.bool(forKey: Self.grantedByRequestKey) }
+        set {
+            UserDefaults.standard.set(newValue, forKey: Self.grantedByRequestKey)
+            // 通知 UI 刷新（右键菜单状态 / 设置页授权状态）
+            DispatchQueue.main.async {
+                NotificationCenter.default.post(name: .lingerCalendarAccessDidRefresh, object: nil)
+            }
+        }
+    }
 
     private init() {
         loadRecordedEntries()
         migrateLegacyWriteModeDefault()
-        os_log("CalendarManager init: bundleID=%@ status=%d",
+        os_log("CalendarManager init: bundleID=%@ status=%d grantedByRequest=%d",
                log: log, type: .info,
                Bundle.main.bundleIdentifier ?? "nil",
-               currentAuthorizationStatus().rawValue)
+               currentAuthorizationStatus().rawValue,
+               grantedByRequest ? 1 : 0)
+        // 启动时静默探测真实权限状态（已授权/已拒绝不弹窗），更新 grantedByRequest
+        probeAccessOnLaunch()
+    }
+
+    /// 启动时静默探测权限：只在 authorizationStatus != notDetermined 时调
+    /// requestFullAccessToEvents（已授权/已拒绝时不弹窗，直接回调真实状态）。
+    /// notDetermined 时不调（避免启动弹窗），grantedByRequest 用持久化值。
+    /// 回调更新 grantedByRequest + 发通知让 UI 刷新。
+    private func probeAccessOnLaunch() {
+        let status = currentAuthorizationStatus()
+        os_log("probeAccessOnLaunch: status=%d", log: log, type: .info, status.rawValue)
+        guard status != .notDetermined else { return }
+        if #available(macOS 14.0, *) {
+            store.requestFullAccessToEvents { [weak self] granted, error in
+                DispatchQueue.main.async {
+                    guard let self = self else { return }
+                    self.grantedByRequest = granted
+                    os_log("probeAccessOnLaunch result: granted=%{public}@ error=%{public}@",
+                           log: self.log, type: .info,
+                           String(describing: granted), error?.localizedDescription ?? "nil")
+                }
+            }
+        } else {
+            store.requestAccess(to: .event) { [weak self] granted, error in
+                DispatchQueue.main.async {
+                    guard let self = self else { return }
+                    self.grantedByRequest = granted
+                    os_log("probeAccessOnLaunch result (legacy): granted=%{public}@",
+                           log: self.log, type: .info, String(describing: granted))
+                }
+            }
+        }
     }
 
     /// 确保完全访问：已授权/已请求过 → 直接 true；notDetermined → 发起系统授权；
@@ -236,6 +283,14 @@ final class CalendarManager {
         }
     }
 
+    /// 统一授权状态查询（实时查询 OR 内存回调标记）。
+    /// 2026-08-06 修复"已授权菜单项仍可点"bug：裸 bundle 下 isAuthorized 恒 false，
+    /// UI 层直接读 isAuthorized 会误判为未授权。所有外部调用方应使用 hasAccess，
+    /// 而非 isAuthorized（后者仅供内部与 ensureFullAccess 等已做 OR 兜底的路径使用）。
+    var hasAccess: Bool {
+        return isAuthorized || grantedByRequest
+    }
+
     /// 请求日历权限并等待回调（.regular + 有窗口时调用，系统会弹权限对话框）
     /// granted=true：用户点了允许，权限已开启
     /// granted=false：用户拒绝或系统不弹对话框（需要引导去系统设置）
@@ -312,13 +367,15 @@ final class CalendarManager {
         }
     }
 
-    /// 请求日历权限：
-    /// 1. 已授权 → 直接返回
-    /// 2. 调 requestFullAccessToEvents 让 TCC 登记 Linger 的权限需求
-    ///    （Info.plist 中 LSUIElement=false，系统启动时视为普通应用，TCC 能正确登记；
-    ///     启动后立即切回 .accessory 隐藏 Dock，用户体验无影响）
-    /// 3. 弹 NSAlert 引导用户去「系统设置 → 隐私与安全性 → 日历」手动开启
-    /// 回调在后台线程，只打 log，不做 UI 操作；不依赖回调结果。
+    /// 请求日历权限（统一入口，去重弹窗）：
+    /// - 已授权 → completion(true) 直接返回
+    /// - notDetermined → 调 requestFullAccessToEvents 触发**一次**系统对话框；granted=true → completion(true)；granted=false → completion(false)
+    /// - denied/restricted → 弹一次 NSAlert 引导去「系统设置 → 隐私与安全性 → 日历」手动开启 → completion(false)
+    ///
+    /// 2026-08-06 修复"首次写入弹三次授权两次重复"bug：
+    /// 旧版无论 status 如何都无条件调 requestFullAccessToEvents + 弹 NSAlert，导致 notDetermined
+    /// 状态下系统对话框 + 应用内 NSAlert 同时出现；叠加 ensureFullAccess 的系统弹窗就是三次。
+    /// 新版按 status 分流，每个状态只触发一条 UI 路径。
     func requestPermissionIfNeeded(completion: @escaping (Bool) -> Void) {
         // 1. 已授权 → 直接返回
         if isAuthorized {
@@ -327,41 +384,42 @@ final class CalendarManager {
             return
         }
 
-        os_log("Calendar permission not granted (status=%d), registering TCC intent + showing NSAlert",
-               log: log, type: .info, currentAuthorizationStatus().rawValue)
+        let status = currentAuthorizationStatus()
+        os_log("Calendar permission not granted (status=%d), routing by status",
+               log: log, type: .info, status.rawValue)
 
-        // 2. 调 requestFullAccessToEvents 让 TCC 登记 Linger（不依赖回调，回调只打 log）
-        //    Info.plist LSUIElement=false 保证 TCC 能正确识别应用并加入隐私列表
-        if #available(macOS 14.0, *) {
-            store.requestFullAccessToEvents { granted, error in
-                // 回调在后台线程，只打 log，不做 UI 操作
-                if let error = error {
-                    os_log("TCC register error: %{public}@",
-                           log: self.log, type: .error, error.localizedDescription)
-                } else {
-                    os_log("TCC register result: granted=%{public}@",
-                           log: self.log, type: .info, granted ? "true" : "false")
+        // 2. notDetermined → 调一次系统对话框（TCC 登记 + 用户选择）
+        if status == .notDetermined {
+            os_log("requestPermissionIfNeeded: notDetermined, triggering system dialog", log: log, type: .info)
+            if #available(macOS 14.0, *) {
+                store.requestFullAccessToEvents { [weak self] granted, error in
+                    DispatchQueue.main.async {
+                        self?.grantedByRequest = granted
+                        os_log("requestPermissionIfNeeded system dialog: granted=%{public}@ error=%{public}@",
+                               log: self?.log ?? OSLog.default, type: .info,
+                               String(describing: granted), error?.localizedDescription ?? "nil")
+                        completion(granted)
+                    }
+                }
+            } else {
+                store.requestAccess(to: .event) { [weak self] granted, error in
+                    DispatchQueue.main.async {
+                        self?.grantedByRequest = granted
+                        os_log("requestPermissionIfNeeded system dialog (legacy): granted=%{public}@",
+                               log: self?.log ?? OSLog.default, type: .info, String(describing: granted))
+                        completion(granted)
+                    }
                 }
             }
-        } else {
-            store.requestAccess(to: .event) { granted, error in
-                if let error = error {
-                    os_log("TCC register error (legacy): %{public}@",
-                           log: self.log, type: .error, error.localizedDescription)
-                } else {
-                    os_log("TCC register result (legacy): granted=%{public}@",
-                           log: self.log, type: .info, granted ? "true" : "false")
-                }
-            }
+            return
         }
 
-        // 3. 弹 NSAlert 引导用户去系统设置手动开启（主线程，不依赖上面的回调）
+        // 3. denied/restricted → 弹 NSAlert 引导去系统设置（不再调 requestFullAccessToEvents，系统不会弹对话框）
         DispatchQueue.main.async { [weak self] in
             guard let self = self else {
                 completion(false)
                 return
             }
-
             let alert = NSAlert()
             alert.messageText = "需要开启日历权限"
             alert.informativeText = "Linger 需要日历访问权限来记录计时事件。\n请点击「打开系统设置」，在「隐私与安全性 → 日历」中为 Linger 开启权限。"
@@ -369,21 +427,14 @@ final class CalendarManager {
             alert.addButton(withTitle: "打开系统设置")
             alert.addButton(withTitle: "取消")
 
-            let response = alert.runModal()
-
-            if response == .alertFirstButtonReturn {
-                // 跳转系统设置 → 隐私与安全性 → 日历（macOS 13+ 格式）
+            if alert.runModal() == .alertFirstButtonReturn {
                 if let url = URL(string: "x-apple.systempreferences:com.apple.settings.PrivacySecurity?Privacy_Calendars") {
                     NSWorkspace.shared.open(url)
                 }
-                os_log("User chose to open System Settings for calendar permission",
-                       log: self.log, type: .info)
+                os_log("User chose to open System Settings for calendar permission", log: self.log, type: .info)
             } else {
-                os_log("User cancelled calendar permission alert",
-                       log: self.log, type: .info)
+                os_log("User cancelled calendar permission alert", log: self.log, type: .info)
             }
-
-            // 未授权状态，completion 返回 false（用户去设置开启后，下次操作会重新检查 isAuthorized）
             completion(false)
         }
     }
@@ -540,4 +591,9 @@ final class CalendarManager {
         let roundedEnd = roundUpToFiveMinutes(end)
         return writeEvent(title: title, startDate: roundedStart, endDate: roundedEnd)
     }
+}
+
+/// 日历授权状态变更通知（CalendarManager.grantedByRequest 更新时发出）。
+extension Notification.Name {
+    static let lingerCalendarAccessDidRefresh = Notification.Name("LingerCalendarAccessDidRefresh")
 }

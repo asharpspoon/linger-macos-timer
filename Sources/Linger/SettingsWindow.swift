@@ -26,9 +26,10 @@ final class SettingsWindow: NSWindow {
 
     // MARK: - 布局常量
 
-    private static let windowWidth: CGFloat = 520
+    /// 窗口宽度：600pt（2026-08-06 从 520 加宽，让位置卡片/输入框更舒展，对齐 macOS 系统设置常见宽度）
+    private static let windowWidth: CGFloat = 600
     private let tabBarHeight: CGFloat = 72
-    private let contentHPadding: CGFloat = 24
+    private let contentHPadding: CGFloat = 28
     private let contentVSpacing: CGFloat = 24   // 底部留白加大（用户要求）
     private static let defaultWindowHeight: CGFloat = 520
 
@@ -52,6 +53,8 @@ final class SettingsWindow: NSWindow {
     private var maxDurationStepper: NSStepper?
     /// 强提醒弹窗位置选择卡片（topRight / center），选中态琥珀边框
     private var bannerPositionCards: [String: NSView] = [:]
+    /// 日历授权"管理/去授权"按钮引用（标题随授权状态动态切换）
+    private var calAuthButton: NSButton?
 
     private var currentIndex: Int = 0
     private let log = OSLog(subsystem: "com.linger.settings", category: "SettingsWindow")
@@ -63,6 +66,11 @@ final class SettingsWindow: NSWindow {
         super.init(contentRect: contentRect, styleMask: style, backing: bufferingType, defer: flag)
         configureWindow()
         buildUI()
+        // 2026-08-06：监听日历授权状态变更（probeAccessOnLaunch 回调 / requestPermissionIfNeeded 回调），
+        // 授权状态变化时实时刷新设置页的"日历授权"行（状态文字 + 状态点 + 按钮标题）。
+        NotificationCenter.default.addObserver(
+            self, selector: #selector(handleCalendarAccessRefresh(_:)),
+            name: .lingerCalendarAccessDidRefresh, object: nil)
     }
 
     convenience init() {
@@ -361,18 +369,24 @@ final class SettingsWindow: NSWindow {
         return v
     }
 
-    /// section：标题（11pt uppercase 灰）+ 行列表（行间 1px 分隔线，原型 .section/.section-rows）
-    private func makeSection(title: String, rows: [NSView]) -> NSView {
+    /// section：可选标题（13pt semibold ink，nil 时无标题）+ 行列表（行间 1px 分隔线）
+    /// 2026-08-06 排版重设计：title 改可选，用于去掉冗余的单一 section 总标题（如通知面板的"提醒方式"）
+    private func makeSection(title: String?, rows: [NSView]) -> NSView {
         let section = NSView()
-        let titleLabel = NSTextField(labelWithString: title)
-        titleLabel.font = LingerTheme.labelFont(size: 11, weight: .semibold)
-        titleLabel.textColor = LingerTheme.ink3
-        section.addSubview(titleLabel)
-        titleLabel.translatesAutoresizingMaskIntoConstraints = false
-        titleLabel.topAnchor.constraint(equalTo: section.topAnchor).isActive = true
-        titleLabel.leadingAnchor.constraint(equalTo: section.leadingAnchor).isActive = true
+        var prev: NSLayoutYAxisAnchor = section.topAnchor
 
-        var prev: NSLayoutYAxisAnchor = titleLabel.bottomAnchor
+        if let title, !title.isEmpty {
+            let titleLabel = NSTextField(labelWithString: title)
+            // title 13pt semibold ink（主文字色），与 row label(13pt regular) 同号加粗，形成 title > label > hint 三级层级
+            titleLabel.font = LingerTheme.labelFont(size: 13, weight: .semibold)
+            titleLabel.textColor = LingerTheme.ink
+            section.addSubview(titleLabel)
+            titleLabel.translatesAutoresizingMaskIntoConstraints = false
+            titleLabel.topAnchor.constraint(equalTo: section.topAnchor).isActive = true
+            titleLabel.leadingAnchor.constraint(equalTo: section.leadingAnchor).isActive = true
+            prev = titleLabel.bottomAnchor
+        }
+
         for (i, row) in rows.enumerated() {
             if i > 0 {
                 let div = makeDivider()
@@ -387,7 +401,9 @@ final class SettingsWindow: NSWindow {
             row.translatesAutoresizingMaskIntoConstraints = false
             row.leadingAnchor.constraint(equalTo: section.leadingAnchor).isActive = true
             row.trailingAnchor.constraint(equalTo: section.trailingAnchor).isActive = true
-            row.topAnchor.constraint(equalTo: prev, constant: LingerTheme.space2).isActive = true
+            // 有标题时 title→首行 space3(12pt) 拉开分组；无标题时首行 space2(8pt) 紧凑
+            let topSpacing: CGFloat = (i == 0 && title != nil) ? LingerTheme.space3 : LingerTheme.space2
+            row.topAnchor.constraint(equalTo: prev, constant: topSpacing).isActive = true
             prev = row.bottomAnchor
             if i == rows.count - 1 {
                 row.bottomAnchor.constraint(equalTo: section.bottomAnchor).isActive = true
@@ -396,7 +412,7 @@ final class SettingsWindow: NSWindow {
         return section
     }
 
-    /// 面板容器：多个 section 垂直排布（间距 18，原型 .section margin-bottom）
+    /// 面板容器：多个 section 垂直排布（section 间距 24pt = space5，分组更清晰）
     private func makePanel(sections: [NSView]) -> NSView {
         let panel = NSView()
         var prev: NSLayoutYAxisAnchor = panel.topAnchor
@@ -405,7 +421,8 @@ final class SettingsWindow: NSWindow {
             section.translatesAutoresizingMaskIntoConstraints = false
             section.leadingAnchor.constraint(equalTo: panel.leadingAnchor).isActive = true
             section.trailingAnchor.constraint(equalTo: panel.trailingAnchor).isActive = true
-            section.topAnchor.constraint(equalTo: prev, constant: (i == 0 ? 0 : 18)).isActive = true
+            // 2026-08-06 排版重设计：section 间距 18→24(space5)，分组分开
+            section.topAnchor.constraint(equalTo: prev, constant: (i == 0 ? 0 : LingerTheme.space5)).isActive = true
             prev = section.bottomAnchor
             if i == sections.count - 1 {
                 section.bottomAnchor.constraint(equalTo: panel.bottomAnchor).isActive = true
@@ -594,13 +611,13 @@ final class SettingsWindow: NSWindow {
     // MARK: - 面板 1：通知
 
     private func buildNotificationsPanel() -> NSView {
-        // 完成弹窗（强提醒）：自绘玻璃横幅，可选开启（用户已有菜单栏倒计时 + 提示音）
+        // 2026-08-06 排版重设计：去掉冗余的"提醒方式"总标题（整个面板就是提醒方式），
+        // 用无标题 section 直接承载 rows；弹窗位置改纵向 block 解决横向溢出"略宽"问题
         let bannerRow = makeRow(label: "完成弹窗（强提醒）",
                                 control: makeSwitch(initial: currentNotifyOnComplete(),
                                                     action: #selector(notifyChanged(_:))),
                                 hint: "计时完成时弹出横幅；关闭后仅保留菜单栏倒计时与提示音")
-        // 弹窗位置：2 个可点击示意图卡片（右上角 / 屏幕正中央）
-        let positionRow = makeBannerPositionRow()
+        let positionBlock = makeBannerPositionBlock()
         let playSwitch = makeSwitch(initial: currentPlaySound(), action: #selector(playSoundChanged(_:)))
         let soundPopup = NSPopUpButton()
         styleSelect(soundPopup)
@@ -619,31 +636,56 @@ final class SettingsWindow: NSWindow {
         soundControl.alignment = .centerY
 
         return makePanel(sections: [
-            makeSection(title: "提醒方式", rows: [bannerRow, positionRow, makeRow(label: "播放提示音", control: soundControl)])
+            makeSection(title: nil, rows: [bannerRow, positionBlock, makeRow(label: "播放提示音", control: soundControl)])
         ])
     }
 
     // MARK: - 强提醒弹窗位置选择（2 个可点击示意图卡片）
 
-    /// 构建弹窗位置选择行：屏幕右上角 / 屏幕正中央，用示意图卡片直观选择
-    private func makeBannerPositionRow() -> NSView {
+    /// 弹窗位置纵向 block：上方标题+说明，下方两张等宽卡片占满 panel 宽度
+    /// 2026-08-06 从横向 row 改为纵向 block，解决 hint 文字 + 两张卡片横向溢出导致面板"略宽"
+    private func makeBannerPositionBlock() -> NSView {
         let current = UserDefaults.standard.string(forKey: LingerTheme.UserDefaultsKey.bannerPosition.rawValue) ?? "topRight"
 
+        // 上：标题 + 说明（纵向，左对齐）
+        let titleLabel = makeLabel("弹窗位置")
+        let hintLabel = makeHint("强提醒横幅在屏幕上的显示位置")
+        let textStack = NSStackView(views: [titleLabel, hintLabel])
+        textStack.orientation = .vertical
+        textStack.alignment = .leading
+        textStack.spacing = 2
+        textStack.translatesAutoresizingMaskIntoConstraints = false
+
+        // 下：两张卡片并排，fillEqually 等宽占满 panel 宽度
         let topRightCard = makePositionCard(title: "屏幕右上角", subtitle: "不遮挡中心工作区", position: "topRight", isTopRight: true)
         let centerCard = makePositionCard(title: "屏幕正中央", subtitle: "强提醒更显眼", position: "center", isTopRight: false)
         bannerPositionCards = ["topRight": topRightCard, "center": centerCard]
         updatePositionCardSelection(current)
 
-        let stack = NSStackView(views: [topRightCard, centerCard])
-        stack.orientation = .horizontal
-        stack.spacing = LingerTheme.space3
-        stack.alignment = .centerY
+        let cardStack = NSStackView(views: [topRightCard, centerCard])
+        cardStack.orientation = .horizontal
+        cardStack.spacing = LingerTheme.space3
+        cardStack.alignment = .top
+        cardStack.distribution = .fillEqually
+        cardStack.heightAnchor.constraint(equalToConstant: 64).isActive = true
+        cardStack.translatesAutoresizingMaskIntoConstraints = false
 
-        return makeRow(label: "弹窗位置", control: stack,
-                       hint: "强提醒横幅在屏幕上的显示位置")
+        let block = NSView()
+        block.addSubview(textStack)
+        block.addSubview(cardStack)
+        NSLayoutConstraint.activate([
+            textStack.topAnchor.constraint(equalTo: block.topAnchor),
+            textStack.leadingAnchor.constraint(equalTo: block.leadingAnchor),
+            textStack.trailingAnchor.constraint(equalTo: block.trailingAnchor),
+            cardStack.topAnchor.constraint(equalTo: textStack.bottomAnchor, constant: LingerTheme.space2),
+            cardStack.leadingAnchor.constraint(equalTo: block.leadingAnchor),
+            cardStack.trailingAnchor.constraint(equalTo: block.trailingAnchor),
+            cardStack.bottomAnchor.constraint(equalTo: block.bottomAnchor),
+        ])
+        return block
     }
 
-    /// 单个位置示意图卡片：80×56 屏幕缩略图 + 横幅位置亮点 + 标题/副标题
+    /// 单个位置示意图卡片：屏幕缩略图 + 横幅位置亮点 + 标题/副标题（宽度自适应，由外部 stack fillEqually 撑开）
     private func makePositionCard(title: String, subtitle: String, position: String, isTopRight: Bool) -> NSView {
         let card = NSView()
         card.wantsLayer = true
@@ -651,8 +693,12 @@ final class SettingsWindow: NSWindow {
         card.layer?.backgroundColor = LingerTheme.nsColor(LingerTheme.Color.surface2).cgColor
         card.layer?.borderWidth = 1
         card.translatesAutoresizingMaskIntoConstraints = false
+        // 2026-08-06：去掉 fixed width，由 cardStack.distribution=.fillEqually 等宽撑开
+        card.heightAnchor.constraint(equalToConstant: 64).isActive = true
+        card.setContentHuggingPriority(.defaultLow, for: .horizontal)
+        card.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
 
-        // 屏幕缩略图（80×52，暗色底 + 圆角，模拟显示器）
+        // 屏幕缩略图（暗色底 + 圆角，模拟显示器）
         let screenThumb = NSView()
         screenThumb.wantsLayer = true
         screenThumb.layer?.backgroundColor = NSColor(calibratedWhite: 0.08, alpha: 1.0).cgColor
@@ -683,18 +729,16 @@ final class SettingsWindow: NSWindow {
         card.addSubview(textStack)
 
         NSLayoutConstraint.activate([
-            card.widthAnchor.constraint(equalToConstant: 168),
-            card.heightAnchor.constraint(equalToConstant: 52),
-            screenThumb.leadingAnchor.constraint(equalTo: card.leadingAnchor, constant: 8),
+            screenThumb.leadingAnchor.constraint(equalTo: card.leadingAnchor, constant: 12),
             screenThumb.centerYAnchor.constraint(equalTo: card.centerYAnchor),
-            screenThumb.widthAnchor.constraint(equalToConstant: 56),
-            screenThumb.heightAnchor.constraint(equalToConstant: 36),
-            textStack.leadingAnchor.constraint(equalTo: screenThumb.trailingAnchor, constant: 8),
-            textStack.trailingAnchor.constraint(equalTo: card.trailingAnchor, constant: -8),
+            screenThumb.widthAnchor.constraint(equalToConstant: 64),
+            screenThumb.heightAnchor.constraint(equalToConstant: 44),
+            textStack.leadingAnchor.constraint(equalTo: screenThumb.trailingAnchor, constant: 12),
+            textStack.trailingAnchor.constraint(equalTo: card.trailingAnchor, constant: -12),
             textStack.centerYAnchor.constraint(equalTo: card.centerYAnchor),
             // 横幅亮点尺寸
-            bannerDot.widthAnchor.constraint(equalToConstant: 18),
-            bannerDot.heightAnchor.constraint(equalToConstant: 5),
+            bannerDot.widthAnchor.constraint(equalToConstant: 22),
+            bannerDot.heightAnchor.constraint(equalToConstant: 6),
         ])
         // 横幅亮点位置：右上角 or 正中央
         if isTopRight {
@@ -747,15 +791,21 @@ final class SettingsWindow: NSWindow {
         let authBtn = NSButton(title: "管理…", target: self, action: #selector(openCalSettings(_:)))
         authBtn.bezelStyle = .rounded
         authBtn.controlSize = .small
+        calAuthButton = authBtn   // 保存引用，refreshPermissionStatuses 时同步标题
         let authControl = NSStackView(views: [makeAuthStatusView(label: authStatus, dot: authDot), authBtn])
         authControl.orientation = .horizontal
         authControl.spacing = 10
         authControl.alignment = .centerY
 
         return makePanel(sections: [
-            makeSection(title: "授权", rows: [makeRow(label: "日历授权", control: authControl)]),
-            makeSection(title: "写入设置", rows: [buildTargetCalendarRow(), buildWriteModeRow(), buildDefaultTitleRow()]),
-            makeSection(title: "快捷预设标题", rows: [
+            // 2026-08-06 排版重设计：合并"授权"+"写入设置"为一个 section（授权是写入前提，单行 section 太碎）
+            makeSection(title: "日历写入", rows: [
+                makeRow(label: "日历授权", control: authControl),
+                buildTargetCalendarRow(),
+                buildWriteModeRow(),
+                buildDefaultTitleRow()
+            ]),
+            makeSection(title: "快捷键预设", rows: [
                 buildPresetCardRow(key: .fnTitle, kbd: "fn"),
                 buildPresetCardRow(key: .ctrlTitle, kbd: "⌃"),
                 buildPresetCardRow(key: .optTitle, kbd: "⌥")
@@ -794,7 +844,7 @@ final class SettingsWindow: NSWindow {
         field.stringValue = UserDefaults.standard.string(forKey: LingerTheme.UserDefaultsKey.defaultTitle.rawValue) ?? ""
         field.target = self
         field.action = #selector(defaultTitleChanged(_:))
-        field.widthAnchor.constraint(equalToConstant: 200).isActive = true
+        field.widthAnchor.constraint(equalToConstant: 240).isActive = true
         field.isEnabled = CalendarManager.shared.writeMode == .auto
         defaultTitleField = field
         return makeRow(label: "默认标题", control: field, hint: "仅在「自动写入」模式下使用")
@@ -806,7 +856,7 @@ final class SettingsWindow: NSWindow {
         field.stringValue = UserDefaults.standard.string(forKey: key.rawValue) ?? ""
         field.target = self
         field.action = #selector(presetChanged(_:))
-        field.widthAnchor.constraint(equalToConstant: 140).isActive = true
+        field.widthAnchor.constraint(equalToConstant: 160).isActive = true
         field.identifier = NSUserInterfaceItemIdentifier(rawValue: key.rawValue)
         // 原型：左 kbd + 输入框，右灰注释「留空则不激活」
         let left = NSStackView(views: [makeKbd(kbd), field])
@@ -845,8 +895,9 @@ final class SettingsWindow: NSWindow {
         exportControl.alignment = .centerY
 
         return makePanel(sections: [
-            makeSection(title: "启动", rows: [makeRow(label: "开机自启", control: launchSwitch)]),
-            makeSection(title: "维护", rows: [
+            // 2026-08-06 排版重设计：合并"启动"+"维护"为"通用"（都是日常维护类，单行 section 太碎）
+            makeSection(title: "通用", rows: [
+                makeRow(label: "开机自启", control: launchSwitch),
                 makeRow(label: "自动清理", control: cleanupPopup),
                 makeRow(label: "导出记录（Markdown）", control: exportControl,
                         hint: "开启后每周清理前把计时归档到「文稿/Linger 计时记录.md」；关闭则每周清理缓存")
@@ -1016,25 +1067,50 @@ final class SettingsWindow: NSWindow {
     // MARK: - 跳转系统设置
 
     @objc private func openCalSettings(_ sender: Any?) {
-        if let url = URL(string: "x-apple.systempreferences:com.apple.settings.PrivacySecurity?Privacy_Calendars") {
-            NSWorkspace.shared.open(url)
+        // 2026-08-06 修复"点管理不主动授权"bug：
+        // 旧版直接跳系统设置 URL，但未授权且 notDetermined 时 TCC 还没登记 Linger，
+        // 用户在系统设置里找不到开关。新版先主动触发系统对话框，granted=false 再跳系统设置。
+        // 用 hasAccess 兜底裸 bundle 场景（isAuthorized 恒 false）。
+        if CalendarManager.shared.hasAccess {
+            // 已授权 → 直接跳系统设置让用户管理（开关已在系统设置里）
+            if let url = URL(string: "x-apple.systempreferences:com.apple.settings.PrivacySecurity?Privacy_Calendars") {
+                NSWorkspace.shared.open(url)
+            }
+            return
+        }
+        // 未授权 → 统一入口（notDetermined 触发系统对话框；denied 弹 NSAlert 引导去系统设置）
+        CalendarManager.shared.requestPermissionIfNeeded { [weak self] granted in
+            guard let self = self else { return }
+            // 授权结束后刷新本窗口状态（按钮标题/状态点同步）
+            self.refreshPermissionStatuses()
         }
     }
 
     // MARK: - 授权状态刷新
 
     func refreshPermissionStatuses() {
-        // 日历（同步）
+        // 日历（同步）：状态文字 + 状态点 + 按钮标题 三处同步
+        // 用 hasAccess 兜底裸 bundle 场景（isAuthorized 恒 false，grantedByRequest 才是真实状态）
+        let ok = CalendarManager.shared.hasAccess
         if let cal = calAuthLabel {
-            let ok = CalendarManager.shared.isAuthorized
-            cal.stringValue = ok ? "已授权" : "未授权"
+            // 2026-08-06 状态加图标，"已授权"/"未授权"更醒目
+            cal.stringValue = ok ? "✓ 已授权" : "⚠ 未授权"
             cal.textColor = ok ? LingerTheme.stateSuccess : LingerTheme.ink2
             calAuthDot?.layer?.backgroundColor = (ok ? LingerTheme.stateSuccess : LingerTheme.ink3).cgColor
+        }
+        if let btn = calAuthButton {
+            // 按钮标题动态化：未授权"去授权…"引导主动点击；已授权"管理…"跳系统设置
+            btn.title = ok ? "管理…" : "去授权…"
         }
     }
 
     override func orderFront(_ sender: Any?) {
         super.orderFront(sender)
+        refreshPermissionStatuses()
+    }
+
+    /// 日历授权状态变更通知回调：实时刷新设置页授权显示。
+    @objc private func handleCalendarAccessRefresh(_ note: Notification) {
         refreshPermissionStatuses()
     }
 

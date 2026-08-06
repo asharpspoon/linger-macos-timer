@@ -91,7 +91,7 @@ final class CalendarRecorder {
             os_log("Scheduled record skipped: missing start/end", log: log, type: .error)
             return
         }
-        guard CalendarManager.shared.isAuthorized else {
+        guard CalendarManager.shared.hasAccess else {
             // 按需授权：引导用户开启日历权限（与 hover 标题写入一致）
             CalendarManager.shared.requestPermissionIfNeeded { [weak self] granted in
                 guard granted else { return }
