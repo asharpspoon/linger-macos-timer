@@ -822,7 +822,7 @@ final class MenuBarManager: NSObject {
                entry.isScheduled {
                 CalendarRecorder.shared.deleteRecorded(entry)
             }
-            _ = TimerManager.shared.stopEntry(id)
+            TimerManager.shared.stopEntry(id)
             self.refreshHoverList()
         }
         view.onToggleAllPause = { [weak self] in
@@ -928,7 +928,7 @@ final class MenuBarManager: NSObject {
             return
         }
         CalendarRecorder.shared.deleteRecorded(entry)
-        _ = TimerManager.shared.stopEntry(id)
+        TimerManager.shared.stopEntry(id)
         refreshHoverList()
         os_log("Scheduled timer deleted (calendar synced): %{public}@", log: log, type: .info, id.uuidString)
     }
