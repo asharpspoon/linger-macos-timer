@@ -101,40 +101,11 @@ final class MenuBarManager: NSObject {
 
     // MARK: - 图标（SF Symbol + 降级为 Linger 文字）
 
-    /// T12: 菜单栏图标 —— 唯一图标：用户自定义 LingerIcon.png（2026-08-06，去掉了 Ring/Classic/timer 三选一）。
-    /// 打包后从 bundle Resources 加载；开发裸跑回退项目 Support 目录；都没有则自绘 ring 兜底。
+    /// T12: 菜单栏图标 —— 自绘 Ring（template，深浅自适应）。
+    /// 2026-08-06：用户提供的 LingerIcon.png 是「程序坞/app 图标」，不是菜单栏图标；
+    /// 菜单栏保持 Ring；app 图标由 build_and_run.sh 用 LingerIcon.png 生成 icns 打进 bundle。
     private func buildMenuBarIcon() -> NSImage? {
-        if let img = loadCustomIcon() {
-            return resizedMenuBarIcon(img)
-        }
         return buildRingIcon()
-    }
-
-    private func loadCustomIcon() -> NSImage? {
-        if let url = Bundle.main.url(forResource: "LingerIcon", withExtension: "png"),
-           let img = NSImage(contentsOf: url) {
-            return img
-        }
-        // 开发裸跑（无 bundle）：从项目 Support 目录加载
-        let devURL = URL(fileURLWithPath: "/Users/dawang/Downloads/vibecoding/Linger2.5/Support/LingerIcon.png")
-        if FileManager.default.fileExists(atPath: devURL.path),
-           let img = NSImage(contentsOf: devURL) {
-            return img
-        }
-        return nil
-    }
-
-    /// 缩放到菜单栏尺寸（16pt），彩色原样显示（用户自定义图标）
-    private func resizedMenuBarIcon(_ img: NSImage) -> NSImage {
-        let size = NSSize(width: 16, height: 16)
-        let out = NSImage(size: size)
-        out.lockFocus()
-        img.draw(in: NSRect(origin: .zero, size: size),
-                 from: NSRect(origin: .zero, size: img.size),
-                 operation: .copy, fraction: 1.0)
-        out.unlockFocus()
-        out.isTemplate = false
-        return out
     }
 
     /// 自绘环形图标（template）：外环描边 + 中心实心点，深浅模式自适应

@@ -18,7 +18,7 @@ s=d² 曲线 + 整分钟吸附），松手即开始计时。AppKit 原生、暗�
   - 本次完成（`swift build` 通过，`swift test` 19/19 绿）：
     1. **Markdown 记录导出**：新增 `RecordExporter`（Foundation-only）—— 已记录计时按天归档到 `~/Documents/Linger 计时记录.md`（`## yyyy-MM-dd` + `- HH:mm–HH:mm · 标题（N 分钟）`，按天去重追加）；设置 → 通用 → 维护新增「导出记录（Markdown）」开关（每周清理前自动归档）+「立即导出」按钮（导出并 Finder 显示）
     2. **每周清理升级**：`entriesToPrune` 不再要求 hasRecorded —— 未记录的已完成僵尸条目也随每周/每月清理清除（配合导出）；未来预约/过期预约（remainingTime>0）不受影响
-    3. **图标**：去掉 Ring/Classic/timer 三选一（设置里菜单栏图标区已删）；唯一图标 = 用户自定义 `Support/LingerIcon.png`（菜单栏 16pt 原色；bundle 生成 LingerIcon.icns + Resources 资源；build_and_run.sh 自动打包）
+    3. **图标**：去掉 Ring/Classic/timer 三选一（设置里菜单栏图标区已删）；`Support/LingerIcon.png` 是**程序坞/app 图标**（bundle 生成 LingerIcon.icns + Resources，build_and_run.sh 自动打包）；**菜单栏 icon 保持自绘 Ring**（用户澄清：那张图不是菜单栏 icon）
     4. **空态悬浮窗**：无计时也显示 hover 面板（空态提示 + 底栏日历按钮），方便直接预约；计时清空后不再自动隐藏
     5. **分隔线统一优化**：行线弱化 0.10→0.07、分组线强化 0.10→0.14、统一同内缩（cardPaddingX）、分组间距 14→16
     6. **清诊断日志**：所有 LingerDiag 日志 + contentContainerBounds/logEditorState 诊断方法移除（行为保留）
