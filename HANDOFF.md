@@ -14,6 +14,41 @@ s=d² 曲线 + 整分钟吸附），松手即开始计时。AppKit 原生、暗�
 > 每次交接/里程碑后在此**顶部**追加一段（最新在上），格式见 `.agents/skills/linger-handoff/`。
 > 上次交接见 git 历史；当前状态以「最新进度」为准。
 
+- **2026-08-06 · 交接给 Trae：上线前设计清单（Codex 整理，未动代码）**
+  - 本次交接：用户列了 22 项上线前待办，已分类 + 定优先级 + 分批，供 Trae 接手执行。**本段无代码改动**（仅整理），接手前先读本文件顶部「最新进度」了解已完成能力。
+  - **P0 上线阻断（先做）**
+    1. **无法粘贴复制**（Bug）：排查所有输入框（hover 标题编辑 / 预约编辑区 / 完成弹窗内联输入）为何不能 Cmd+V；疑点：`.accessory` + 无边框 statusBar 窗口的 field editor 粘贴路径，先复现再修
+    2. **计时中显示小 bug**：需用户提供具体现象/截图（现象未知，先找用户要）
+    3. **Intel 版本转译**：`swift build -c release --arch arm64 --arch x86_64` 打 universal，真机/虚拟机验证 x86_64 能跑
+    4. **关于页内容填充**：⏳ 卡用户提供信息（小红书 / Instagram / 邮箱 / GitHub / 捐赠 / 见见开发者）；结构在 AboutTicketView，填真实值即可
+  - **P1 第一印象 / 核心体验**
+    5. 菜单栏 icon 设计（现为自绘 Ring，`MenuBarManager.buildRingIcon`）
+    6. 菜单栏 icon 计时交互动画（计时中 icon 动态反馈）
+    7. 发起计时动画（松手入场，仪式感）
+    8. 初次使用引导（拖拽教学）
+    9. 基础教程（图文文档）
+    10. 快捷键设计 ⏳ 需用户定清单（已有 Fn/Ctrl/Opt 预设标题，见 SettingsWindow.buildPresetCardRow）
+    11. 检查更新功能 ⏳ 需发布渠道（GitHub Releases？）
+    12. 重复日程不带入上次时间 ⏳ 需澄清「重复」指弹窗 ↻ 同长重开，还是预约再建自动带上次时间
+  - **P2 打磨 / 增强**
+    13. 设置窗口重新设计（含「7 设置菜单栏」合并）
+    14. 提醒框记录日程的选择菜单（完成弹窗选日历/写入方式）
+    15. 下拉线条最大值交互打磨（已有橡皮筋+变细，DragPhysics）
+    16. 快捷「写入方式」交互（auto/ask/manual）
+    17. 通知方式交互设计（CompletionBanner 细节）
+    18. 倒计时提醒阈值设置（现固定最后 10s，HoverListView urgent 逻辑）
+    19. 计时最大/最小值设置（最大已有，补最小）
+    20. 最小计时单元（10/20/30/60s，拖拽吸附粒度）
+    21. 强提醒框位置优化（CompletionBanner 右上角，可配置）
+    22. md 文档格式检查 + 设计（RecordExporter）
+  - **下一步（建议批次）**：批次1 = P0（1→2→3→4）；批次2 = 第一印象（5→6→7→8→9）；批次3 = 功能（10→11→12→18→19→20）；批次4 = 打磨（13→14→15→16→17→21→22）
+  - **如何验证**：`./script/build_and_run.sh`（打包 app 才能测日历/TCC，Xcode 裸跑不可靠）；`swift test --disable-sandbox` 19/19 绿
+  - **给 Trae 的提示**：
+    - 关键文件：菜单栏 `LingerStatusItemView.swift` / `MenuBarManager.swift`；hover 列表 `HoverListView.swift`；完成弹窗 `CompletionBanner.swift`；预约编辑 `ScheduleTimerView.swift`；日历 `CalendarManager.swift` + `CalendarRecorder.swift`；导出 `RecordExporter.swift`；设置 `SettingsWindow.swift`
+    - **UI 铁律**：颜色/字号/间距走 `LingerTheme`，禁硬编码色；UI 以 `pages/*.html` 原型为准
+    - **易踩坑**：`.accessory` app + 无边框 statusBar 窗口点输入框要 `NSApp.activate` + `makeKeyAndOrderFront`（HoverListWindow.sendEvent 已示范）；手动 timer 动画改 frame 后要 `layoutSubtreeIfNeeded()`；写日历先 `ensureFullAccess`（无 bundle 裸跑 status API 不可靠）
+    - 完成项记得回填本文件「最新进度」并 commit；进度与代码分开 commit
+
 - **2026-08-06 · 记录导出 + 图标 + 空态悬浮窗 + 分隔线 + 清日志（Codex 大包）**
   - 本次完成（`swift build` 通过，`swift test` 19/19 绿）：
     1. **Markdown 记录导出**：新增 `RecordExporter`（Foundation-only）—— 已记录计时按天归档到 `~/Documents/Linger 计时记录.md`（`## yyyy-MM-dd` + `- HH:mm–HH:mm · 标题（N 分钟）`，按天去重追加）；设置 → 通用 → 维护新增「导出记录（Markdown）」开关（每周清理前自动归档）+「立即导出」按钮（导出并 Finder 显示）
@@ -229,6 +264,7 @@ Linger2.5/
 
 ## 最新进度（2026-08-06 增补）
 
+- [ ] **上线前清单（已交接 Trae，2026-08-06）**：P0 粘贴复制 bug / 计时显示 bug / Intel 转译 / 关于页信息；P1 icon+动画+引导+快捷键+更新检查+重复日程；P2 设置重设计+弹窗菜单+参数设置+md 格式等，详见「最近交接」顶部段落
 - [x] **Markdown 记录导出 + 每周清理升级**（2026-08-06）：RecordExporter 归档到「文稿/Linger 计时记录.md」（按天去重）；设置开关 + 立即导出；entriesToPrune 不再要求 hasRecorded（僵尸条目一并清）
 - [x] **唯一图标**（2026-08-06）：去掉三选一，用 Support/LingerIcon.png（菜单栏 + bundle icns）
 - [x] **空态悬浮窗**（2026-08-06）：无计时也显示 hover 面板（含底栏日历按钮），计时清空不再自动隐藏
