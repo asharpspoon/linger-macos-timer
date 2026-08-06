@@ -14,6 +14,27 @@ s=d² 曲线 + 整分钟吸附），松手即开始计时。AppKit 原生、暗�
 > 每次交接/里程碑后在此**顶部**追加一段（最新在上），格式见 `.agents/skills/linger-handoff/`。
 > 上次交接见 git 历史；当前状态以「最新进度」为准。
 
+- **2026-08-06 上午 · 预约编辑区 5 项反馈（Codex）**
+  - 本次完成（`swift build` 通过，`swift test` 15/15 绿）：
+    1. **4 个输入框等宽**：行1/行2 改 `distribution = .fillEqually`（日期/时间/时长/日程宽度一致）
+    2. **时间恒 24 小时制**：`timePicker.locale = en_US_POSIX`（HH:mm）+ 预计结束 `HH:mm`，不受系统 12/24h 影响
+    3. **日程/时长输入框无法输入 — 多项加固 + 诊断**（上一轮 frame didSet 未根治）：
+       - `HoverListWindow.sendEvent`：任意 leftMouseDown 若窗口非 key → `NSApp.activate` + `makeKeyAndOrderFront`（.accessory 无边框 statusBar 窗口点击文本控件不自动 key 的根治）
+       - 高度动画完成时 `sv.layoutSubtreeIfNeeded()` + `contentView.layoutSubtreeIfNeeded()`（强制解析子树 autolayout，杜绝 frame 未解析导致 hitTest nil）
+       - `ScheduleTimerView.mouseDown` 重写：强制 key + 打印命中诊断
+       - `nameField`/`durationField` 显式 `isEditable/isSelectable/isEnabled = true`
+    4. **日期格式地区设置**：设置 → 通用 → 新增「日期与时间 → 日期格式」选择器（4 选项，写 `linger_dateLocale`）；编辑器日期选择器读该设置，**默认国际 ISO**。实测 NSDatePicker 渲染（cacheDisplay + Vision OCR）：sv_SE→`2026-08-01`（零填充 ISO，正是用户要的）/ zh_CN→`2026/8/1` / en_US→`8/1/2026` / ja_JP→`2026/8/1`
+    5. **新增单测 `ScheduleEditorLayoutTests`（3 个）**：contentContainer 撑满 bounds、4 输入框中心 hitTest 命中 NSControl、宽度正确
+  - 未完成/卡点：**实机验收输入是否真正可点**（诊断日志待用户跑后确认，可清）：
+    - `LingerDiag schedule height anim done` / `schedule editor` / `schedule mouseDown` / `schedule click fell through`
+  - 下一步：用户 `./script/build_and_run.sh` 或 Xcode ⌘R 验收 → 清诊断日志 → 拍板通知横幅方向 + 图标三风格实装
+  - 如何验证：设置 → 通用 → 切「日期格式」4 选项（应见 2026-08-01 / 2026/8/1 / 8/1/2026）；hover 列表 → 点日历 → 编辑区展开 → 4 个输入框应都能点击输入；日志出现 `schedule mouseDown`（keyWindow=1）
+  - 给下一位：
+    - **关键决策**：无边框 statusBar 窗口在 .accessory app 里点击文本控件不一定自动成 key → 在 `HoverListWindow.sendEvent` 里强制（比在 expand 时 activate 一次更可靠，覆盖任意时刻点击）
+    - **关键决策**：手动 timer 动画 frame 后必须 `layoutSubtreeIfNeeded()` 再允许交互，否则 autolayout 内部 frame 可能未解析（单测已证：layout 后 4 输入框中心 hitTest 均命中 NSControl）
+    - **关键决策**：NSDatePicker `.yearMonthDay` 渲染跟随 locale 的数值模板（sv_SE=ISO `2026-08-01`）；要零填充 ISO 用 sv_SE，别用 en_US_POSIX（那是美式 `8/1/26`）
+    - 诊断日志 4 处：HoverListWindow.sendEvent 无日志（行为修复）；`schedule height anim done`+`logEditorState()`、`schedule mouseDown`、`schedule click fell through`（HoverListView.mouseDown 兜底分支）
+
 - **2026-08-05 晚 · 预约计时编辑区输入失效 + icon/文字错位修复（Solo/Trae · bug-fixing skill）**
   - 本次完成：3 轮迭代修复 spec 对齐后遗留的 2 个 bug
     1. **timer 打架（commit `dda2483`）**：`closeInlineSchedule` 把 close timer 存到 `heightAnimTimer`，紧接着 `notifyHeightChange()` → `animateHeight()` 第一行 `heightAnimTimer?.invalidate()` 把刚创建的 close timer 干掉。后果：scheduleView 永不移除，后续点击全走 close 但 timer 永不 fire。修复：新增独立 `scheduleHeightAnimTimer`（expand/close 专用），与 `heightAnimTimer`（驱动外层 HoverListView 高度）隔离
@@ -116,6 +137,11 @@ Linger2.5/
 ├── .codex/environments/       # Codex Run 按钮配置
 └── HANDOFF.md                 # 本文件
 ```
+
+## 最新进度（2026-08-06 增补）
+
+- [x] **预约编辑区 5 项反馈**（2026-08-06）：4 输入框等宽（fillEqually）；时间恒 24h；日程/时长输入框点击加固（HoverListWindow.sendEvent 强制 key + 动画后 layoutSubtreeIfNeeded + mouseDown 诊断）；日期格式地区设置（通用页选择器，默认 ISO sv_SE）；新增 ScheduleEditorLayoutTests 3 个
+- [ ] **预约编辑区输入实机验收**：跑 `./script/build_and_run.sh` 确认 4 输入框可点击输入，看 LingerDiag 日志，通过后清诊断日志
 
 ## 最新进度（2026-08-04）
 
