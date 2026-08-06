@@ -213,6 +213,8 @@ enum LingerTheme {
 
         /// T8: 计时完成是否弹通知（Bool，默认开）
         case notifyOnComplete = "linger_notifyOnComplete"
+        /// 强提醒弹窗位置（"topRight" / "center"，默认 topRight）
+        case bannerPosition = "linger_bannerPosition"
         /// T6: 完成提示音开关（Bool，默认开）
         case playSound = "linger_playSound"
         /// T6: 完成提示音音效名（String，默认 "Glass"）

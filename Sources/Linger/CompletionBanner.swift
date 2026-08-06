@@ -49,21 +49,40 @@ final class CompletionBannerManager {
 
     private func show(entry: TimerEntry) {
         guard let screen = NSScreen.main else { return }
-        // 右上角：最新横幅在最上，已有横幅依次下移
         let visible = screen.visibleFrame
-        let topY = visible.maxY - edgeMargin
-        var y = topY - bannerHeight
-        if let last = banners.last {
-            y = min(y, last.frame.minY - bannerGap - bannerHeight)
-        }
-        let rect = NSRect(x: visible.maxX - edgeMargin - bannerWidth,
+        // 位置由用户设置决定（topRight / center），默认 topRight
+        let positionRaw = UserDefaults.standard.string(forKey: LingerTheme.UserDefaultsKey.bannerPosition.rawValue) ?? "topRight"
+        let isCenter = positionRaw == "center"
+
+        let rect: NSRect
+        if isCenter {
+            // 屏幕正中央：多横幅垂直堆叠在中心
+            let totalStackH = bannerHeight + CGFloat(banners.count) * (bannerHeight + bannerGap)
+            let baseY = visible.midY + totalStackH / 2 - bannerHeight
+            var y = baseY
+            if let last = banners.last {
+                y = min(y, last.frame.minY - bannerGap - bannerHeight)
+            }
+            rect = NSRect(x: visible.midX - bannerWidth / 2,
                           y: y,
                           width: bannerWidth,
                           height: bannerHeight)
+        } else {
+            // 右上角：最新横幅在最上，已有横幅依次下移
+            let topY = visible.maxY - edgeMargin
+            var y = topY - bannerHeight
+            if let last = banners.last {
+                y = min(y, last.frame.minY - bannerGap - bannerHeight)
+            }
+            rect = NSRect(x: visible.maxX - edgeMargin - bannerWidth,
+                          y: y,
+                          width: bannerWidth,
+                          height: bannerHeight)
+        }
         let banner = CompletionBannerWindow(entry: entry, frame: rect, manager: self)
         banners.append(banner)
         banner.show()
-        os_log("Banner shown for entry %{public}@", log: log, type: .info, entry.id.uuidString)
+        os_log("Banner shown for entry %{public}@ at %s", log: log, type: .info, entry.id.uuidString, isCenter ? "center" : "topRight")
     }
 
     fileprivate func dismiss(_ banner: CompletionBannerWindow) {
@@ -107,8 +126,12 @@ final class CompletionBannerWindow: NSWindow {
                                         },
                                         onRepeat: { [weak self] in
                                             guard let self else { return }
-                                            _ = TimerManager.shared.addTimer(duration: entry.duration)
-                                            os_log("Banner repeat: new timer %.0fs", log: OSLog(subsystem: "com.linger.timer", category: "CompletionBanner"), type: .info, entry.duration)
+                                            // 重复时带入原标题，避免新计时丢标题
+                                            _ = TimerManager.shared.addTimer(
+                                                duration: entry.duration,
+                                                predefinedTitle: entry.predefinedTitle
+                                            )
+                                            os_log("Banner repeat: new timer %.0fs title=%{public}@", log: OSLog(subsystem: "com.linger.timer", category: "CompletionBanner"), type: .info, entry.duration, entry.predefinedTitle ?? "(nil)")
                                             self.manager?.dismiss(self)
                                         },
                                         onConfirm: { [weak self] title in

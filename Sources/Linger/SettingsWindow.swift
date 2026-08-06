@@ -50,6 +50,8 @@ final class SettingsWindow: NSWindow {
     private var calAuthLabel: NSTextField?
     private var calAuthDot: NSView?
     private var maxDurationStepper: NSStepper?
+    /// 强提醒弹窗位置选择卡片（topRight / center），选中态琥珀边框
+    private var bannerPositionCards: [String: NSView] = [:]
 
     private var currentIndex: Int = 0
     private let log = OSLog(subsystem: "com.linger.settings", category: "SettingsWindow")
@@ -596,7 +598,9 @@ final class SettingsWindow: NSWindow {
         let bannerRow = makeRow(label: "完成弹窗（强提醒）",
                                 control: makeSwitch(initial: currentNotifyOnComplete(),
                                                     action: #selector(notifyChanged(_:))),
-                                hint: "计时完成时在屏幕右上角弹出横幅；关闭后仅保留菜单栏倒计时与提示音")
+                                hint: "计时完成时弹出横幅；关闭后仅保留菜单栏倒计时与提示音")
+        // 弹窗位置：2 个可点击示意图卡片（右上角 / 屏幕正中央）
+        let positionRow = makeBannerPositionRow()
         let playSwitch = makeSwitch(initial: currentPlaySound(), action: #selector(playSoundChanged(_:)))
         let soundPopup = NSPopUpButton()
         styleSelect(soundPopup)
@@ -615,8 +619,120 @@ final class SettingsWindow: NSWindow {
         soundControl.alignment = .centerY
 
         return makePanel(sections: [
-            makeSection(title: "提醒方式", rows: [bannerRow, makeRow(label: "播放提示音", control: soundControl)])
+            makeSection(title: "提醒方式", rows: [bannerRow, positionRow, makeRow(label: "播放提示音", control: soundControl)])
         ])
+    }
+
+    // MARK: - 强提醒弹窗位置选择（2 个可点击示意图卡片）
+
+    /// 构建弹窗位置选择行：屏幕右上角 / 屏幕正中央，用示意图卡片直观选择
+    private func makeBannerPositionRow() -> NSView {
+        let current = UserDefaults.standard.string(forKey: LingerTheme.UserDefaultsKey.bannerPosition.rawValue) ?? "topRight"
+
+        let topRightCard = makePositionCard(title: "屏幕右上角", subtitle: "不遮挡中心工作区", position: "topRight", isTopRight: true)
+        let centerCard = makePositionCard(title: "屏幕正中央", subtitle: "强提醒更显眼", position: "center", isTopRight: false)
+        bannerPositionCards = ["topRight": topRightCard, "center": centerCard]
+        updatePositionCardSelection(current)
+
+        let stack = NSStackView(views: [topRightCard, centerCard])
+        stack.orientation = .horizontal
+        stack.spacing = LingerTheme.space3
+        stack.alignment = .centerY
+
+        return makeRow(label: "弹窗位置", control: stack,
+                       hint: "强提醒横幅在屏幕上的显示位置")
+    }
+
+    /// 单个位置示意图卡片：80×56 屏幕缩略图 + 横幅位置亮点 + 标题/副标题
+    private func makePositionCard(title: String, subtitle: String, position: String, isTopRight: Bool) -> NSView {
+        let card = NSView()
+        card.wantsLayer = true
+        card.layer?.cornerRadius = LingerTheme.radiusSM
+        card.layer?.backgroundColor = LingerTheme.nsColor(LingerTheme.Color.surface2).cgColor
+        card.layer?.borderWidth = 1
+        card.translatesAutoresizingMaskIntoConstraints = false
+
+        // 屏幕缩略图（80×52，暗色底 + 圆角，模拟显示器）
+        let screenThumb = NSView()
+        screenThumb.wantsLayer = true
+        screenThumb.layer?.backgroundColor = NSColor(calibratedWhite: 0.08, alpha: 1.0).cgColor
+        screenThumb.layer?.cornerRadius = 3
+        screenThumb.translatesAutoresizingMaskIntoConstraints = false
+        card.addSubview(screenThumb)
+
+        // 横幅位置亮点（琥珀小方块）
+        let bannerDot = NSView()
+        bannerDot.wantsLayer = true
+        bannerDot.layer?.backgroundColor = LingerTheme.amberGold.cgColor
+        bannerDot.layer?.cornerRadius = 2
+        bannerDot.translatesAutoresizingMaskIntoConstraints = false
+        screenThumb.addSubview(bannerDot)
+
+        // 标题 + 副标题
+        let titleLabel = NSTextField(labelWithString: title)
+        titleLabel.font = LingerTheme.labelFont(size: 12, weight: .medium)
+        titleLabel.textColor = LingerTheme.ink
+        let subtitleLabel = NSTextField(labelWithString: subtitle)
+        subtitleLabel.font = LingerTheme.labelFont(size: 10)
+        subtitleLabel.textColor = LingerTheme.ink3
+        let textStack = NSStackView(views: [titleLabel, subtitleLabel])
+        textStack.orientation = .vertical
+        textStack.alignment = .leading
+        textStack.spacing = 1
+        textStack.translatesAutoresizingMaskIntoConstraints = false
+        card.addSubview(textStack)
+
+        NSLayoutConstraint.activate([
+            card.widthAnchor.constraint(equalToConstant: 168),
+            card.heightAnchor.constraint(equalToConstant: 52),
+            screenThumb.leadingAnchor.constraint(equalTo: card.leadingAnchor, constant: 8),
+            screenThumb.centerYAnchor.constraint(equalTo: card.centerYAnchor),
+            screenThumb.widthAnchor.constraint(equalToConstant: 56),
+            screenThumb.heightAnchor.constraint(equalToConstant: 36),
+            textStack.leadingAnchor.constraint(equalTo: screenThumb.trailingAnchor, constant: 8),
+            textStack.trailingAnchor.constraint(equalTo: card.trailingAnchor, constant: -8),
+            textStack.centerYAnchor.constraint(equalTo: card.centerYAnchor),
+            // 横幅亮点尺寸
+            bannerDot.widthAnchor.constraint(equalToConstant: 18),
+            bannerDot.heightAnchor.constraint(equalToConstant: 5),
+        ])
+        // 横幅亮点位置：右上角 or 正中央
+        if isTopRight {
+            NSLayoutConstraint.activate([
+                bannerDot.topAnchor.constraint(equalTo: screenThumb.topAnchor, constant: 4),
+                bannerDot.trailingAnchor.constraint(equalTo: screenThumb.trailingAnchor, constant: -4),
+            ])
+        } else {
+            NSLayoutConstraint.activate([
+                bannerDot.centerXAnchor.constraint(equalTo: screenThumb.centerXAnchor),
+                bannerDot.centerYAnchor.constraint(equalTo: screenThumb.centerYAnchor),
+            ])
+        }
+
+        // 点击识别
+        card.identifier = NSUserInterfaceItemIdentifier(rawValue: "bannerPos_\(position)")
+        let clickGesture = NSClickGestureRecognizer(target: self, action: #selector(bannerPositionCardClicked(_:)))
+        card.addGestureRecognizer(clickGesture)
+        return card
+    }
+
+    /// 更新卡片选中态视觉（选中=琥珀边框，未选中=line 边框）
+    private func updatePositionCardSelection(_ selected: String) {
+        for (key, card) in bannerPositionCards {
+            let isSelected = key == selected
+            card.layer?.borderColor = isSelected
+                ? LingerTheme.amberGold.cgColor
+                : LingerTheme.nsColor(LingerTheme.Color.line).cgColor
+            card.layer?.borderWidth = isSelected ? 2 : 1
+        }
+    }
+
+    @objc private func bannerPositionCardClicked(_ sender: NSClickGestureRecognizer) {
+        guard let id = sender.view?.identifier?.rawValue,
+              let pos = id.split(separator: "_").last.map(String.init) else { return }
+        UserDefaults.standard.set(pos, forKey: LingerTheme.UserDefaultsKey.bannerPosition.rawValue)
+        updatePositionCardSelection(pos)
+        os_log("Banner position changed to %s", log: log, type: .info, pos)
     }
 
     // MARK: - 面板 2：日历
