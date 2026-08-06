@@ -28,10 +28,12 @@ final class CalendarManager {
     }
 
     /// 当前写入模式（持久化于 UserDefaults）
+    /// 默认 .auto：用户「拖拽发起的计时完成时记入 macOS 日程」（2026-08-06 需求）；
+    /// 可在设置 → 日历 → 写入方式 改为 每次询问 / 手动。
     var writeMode: WriteMode {
         let raw = UserDefaults.standard.string(
-            forKey: LingerTheme.UserDefaultsKey.calendarWriteMode.rawValue) ?? WriteMode.manual.rawValue
-        return WriteMode(rawValue: raw) ?? .manual
+            forKey: LingerTheme.UserDefaultsKey.calendarWriteMode.rawValue) ?? WriteMode.auto.rawValue
+        return WriteMode(rawValue: raw) ?? .auto
     }
 
     func setWriteMode(_ mode: WriteMode) {

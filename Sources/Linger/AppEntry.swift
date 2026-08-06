@@ -34,6 +34,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         _ = NotificationManager.shared
         NotificationManager.shared.requestAuthorizationIfNeeded()
 
+        // 2026-08-06: 初始化计时→日历记录协调器（完成/预约记录，独立于通知开关）
+        _ = CalendarRecorder.shared
+
         menuBarManager = MenuBarManager()
         NSLog("[Linger] MenuBarManager created")
     }

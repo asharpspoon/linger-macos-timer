@@ -37,6 +37,9 @@ final class NotificationManager: NSObject, UNUserNotificationCenterDelegate {
         return UNUserNotificationCenter.current()
     }()
 
+    /// 横幅是否可用（CalendarRecorder 判断「每次询问」是否改由应用内弹窗承担）
+    var bannerAvailable: Bool { center != nil }
+
     // MARK: - Category / Action 标识
 
     static let categoryDragTimer = "linger.category.dragTimer"
@@ -52,6 +55,7 @@ final class NotificationManager: NSObject, UNUserNotificationCenterDelegate {
     private let keyEnd = "end"
     private let keyPresetTitle = "presetTitle"
     private let keyHadTitle = "hadTitle"
+    private let keyEntryID = "entryID"
 
     // MARK: - 初始化
 
@@ -170,7 +174,8 @@ final class NotificationManager: NSObject, UNUserNotificationCenterDelegate {
             keyStart: start.timeIntervalSince1970,
             keyEnd: end.timeIntervalSince1970,
             keyPresetTitle: presetTitle,
-            keyHadTitle: hadTitle
+            keyHadTitle: hadTitle,
+            keyEntryID: entry.id.uuidString
         ]
         content.categoryIdentifier = entry.isScheduled ? Self.categoryScheduledTimer : Self.categoryDragTimer
         content.sound = nil   // 提示音由 NSSound 手动播放，避免与系统通知音叠加
@@ -183,20 +188,7 @@ final class NotificationManager: NSObject, UNUserNotificationCenterDelegate {
             }
         }
 
-        // auto 模式：归零即自动写入日历。
-        // T13 闭合"默认标题两套键未打通"：无标题时传空串，由 CalendarManager.writeEvent
-        // 用 linger_defaultTitle 回填（默认标题流入日历写入）；已通过 hover 手动记录的条目跳过，避免重复。
-        if CalendarManager.shared.writeMode == .auto, !entry.hasRecorded {
-            let titleToWrite = hadTitle ? presetTitle : ""
-            if let eventId = CalendarManager.shared.writeEventOnFinish(title: titleToWrite,
-                                                                        start: start, end: end) {
-                entry.hasRecorded = true
-                entry.calendarEventId = eventId
-                CalendarManager.shared.markRecorded(entry.id)
-                os_log("Calendar auto-record written: %{public}@",
-                       log: log, type: .info, titleToWrite)
-            }
-        }
+        // 日历记录由 CalendarRecorder 独立处理（不依赖通知开关/通知权限），此处不再写日历。
     }
 
     // MARK: - 起始 / 结束时间解析
@@ -215,7 +207,7 @@ final class NotificationManager: NSObject, UNUserNotificationCenterDelegate {
 
     // MARK: - 日历写入
 
-    private func writeToCalendar(title: String, start: Date, end: Date) {
+    private func writeToCalendar(title: String, start: Date, end: Date) -> String? {
         // CalendarManager.writeEventOnFinish 内部已做 isAuthorized 守卫；未授权时返回 nil。
         let eventId = CalendarManager.shared.writeEventOnFinish(title: title, start: start, end: end)
         if eventId != nil {
@@ -223,17 +215,39 @@ final class NotificationManager: NSObject, UNUserNotificationCenterDelegate {
         } else {
             os_log("Calendar write skipped (not authorized or failed): %{public}@", log: log, type: .info, title)
         }
+        return eventId
     }
 
     /// 按写入模式编排确认逻辑
-    private func confirmWrite(title: String, start: Date, end: Date) {
+    private func confirmWrite(title: String, start: Date, end: Date) -> String? {
         let mode = CalendarManager.shared.writeMode
         // auto 模式：归零时已自动写入，Confirm 不再重复写（避免重复事件）
         guard mode != .auto else {
             os_log("Confirm in auto mode → already auto-written, skip", log: log, type: .info)
+            return nil
+        }
+        return writeToCalendar(title: title, start: start, end: end)
+    }
+
+    /// 横幅 Confirm/✎：防重复（完成时已被 CalendarRecorder 记录则跳过），写入成功标记条目
+    private func confirmAndMark(userInfo: [AnyHashable: Any], title: String, start: Date, end: Date) {
+        let entry = lookupEntry(from: userInfo)
+        if let entry, entry.hasRecorded {
+            os_log("Entry already recorded, skip banner confirm write", log: log, type: .info)
             return
         }
-        writeToCalendar(title: title, start: start, end: end)
+        let eventId = confirmWrite(title: title, start: start, end: end)
+        if let eventId, let entry {
+            entry.hasRecorded = true
+            entry.calendarEventId = eventId
+            CalendarManager.shared.markRecorded(entry.id)
+        }
+    }
+
+    private func lookupEntry(from userInfo: [AnyHashable: Any]) -> TimerEntry? {
+        guard let idString = userInfo[keyEntryID] as? String,
+              let id = UUID(uuidString: idString) else { return nil }
+        return TimerManager.shared.allDisplayEntries.first { $0.id == id }
     }
 
     // MARK: - 完成提示音（NSSound 回退）
@@ -316,16 +330,16 @@ final class NotificationManager: NSObject, UNUserNotificationCenterDelegate {
             os_log("Repeat → new timer %.1fs", log: log, type: .info, duration)
 
         case Self.actionConfirm:
-            // 确认：按写入模式编排
-            confirmWrite(title: presetTitle, start: start, end: end)
+            // 确认：按写入模式编排（完成时已被 CalendarRecorder 记录则跳过）
+            confirmAndMark(userInfo: userInfo, title: presetTitle, start: start, end: end)
 
         case Self.actionScheduleInput:
             // 日程内联输入：取用户输入标题后写入（无内容时回退 presetTitle）
             if let textResponse = response as? UNTextInputNotificationResponse {
                 let typed = textResponse.userText.trimmingCharacters(in: .whitespacesAndNewlines)
-                confirmWrite(title: typed.isEmpty ? presetTitle : typed, start: start, end: end)
+                confirmAndMark(userInfo: userInfo, title: typed.isEmpty ? presetTitle : typed, start: start, end: end)
             } else {
-                confirmWrite(title: presetTitle, start: start, end: end)
+                confirmAndMark(userInfo: userInfo, title: presetTitle, start: start, end: end)
             }
 
         case UNNotificationDefaultActionIdentifier, UNNotificationDismissActionIdentifier:

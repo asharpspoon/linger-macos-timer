@@ -953,14 +953,19 @@ final class MenuBarManager: NSObject {
     // MARK: - 日历预约面板（T5: ScheduleTimerView）
 
     /// 弹出内联日历预约面板（ScheduleTimerView），确认后创建预约计时。
-    /// 用 ScheduleTimerView 回填的起止时间创建预约计时
+    /// 用 ScheduleTimerView 回填的起止时间创建预约计时；
+    /// 创建即按「记录的日期-时间-时长」写入 macOS 日历（用户明确安排，无需再等完成）。
     private func createScheduledTimer(startDate: Date, duration: TimeInterval, title: String) {
         let endDate = startDate.addingTimeInterval(duration)
-        _ = TimerManager.shared.addScheduledTimer(
+        guard let entry = TimerManager.shared.addScheduledTimer(
             startTime: startDate,
             endTime: endDate,
             title: title.isEmpty ? nil : title
-        )
+        ) else {
+            os_log("Scheduled timer creation failed (slot limit)", log: log, type: .error)
+            return
+        }
+        CalendarRecorder.shared.recordScheduled(entry)
         os_log("Scheduled timer created: %{public}@ → %{public}@",
                log: log, type: .info, startDate.description, endDate.description)
     }
