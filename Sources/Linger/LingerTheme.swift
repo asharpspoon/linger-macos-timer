@@ -204,6 +204,8 @@ enum LingerTheme {
         case dragPreviewFontSize = "linger_dragPreviewFontSize"
         /// 2026-08-05: 日期格式地区（sv_SE ISO / zh_CN / en_US / ja_JP，默认 sv_SE = yyyy-MM-dd）
         case dateLocale = "linger_dateLocale"
+        /// 2026-08-06: 每周清理前把已记录计时导出为 Markdown（~/Documents/Linger 计时记录.md）
+        case exportMarkdown = "linger_exportMarkdown"
         /// 2026-08-04: 拖拽引导提示已显示次数（前 3 次显示，之后永久隐藏）
         case dragHintUsageCount = "linger_dragHintUsageCount"
 

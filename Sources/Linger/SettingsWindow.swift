@@ -50,8 +50,6 @@ final class SettingsWindow: NSWindow {
     private var calAuthLabel: NSTextField?
     private var calAuthDot: NSView?
     private var maxDurationStepper: NSStepper?
-    private var iconPopup: NSPopUpButton?
-    private var iconStyleButtons: [NSButton] = []
 
     private var currentIndex: Int = 0
     private let log = OSLog(subsystem: "com.linger.settings", category: "SettingsWindow")
@@ -211,9 +209,6 @@ final class SettingsWindow: NSWindow {
         let topY = min(frame.maxY, topLimit)
         let targetFrame = NSRect(x: frame.minX, y: topY - targetHeight,
                                  width: Self.windowWidth, height: targetHeight)
-
-        os_log("LingerDiag selectTab idx=%d animated=%d panelFit=%.1f targetH=%.1f frameH=%.1f screenH=%.1f",
-               log: log, type: .info, index, animated ? 1 : 0, panelFit, targetHeight, frame.height, screenFrame.height)
 
         /// 安装新面板（alpha 控制渐入起点），并完成布局/指示线
         func installPanel(alpha: CGFloat) {
@@ -492,41 +487,6 @@ final class SettingsWindow: NSWindow {
         return stack
     }
 
-    /// 通用页：图标三风格选择器（Ring / Classic / SF Symbol，选中琥珀边框）
-    private func buildIconStylePicker() -> NSView {
-        let container = NSStackView()
-        container.orientation = .horizontal
-        container.spacing = LingerTheme.space2
-        container.alignment = .centerY
-        let styles = [("ring", "Ring"), ("classic", "Classic"), ("timer", "SF Symbol")]
-        for (i, st) in styles.enumerated() {
-            let btn = NSButton(title: st.1, target: self, action: #selector(iconStylePicked(_:)))
-            btn.setButtonType(NSButton.ButtonType.toggle)
-            btn.tag = i
-            btn.bezelStyle = .rounded
-            btn.font = LingerTheme.labelFont(size: 11)
-            btn.wantsLayer = true
-            btn.layer?.cornerRadius = 6
-            btn.layer?.borderWidth = 1
-            iconStyleButtons.append(btn)
-            container.addArrangedSubview(btn)
-        }
-        updateIconStyleButtonStates()
-        return container
-    }
-
-    private func updateIconStyleButtonStates() {
-        let current = UserDefaults.standard.string(forKey: LingerTheme.UserDefaultsKey.iconStyle.rawValue) ?? "ring"
-        let raws = ["ring", "classic", "timer"]
-        guard let idx = raws.firstIndex(of: current) else { return }
-        for (i, btn) in iconStyleButtons.enumerated() {
-            let on = (i == idx)
-            btn.state = on ? .on : .off
-            btn.layer?.borderColor = on ? LingerTheme.amberGold.cgColor : LingerTheme.nsColor(LingerTheme.Color.line).cgColor
-            btn.contentTintColor = on ? LingerTheme.amberGold : LingerTheme.ink2
-        }
-    }
-
     // MARK: - 面板 0：操作
 
     private func buildOperationsPanel() -> NSView {
@@ -758,24 +718,24 @@ final class SettingsWindow: NSWindow {
         cleanupPopup.target = self
         cleanupPopup.action = #selector(cleanupChanged(_:))
 
-        let iconPopup = NSPopUpButton()
-        styleSelect(iconPopup)
-        iconPopup.addItems(withTitles: ["Ring", "Classic", "SF Symbol"])
-        let iconRaws = ["ring", "classic", "timer"]
-        let icon = UserDefaults.standard.string(forKey: LingerTheme.UserDefaultsKey.iconStyle.rawValue) ?? "ring"
-        if let idx = iconRaws.firstIndex(of: icon) { iconPopup.selectItem(at: idx) }
-        iconPopup.target = self
-        iconPopup.action = #selector(iconStyleChanged(_:))
-        self.iconPopup = iconPopup
+        let exportSwitch = makeSwitch(initial: currentExportMarkdown(),
+                                       action: #selector(exportMarkdownChanged(_:)))
+        let exportBtn = NSButton(title: "立即导出", target: self, action: #selector(exportNowTapped(_:)))
+        exportBtn.bezelStyle = .rounded
+        exportBtn.controlSize = .small
+        let exportControl = NSStackView(views: [exportSwitch, exportBtn])
+        exportControl.orientation = .horizontal
+        exportControl.spacing = LingerTheme.space3
+        exportControl.alignment = .centerY
 
         return makePanel(sections: [
             makeSection(title: "启动", rows: [makeRow(label: "开机自启", control: launchSwitch)]),
-            makeSection(title: "维护", rows: [makeRow(label: "自动清理", control: cleanupPopup)]),
-            makeSection(title: "日期与时间", rows: [buildDateLocaleRow()]),
-            makeSection(title: "菜单栏图标", rows: [
-                makeRow(label: "图标风格", control: iconPopup),
-                buildIconStylePicker()   // 三选一预览，左对齐（原型）
-            ])
+            makeSection(title: "维护", rows: [
+                makeRow(label: "自动清理", control: cleanupPopup),
+                makeRow(label: "导出记录（Markdown）", control: exportControl,
+                        hint: "开启后每周清理前把计时归档到「文稿/Linger 计时记录.md」；关闭则每周清理缓存")
+            ]),
+            makeSection(title: "日期与时间", rows: [buildDateLocaleRow()])
         ])
     }
 
@@ -895,17 +855,6 @@ final class SettingsWindow: NSWindow {
 
     // MARK: - 动作：通用面板
 
-    @objc private func iconStylePicked(_ sender: NSButton) {
-        let raws = ["ring", "classic", "timer"]
-        guard raws.indices.contains(sender.tag) else { return }
-        UserDefaults.standard.set(raws[sender.tag], forKey: LingerTheme.UserDefaultsKey.iconStyle.rawValue)
-        NotificationCenter.default.post(name: Notification.Name("linger.iconStyleChanged"), object: nil)
-        updateIconStyleButtonStates()
-        if let popup = iconPopup, popup.indexOfSelectedItem != sender.tag {
-            popup.selectItem(at: sender.tag)
-        }
-    }
-
     @objc private func launchChanged(_ sender: LingerSwitch) {
         let on = sender.isOn
         UserDefaults.standard.set(on, forKey: LingerTheme.UserDefaultsKey.launchAtLogin.rawValue)
@@ -927,6 +876,18 @@ final class SettingsWindow: NSWindow {
                                   forKey: LingerTheme.UserDefaultsKey.cleanupInterval.rawValue)
     }
 
+    @objc private func exportMarkdownChanged(_ sender: LingerSwitch) {
+        UserDefaults.standard.set(sender.isOn,
+                                  forKey: LingerTheme.UserDefaultsKey.exportMarkdown.rawValue)
+    }
+
+    @objc private func exportNowTapped(_ sender: Any?) {
+        RecordExporter.export(TimerManager.shared.allDisplayEntries)
+        if let url = RecordExporter.fileURL() {
+            NSWorkspace.shared.activateFileViewerSelecting([url])
+        }
+    }
+
     @objc private func dateLocaleChanged(_ sender: NSPopUpButton) {
         let raws = ["sv_SE", "zh_CN", "en_US", "ja_JP"]
         guard raws.indices.contains(sender.indexOfSelectedItem) else { return }
@@ -934,16 +895,6 @@ final class SettingsWindow: NSWindow {
         UserDefaults.standard.set(localeID, forKey: LingerTheme.UserDefaultsKey.dateLocale.rawValue)
         // 通知下次创建的预约编辑区按新地区渲染（编辑区每次展开重建，通知仅作广播一致性）
         NotificationCenter.default.post(name: Notification.Name("linger.dateLocaleChanged"), object: nil, userInfo: ["locale": localeID])
-    }
-
-    @objc private func iconStyleChanged(_ sender: NSPopUpButton) {
-        let raws = ["ring", "classic", "timer"]
-        guard raws.indices.contains(sender.indexOfSelectedItem) else { return }
-        UserDefaults.standard.set(raws[sender.indexOfSelectedItem],
-                                  forKey: LingerTheme.UserDefaultsKey.iconStyle.rawValue)
-        // 通知 MenuBarManager 立即刷新菜单栏图标（复用其 linger.iconStyleChanged 观察）
-        NotificationCenter.default.post(name: Notification.Name("linger.iconStyleChanged"), object: nil)
-        updateIconStyleButtonStates()
     }
 
     // MARK: - 跳转系统设置
@@ -990,6 +941,10 @@ final class SettingsWindow: NSWindow {
 
     private func currentPlaySound() -> Bool {
         (UserDefaults.standard.object(forKey: LingerTheme.UserDefaultsKey.playSound.rawValue) as? Bool) ?? true
+    }
+
+    private func currentExportMarkdown() -> Bool {
+        UserDefaults.standard.bool(forKey: LingerTheme.UserDefaultsKey.exportMarkdown.rawValue)
     }
 
     private func currentLaunchAtLogin() -> Bool {

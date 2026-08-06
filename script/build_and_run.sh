@@ -40,6 +40,8 @@ cat >"$INFO_PLIST" <<PLIST
   <string>$APP_NAME</string>
   <key>CFBundleExecutable</key>
   <string>$APP_NAME</string>
+  <key>CFBundleIconFile</key>
+  <string>LingerIcon</string>
   <key>CFBundleIdentifier</key>
   <string>$BUNDLE_ID</string>
   <key>CFBundleInfoDictionaryVersion</key>
@@ -65,6 +67,23 @@ cat >"$INFO_PLIST" <<PLIST
 </dict>
 </plist>
 PLIST
+
+# 打包应用图标：Support/LingerIcon.png → Resources/LingerIcon.png + LingerIcon.icns
+ICON_SRC="$ROOT_DIR/Support/LingerIcon.png"
+APP_RESOURCES="$APP_CONTENTS/Resources"
+if [ -f "$ICON_SRC" ]; then
+  mkdir -p "$APP_RESOURCES"
+  cp "$ICON_SRC" "$APP_RESOURCES/LingerIcon.png"
+  ICONSET="$ROOT_DIR/dist/Linger.iconset"
+  rm -rf "$ICONSET" && mkdir -p "$ICONSET"
+  for s in 16 32 128 256 512; do
+    d=$((s * 2))
+    sips -z $s $s "$ICON_SRC" --out "$ICONSET/icon_${s}x${s}.png" >/dev/null 2>&1 || true
+    sips -z $d $d "$ICON_SRC" --out "$ICONSET/icon_${s}x${s}@2x.png" >/dev/null 2>&1 || true
+  done
+  iconutil -c icns "$ICONSET" -o "$APP_RESOURCES/LingerIcon.icns" 2>/dev/null || true
+  rm -rf "$ICONSET"
+fi
 
 open_app() {
   /usr/bin/open -n "$APP_BUNDLE"

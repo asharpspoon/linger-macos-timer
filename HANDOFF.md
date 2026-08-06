@@ -14,6 +14,18 @@ s=d² 曲线 + 整分钟吸附），松手即开始计时。AppKit 原生、暗�
 > 每次交接/里程碑后在此**顶部**追加一段（最新在上），格式见 `.agents/skills/linger-handoff/`。
 > 上次交接见 git 历史；当前状态以「最新进度」为准。
 
+- **2026-08-06 · 记录导出 + 图标 + 空态悬浮窗 + 分隔线 + 清日志（Codex 大包）**
+  - 本次完成（`swift build` 通过，`swift test` 19/19 绿）：
+    1. **Markdown 记录导出**：新增 `RecordExporter`（Foundation-only）—— 已记录计时按天归档到 `~/Documents/Linger 计时记录.md`（`## yyyy-MM-dd` + `- HH:mm–HH:mm · 标题（N 分钟）`，按天去重追加）；设置 → 通用 → 维护新增「导出记录（Markdown）」开关（每周清理前自动归档）+「立即导出」按钮（导出并 Finder 显示）
+    2. **每周清理升级**：`entriesToPrune` 不再要求 hasRecorded —— 未记录的已完成僵尸条目也随每周/每月清理清除（配合导出）；未来预约/过期预约（remainingTime>0）不受影响
+    3. **图标**：去掉 Ring/Classic/timer 三选一（设置里菜单栏图标区已删）；唯一图标 = 用户自定义 `Support/LingerIcon.png`（菜单栏 16pt 原色；bundle 生成 LingerIcon.icns + Resources 资源；build_and_run.sh 自动打包）
+    4. **空态悬浮窗**：无计时也显示 hover 面板（空态提示 + 底栏日历按钮），方便直接预约；计时清空后不再自动隐藏
+    5. **分隔线统一优化**：行线弱化 0.10→0.07、分组线强化 0.10→0.14、统一同内缩（cardPaddingX）、分组间距 14→16
+    6. **清诊断日志**：所有 LingerDiag 日志 + contentContainerBounds/logEditorState 诊断方法移除（行为保留）
+  - **预约不自动删（已核实）**：未来预约到期前写入日历的事件永不被 Linger 删除；预约计时条目 remainingTime>0 不在清理谓词内，电脑关机错过触发也不会被自动删（会一直显示「待开始」，可手动 ✕ 删——手动删会同步删日历事件，这是用户主动操作）
+  - 待验收：hover 无计时空态面板 → 点日历预约；设置里关掉图标三选一后菜单栏显示新图标；导出开关 + 立即导出生成 md；分组线观感
+  - 给下一位：`RecordExporter.export(_:to:)` 可注入 URL（测试用）；`linger_exportMarkdown` 键；图标加载 `loadCustomIcon()`（bundle → 开发路径兜底 → ring）；空态 `draw()` 走 drawEmptyHint + drawBottomArea
+
 - **2026-08-06 · 弹窗内输入的日程标题未写入日历（Codex 修复）**
   - 现象：auto 写入方式下，用户在完成弹窗输入标题后，日历里没有这个标题
   - 根因：`CalendarRecorder.recordFromBanner` 对 auto 模式直接跳过（以为已完成自动写入）—— 实际 auto 在归零时用**默认标题**写了事件，用户输入的新标题被丢弃
@@ -216,6 +228,10 @@ Linger2.5/
 
 ## 最新进度（2026-08-06 增补）
 
+- [x] **Markdown 记录导出 + 每周清理升级**（2026-08-06）：RecordExporter 归档到「文稿/Linger 计时记录.md」（按天去重）；设置开关 + 立即导出；entriesToPrune 不再要求 hasRecorded（僵尸条目一并清）
+- [x] **唯一图标**（2026-08-06）：去掉三选一，用 Support/LingerIcon.png（菜单栏 + bundle icns）
+- [x] **空态悬浮窗**（2026-08-06）：无计时也显示 hover 面板（含底栏日历按钮），计时清空不再自动隐藏
+- [x] **分隔线统一 + 清诊断日志**（2026-08-06）
 - [x] **预约运行态显示修复**（2026-08-06）：预约到点激活后行内不再显示「待开始」——按实际状态渲染（running 琥珀倒计时+暂停/停止、paused 降透明）；停止运行中的预约也同步删除日历事件
 - [x] **倒计时完成通知（自绘玻璃横幅）**（2026-08-06）：CompletionBanner 替换系统通知；NotificationManager 仅保留提示音；设置「完成弹窗（强提醒）」开关；ask 模式由横幅承担；17/17 绿
 - [ ] **完成弹窗实机验收**：build_and_run.sh → 计时归零看右上角横幅（标题行/25:00/内联输入/↻/✓/8s 消失/开关）

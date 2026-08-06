@@ -277,10 +277,8 @@ final class ScheduleTimerView: NSView {
     // 否则 .accessory 应用在窗口非 key 时点击 NSTextField 无法成为 firstResponder。
     // 同时打印命中诊断，便于排查「点不进去」。
     override func mouseDown(with event: NSEvent) {
-        let p = convert(event.locationInWindow, from: nil)
-        NSLog("LingerDiag schedule mouseDown: point=%@ bounds=%@ keyWindow=%d",
-              NSStringFromPoint(p), NSStringFromRect(bounds),
-              (window?.isKeyWindow ?? false) ? 1 : 0)
+        // 点击编辑区任意位置（含胶囊空白）都确保窗口成为 key window + app 激活，
+        // 否则 .accessory 应用在窗口非 key 时点击 NSTextField 无法成为 firstResponder。
         NSApp.activate(ignoringOtherApps: true)
         window?.makeKeyAndOrderFront(nil)
         super.mouseDown(with: event)
@@ -311,9 +309,6 @@ final class ScheduleTimerView: NSView {
         contentContainer.wantsLayer = true
         alphaValue = 0
         contentContainer.layer?.setAffineTransform(CGAffineTransform(translationX: 0, y: 10))
-        NSLog("LingerDiag reveal: subviews=%d contentSubviews=%d bounds=%@ alpha=%.2f",
-              subviews.count, contentContainer.subviews.count,
-              NSStringFromRect(bounds), alphaValue)
 
         // 淡入：opacity 0→1，300ms ease-out，delay 100ms
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { [weak self] in
@@ -370,22 +365,6 @@ final class ScheduleTimerView: NSView {
         contentContainer.wantsLayer = true
         alphaValue = 1
         contentContainer.layer?.setAffineTransform(.identity)
-    }
-
-    /// 诊断用：返回 contentContainer 的 bounds（验证动画期间是否同步）
-    func contentContainerBounds() -> NSRect {
-        return contentContainer.bounds
-    }
-
-    /// 诊断用：布局完成后打印 4 个输入控件的真实 frame（排查「点不进去」）
-    func logEditorState() {
-        NSLog("LingerDiag schedule editor: content=%@ name=%@ dur=%@ date=%@ time=%@ editable=%d",
-              NSStringFromRect(contentContainer.frame),
-              NSStringFromRect(nameField.frame),
-              NSStringFromRect(durationField.frame),
-              NSStringFromRect(datePicker.frame),
-              NSStringFromRect(timePicker.frame),
-              nameField.isEditable ? 1 : 0)
     }
 
     // MARK: - 数据同步

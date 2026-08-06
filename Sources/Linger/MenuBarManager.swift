@@ -101,26 +101,40 @@ final class MenuBarManager: NSObject {
 
     // MARK: - 图标（SF Symbol + 降级为 Linger 文字）
 
-    /// T12: 菜单栏图标装配 —— 由 linger_iconStyle 决定三种风格
-    ///   - ring    : 自绘环形 NSImage（template，深浅自适应）—— 默认
-    ///   - classic : SF Symbol "clock"（旧样式）
-    ///   - timer   : SF Symbol "timer"
+    /// T12: 菜单栏图标 —— 唯一图标：用户自定义 LingerIcon.png（2026-08-06，去掉了 Ring/Classic/timer 三选一）。
+    /// 打包后从 bundle Resources 加载；开发裸跑回退项目 Support 目录；都没有则自绘 ring 兜底。
     private func buildMenuBarIcon() -> NSImage? {
-        switch currentIconStyle() {
-        case "ring":
-            return buildRingIcon()
-        case "classic":
-            return buildSFSymbolIcon("clock")
-        case "timer":
-            return buildSFSymbolIcon("timer")
-        default:
-            return buildRingIcon()
+        if let img = loadCustomIcon() {
+            return resizedMenuBarIcon(img)
         }
+        return buildRingIcon()
     }
 
-    /// 当前图标风格（缺省 ring，与 PRD §3.6.5 默认 Ring 一致）
-    private func currentIconStyle() -> String {
-        UserDefaults.standard.string(forKey: LingerTheme.UserDefaultsKey.iconStyle.rawValue) ?? "ring"
+    private func loadCustomIcon() -> NSImage? {
+        if let url = Bundle.main.url(forResource: "LingerIcon", withExtension: "png"),
+           let img = NSImage(contentsOf: url) {
+            return img
+        }
+        // 开发裸跑（无 bundle）：从项目 Support 目录加载
+        let devURL = URL(fileURLWithPath: "/Users/dawang/Downloads/vibecoding/Linger2.5/Support/LingerIcon.png")
+        if FileManager.default.fileExists(atPath: devURL.path),
+           let img = NSImage(contentsOf: devURL) {
+            return img
+        }
+        return nil
+    }
+
+    /// 缩放到菜单栏尺寸（16pt），彩色原样显示（用户自定义图标）
+    private func resizedMenuBarIcon(_ img: NSImage) -> NSImage {
+        let size = NSSize(width: 16, height: 16)
+        let out = NSImage(size: size)
+        out.lockFocus()
+        img.draw(in: NSRect(origin: .zero, size: size),
+                 from: NSRect(origin: .zero, size: img.size),
+                 operation: .copy, fraction: 1.0)
+        out.unlockFocus()
+        out.isTemplate = false
+        return out
     }
 
     /// 自绘环形图标（template）：外环描边 + 中心实心点，深浅模式自适应
@@ -145,20 +159,6 @@ final class MenuBarManager: NSObject {
         image.unlockFocus()
         image.isTemplate = true
         return image
-    }
-
-    /// SF Symbol 图标（template）
-    private func buildSFSymbolIcon(_ name: String) -> NSImage? {
-        guard let raw = NSImage(systemSymbolName: name, accessibilityDescription: "Linger") else { return nil }
-        raw.isTemplate = true
-        return raw
-    }
-
-    /// 图标风格切换后由设置窗口通知触发，重建菜单栏图标（T10 / T12）
-    private func refreshMenuBarIcon() {
-        if let icon = buildMenuBarIcon() {
-            statusItemView.setIcon(icon)
-        }
     }
 
     // MARK: - 配置
@@ -190,12 +190,6 @@ final class MenuBarManager: NSObject {
 
         NSLog("[Linger] status item configured (custom view, direct mouseUp)")
 
-        // T7/T10: 图标风格实时刷新（设置窗口改变 linger_iconStyle 时通知）
-        NotificationCenter.default.addObserver(
-            forName: Notification.Name("linger.iconStyleChanged"),
-            object: nil, queue: .main) { [weak self] _ in
-                self?.refreshMenuBarIcon()
-            }
     }
 
     // 右键菜单在 showRightClickMenu 中每次重建（实时更新日历权限状态）
@@ -817,8 +811,8 @@ final class MenuBarManager: NSObject {
         // 修复 1: 先过滤归零的 entry —— panelH 也要按过滤后的数量算
         //   之前的 bug: allDisplayEntries 包含归零的 entry, setEntries 内部又过滤
         //   导致 panelH 按 2 算, 实际画 1 个卡片, 多出的空间看起来像"空白条目"
+        // 2026-08-06: 没有计时也要显示悬浮窗（空态 + 底栏日历按钮），方便用户预约
         let entries = TimerManager.shared.allDisplayEntries.filter { $0.remainingTime > 0 }
-        guard !entries.isEmpty else { return }
 
         // 计算面板尺寸 & 位置（按三组分：running / paused / scheduled）
         let rCount = entries.filter { !$0.isScheduled && !$0.isPaused }.count
@@ -950,11 +944,8 @@ final class MenuBarManager: NSObject {
     private func refreshHoverList() {
         guard let view = hoverListView else { return }
         // 修复 1: 同样过滤归零 entry —— 保持与 showHoverList 一致
+        // 2026-08-06: 计时清空后保持空态悬浮窗（不再自动隐藏），用户仍可点日历预约
         let active = TimerManager.shared.allDisplayEntries.filter { $0.remainingTime > 0 }
-        if active.isEmpty {
-            hideHoverListNow()
-            return
-        }
         view.setEntries(active)
     }
 

@@ -184,16 +184,17 @@ final class TimerManager {
     // MARK: - 定时清理
 
     /// 纯函数（无副作用，便于单元测试）：按清理区间策略返回应被移除的已完成条目。
-    /// 策略：remainingTime<=0 且非运行 / 非暂停 / 非预约的条目即视为可清理；
+    /// 策略：remainingTime<=0 且非运行 / 非暂停 / 非预约的条目即视为可清理（2026-08-06 起
+    /// 不再要求 hasRecorded —— 未记录的已完成条目是看不到的僵尸，一并清掉，配合 Markdown 导出）。
     /// 仅 `weekly` / `monthly` 执行清理，`never` 或未知值返回空（不清理）。
     static func entriesToPrune(_ entries: [TimerEntry], interval: String) -> [TimerEntry] {
         guard interval == "weekly" || interval == "monthly" else { return [] }
-        return entries.filter { $0.remainingTime <= 0 && !$0.isRunning && !$0.isPaused && !$0.isScheduled && $0.hasRecorded }
+        return entries.filter { $0.remainingTime <= 0 && !$0.isRunning && !$0.isPaused && !$0.isScheduled }
     }
 
     /// v5 修复: 回收「已结束、未运行、未暂停」的僵尸条目 —— 它们在悬停面板里被
     ///   `remainingTime > 0` 过滤掉，用户看不见，却一直占用 maxConcurrentEntries 名额。
-    ///   与 entriesToPrune 的区别: 这里不要求 hasRecorded，只在触顶时调用。
+    ///   （2026-08-06 起 entriesToPrune 同样不再要求 hasRecorded，此处仅限触顶时调用。）
     ///
     /// v5 修复 (QA 回归 BUG-2): 谓词去掉 `!$0.isScheduled`。
     ///   `TimerEntry.isScheduled` 是 `let`，预约跑完后依旧为 true（activateScheduled 不会清它），
@@ -220,6 +221,12 @@ final class TimerManager {
             DispatchQueue.main.sync {
                 let before = self.entries.count
                 let pruned = TimerManager.entriesToPrune(self.entries, interval: interval)
+                // 用户开启「导出记录（Markdown）」：清理前先归档为 md（按天去重追加）
+                let exportOn = UserDefaults.standard.bool(
+                    forKey: LingerTheme.UserDefaultsKey.exportMarkdown.rawValue)
+                if exportOn && !pruned.isEmpty {
+                    RecordExporter.export(pruned)
+                }
                 let ids = Set(pruned.map { $0.id })
                 self.entries.removeAll { ids.contains($0.id) }
                 if self.entries.count != before {

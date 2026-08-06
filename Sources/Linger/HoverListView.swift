@@ -6,8 +6,8 @@ private enum HoverDesign {
     // 颜色：暗色毛玻璃（对齐 hover-list.html glass-panel），暖橙主色（仅 running）
     static let panelBg = NSColor(calibratedRed: 24/255.0, green: 24/255.0, blue: 28/255.0, alpha: 0.72)
     static let rowHover = NSColor(calibratedWhite: 1.0, alpha: 0.06)       // hover 行淡高亮
-    static let rowDivider = NSColor(calibratedWhite: 1.0, alpha: 0.10)     // 行间 1px 分隔线
-    static let groupSeparator = NSColor(calibratedWhite: 1.0, alpha: 0.10)
+    static let rowDivider = NSColor(calibratedWhite: 1.0, alpha: 0.07)     // 行间 1px 分隔线（弱，突出分组线）
+    static let groupSeparator = NSColor(calibratedWhite: 1.0, alpha: 0.14)  // 分组分隔线（略强，层级分明）
     static let bottomSeparator = NSColor(calibratedWhite: 1.0, alpha: 0.10)
     static let progressTrack = NSColor(calibratedWhite: 1.0, alpha: 0.06)  // 原型 timer-progress
 
@@ -30,7 +30,7 @@ private enum HoverDesign {
     static let topPadding: CGFloat = 8
     static let bottomAreaHeight: CGFloat = 36
     static let bottomPadding: CGFloat = 8
-    static let groupSeparatorHeight: CGFloat = 14
+    static let groupSeparatorHeight: CGFloat = 16
 
     // 字体（对齐原型：时间 13px 等宽 semibold、标题 13px）
     static func timeFontSize() -> CGFloat {
@@ -455,7 +455,6 @@ final class HoverListView: NSView {
                 self?.toggleInlineSchedule()
             }
             addSubview(calendarButton)
-            NSLog("LingerDiag calendar button installed")
         }
         let topY = bounds.height - HoverDesign.bottomAreaHeight - HoverDesign.bottomPadding + 4
         let btnSize: CGFloat = 28
@@ -639,6 +638,7 @@ final class HoverListView: NSView {
 
         if running.isEmpty && paused.isEmpty && scheduled.isEmpty && removedEntries.isEmpty {
             drawEmptyHint()
+            drawBottomArea()   // 空态也保留底栏分隔线 + 日历按钮（预约入口）
             return
         }
 
@@ -675,8 +675,6 @@ final class HoverListView: NSView {
 
     private func drawSeparatorsWithAnimation() {
         let p = animProgress
-        let sepX = HoverDesign.cardPaddingX + 4
-        let sepW = bounds.width - HoverDesign.cardPaddingX * 2 - 8
 
         // 新分隔线（插值位置或淡入）
         var sepIndex = 0
@@ -696,8 +694,7 @@ final class HoverListView: NSView {
                 drawY = targetY
                 alpha = 1.0
             }
-            HoverDesign.groupSeparator.withAlphaComponent(alpha).setFill()
-            NSRect(x: sepX, y: drawY, width: sepW, height: 1).fill()
+            drawGroupSeparator(at: drawY, alpha: alpha)
             y += HoverDesign.groupSeparatorHeight
             sepIndex += 1
         }
@@ -716,19 +713,24 @@ final class HoverListView: NSView {
                 drawY = targetY
                 alpha = 1.0
             }
-            HoverDesign.groupSeparator.withAlphaComponent(alpha).setFill()
-            NSRect(x: sepX, y: drawY, width: sepW, height: 1).fill()
+            drawGroupSeparator(at: drawY, alpha: alpha)
             sepIndex += 1
         }
 
         // 旧分隔线淡出（超出新分隔线数量的部分）
         if isAnimating && sepIndex < oldSeparatorYs.count {
             for i in sepIndex..<oldSeparatorYs.count {
-                let alpha = 1.0 - p
-                HoverDesign.groupSeparator.withAlphaComponent(alpha).setFill()
-                NSRect(x: sepX, y: oldSeparatorYs[i], width: sepW, height: 1).fill()
+                drawGroupSeparator(at: oldSeparatorYs[i], alpha: 1.0 - p)
             }
         }
+    }
+
+    /// 统一的分组分隔线：与行分隔线同内缩（cardPaddingX），略强于行线（层级分明）
+    private func drawGroupSeparator(at y: CGFloat, alpha: CGFloat) {
+        let x = HoverDesign.cardPaddingX
+        let w = bounds.width - HoverDesign.cardPaddingX * 2
+        HoverDesign.groupSeparator.withAlphaComponent(alpha).setFill()
+        NSRect(x: x, y: y, width: w, height: 1).fill()
     }
 
     private func drawCardInterpolated(entry: TimerEntry, targetY: CGFloat, drawDivider: Bool = true) {
@@ -766,10 +768,12 @@ final class HoverListView: NSView {
             .foregroundColor: HoverDesign.textSecondary
         ]
         let size = (text as NSString).size(withAttributes: attr)
-        let rect = NSRect(x: (bounds.width - size.width) / 2,
-                          y: (bounds.height - size.height) / 2,
-                          width: size.width,
-                          height: size.height)
+        // 垂直居中在底栏上方的内容区
+        let bottomTop = bounds.height - HoverDesign.bottomAreaHeight - HoverDesign.bottomPadding
+        let centerY = (bounds.height - size.height) / 2
+        let y = min(centerY, bottomTop / 2)
+        let rect = NSRect(x: (bounds.width - size.width) / 2, y: y,
+                          width: size.width, height: size.height)
         (text as NSString).draw(in: rect, withAttributes: attr)
     }
 
@@ -1143,13 +1147,6 @@ final class HoverListView: NSView {
             return
         }
 
-        // 诊断：点击落在预约编辑区但没被任何子控件命中 → 说明编辑区 hitTest 失效
-        if let sv = scheduleView, sv.frame.contains(point) {
-            let hit = sv.hitTest(sv.convert(point, from: self))
-            NSLog("LingerDiag schedule click fell through: point=%@ svFrame=%@ hit=%@",
-                  NSStringFromPoint(point), NSStringFromRect(sv.frame),
-                  hit.map { String(describing: type(of: $0)) } ?? "nil")
-        }
     }
 
     /// 根据 entry 在当前列表中的位置计算卡片 rect (三组版本)
@@ -1213,8 +1210,6 @@ final class HoverListView: NSView {
         // makeKeyAndOrderFront 比 makeKey 更可靠：显式 orderFront 让窗口真正成为 key window
         NSApp.activate(ignoringOtherApps: true)
         window?.makeKeyAndOrderFront(nil)
-        NSLog("LingerDiag schedule expand: view=%@ size=%.0fx%.0f",
-              String(describing: v), v.bounds.width, v.bounds.height)
 
         // reduced-motion：跳过动画直接设最终高度 + 显示内容
         if NSWorkspace.shared.accessibilityDisplayShouldReduceMotion {
@@ -1248,9 +1243,6 @@ final class HoverListView: NSView {
         let startH = sv.frame.height
         let start = CACurrentMediaTime()
         let duration: CFTimeInterval = 0.38
-        NSLog("LingerDiag schedule height anim: start=%.1f target=%.1f superH=%@",
-              startH, h,
-              sv.superview.map { "\($0.bounds.height)" } ?? "nil")
         let timer = Timer(timeInterval: 1.0 / 60.0, repeats: true) { [weak self, weak sv] t in
             guard let self, let sv else { t.invalidate(); return }
             let p = CGFloat(min(1, (CACurrentMediaTime() - start) / duration))
@@ -1273,9 +1265,6 @@ final class HoverListView: NSView {
                 // 动画结束再确认一次 key window（保险）
                 NSApp.activate(ignoringOtherApps: true)
                 sv.window?.makeKeyAndOrderFront(nil)
-                NSLog("LingerDiag schedule height anim done: frame=%@ contentContainer.bounds=%@",
-                      NSStringFromRect(sv.frame), NSStringFromRect(sv.contentContainerBounds()))
-                sv.logEditorState()
             }
         }
         RunLoop.main.add(timer, forMode: .common)
@@ -1305,7 +1294,6 @@ final class HoverListView: NSView {
         let targetH: CGFloat = 0
         let start = CACurrentMediaTime()
         let duration: CFTimeInterval = 0.38
-        NSLog("LingerDiag schedule close: startH=%.1f targetH=%.1f", startH, targetH)
         let timer = Timer(timeInterval: 1.0 / 60.0, repeats: true) { [weak self, weak sv] t in
             guard let self, let sv else { t.invalidate(); return }
             let p = CGFloat(min(1, (CACurrentMediaTime() - start) / duration))
@@ -1321,7 +1309,6 @@ final class HoverListView: NSView {
                 sv.removeFromSuperview()
                 self.scheduleView = nil
                 self.scheduleHeightAnimTimer = nil
-                NSLog("LingerDiag schedule close done: removed")
             }
         }
         RunLoop.main.add(timer, forMode: .common)

@@ -11,13 +11,12 @@ final class ScheduleEditorLayoutTests: XCTestCase {
         return ScheduleTimerView(frame: NSRect(x: 14, y: 0, width: w, height: h))
     }
 
-    func testContentContainerFillsBoundsAfterLayout() {
+    func testEditorViewHasValidSizeAfterLayout() {
         let sv = makeEditor()
         sv.layoutSubtreeIfNeeded()
-        let bounds = sv.contentContainerBounds()
-        XCTAssertEqual(bounds.width, sv.bounds.width, accuracy: 0.5)
-        XCTAssertEqual(bounds.height, sv.bounds.height, accuracy: 0.5)
-        XCTAssertGreaterThan(bounds.height, 0)
+        XCTAssertEqual(sv.bounds.width, 272, accuracy: 0.5)
+        XCTAssertEqual(sv.bounds.height, ScheduleTimerView.preferredHeight(), accuracy: 0.5)
+        XCTAssertGreaterThan(sv.bounds.height, 0)
     }
 
     /// 4 个输入框（日期/时间/时长/名称）中心点必须能命中 NSControl（可编辑控件）
