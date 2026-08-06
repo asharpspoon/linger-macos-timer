@@ -7,6 +7,9 @@ import Carbon.HIToolbox   // RegisterEventHotKey：拖拽期全局捕获 Esc（�
 
 final class MenuBarManager: NSObject {
 
+    /// 诊断用构建标记：每次改右键/授权逻辑时递增，日志一眼确认跑的是哪次构建
+    static let buildStamp = "menu-v3-20260806"
+
     private let statusItem: NSStatusItem
     private let statusItemView = LingerStatusItemView()
     private let log = OSLog(subsystem: "com.linger.menubar", category: "MenuBarManager")
@@ -72,13 +75,18 @@ final class MenuBarManager: NSObject {
     override init() {
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
         rightClickMenu = NSMenu()
+        // 2026-08-06 关键修复：NSMenu 默认 autoenablesItems=true，弹出时会按
+        // "target 是否响应 action" 自动重新启用所有菜单项——覆盖我们手动设置的
+        // isEnabled=false，导致「已获取授权」标题正确但依然可点（前 3 轮未根治的真凶）。
+        // 关掉自动启用，让手动 isEnabled 成为唯一权威。
+        rightClickMenu.autoenablesItems = false
         super.init()
         statusItem.view = statusItemView
         configureStatusItemStep2()
         // 右键菜单在 showRightClickMenu 中每次重建（实时更新日历权限状态）
         // Step 3 修正：接入 timerStateChangedNotification 监听 — 菜单栏实时同步倒计时
         startObserving()
-        NSLog("[Linger] MenuBarManager initialized (Step 5: hover list + Step 4 spring/floater)")
+        NSLog("[Linger] MenuBarManager initialized build=%@ (Step 5: hover list + Step 4 spring/floater)", Self.buildStamp)
         // Step 4 v3: 在 init 之外启动 watch —— 用 DispatchQueue.main.async 推迟到
         //   applicationDidFinishLaunching 返回后由主 RunLoop 处理。
         //   此时 AppEntry 已提前访问过 TimerManager.shared，不会再触发 .shared 初始化。
@@ -300,6 +308,17 @@ final class MenuBarManager: NSObject {
         let calAuth = CalendarManager.shared.hasAccess
         // 用 hasAccess（isAuthorized || grantedByRequest）兜底裸 bundle 场景：
         // isAuthorized 在无 bundle 裸跑时恒 false，grantedByRequest 才是真实状态（已持久化）
+        // 诊断日志：右键一次即可确认运行构建 + 授权状态 + 菜单项最终状态
+        let statusRaw = CalendarManager.shared.currentAuthorizationStatus().rawValue
+        let grantedRaw = UserDefaults.standard.bool(
+            forKey: "linger_calendarGrantedByRequest") ? 1 : 0
+        os_log("RIGHTCLICK build=%{public}@ bundleID=%{public}@ status=%d granted=%d hasAccess=%d title=%{public}@ enabled=%d",
+               log: log, type: .info,
+               Self.buildStamp,
+               Bundle.main.bundleIdentifier ?? "nil",
+               statusRaw, grantedRaw, calAuth ? 1 : 0,
+               calAuth ? "已获取授权" : "系统授权",
+               calAuth ? 0 : 1)
         let calItem = NSMenuItem(title: calAuth ? "已获取授权" : "系统授权",
                                  action: #selector(openCalendarSettings(_:)),
                                  keyEquivalent: "")
