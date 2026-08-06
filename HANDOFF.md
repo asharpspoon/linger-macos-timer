@@ -14,6 +14,16 @@ s=d² 曲线 + 整分钟吸附），松手即开始计时。AppKit 原生、暗�
 > 每次交接/里程碑后在此**顶部**追加一段（最新在上），格式见 `.agents/skills/linger-handoff/`。
 > 上次交接见 git 历史；当前状态以「最新进度」为准。
 
+- **2026-08-06 · 弹窗内输入的日程标题未写入日历（Codex 修复）**
+  - 现象：auto 写入方式下，用户在完成弹窗输入标题后，日历里没有这个标题
+  - 根因：`CalendarRecorder.recordFromBanner` 对 auto 模式直接跳过（以为已完成自动写入）—— 实际 auto 在归零时用**默认标题**写了事件，用户输入的新标题被丢弃
+  - 修复：
+    1. `CalendarManager.updateEventTitle(eventIdentifier:newTitle:)`：更新已有事件的标题
+    2. `recordFromBanner`：用户显式输入标题 → 有已有事件则**更新标题**（覆盖 auto 默认标题）；无事件（ask/manual）才新建；并同步 `entry.predefinedTitle`
+    3. 完成弹窗输入框开始编辑时**暂停 8s 自动消失**，结束编辑重新计时（避免打字被打断丢输入）
+  - 编译 17/17 绿；bundle 已重建
+  - 待验收：auto 模式下跑一个计时 → 弹窗里输入标题 → 日历事件标题应变成输入的标题
+
 - **2026-08-06 · 倒计时完成通知：自绘玻璃横幅（Codex）**
   - 本次完成（`swift build` 通过，`swift test` 17/17 绿）：
     1. **新增 `CompletionBanner.swift`**：完成弹窗（强提醒）—— 300pt 右上角毛玻璃横幅，替换系统通知

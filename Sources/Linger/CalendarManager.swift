@@ -169,6 +169,28 @@ final class CalendarManager {
                                   forKey: LingerTheme.UserDefaultsKey.recordedCalendarEntries.rawValue)
     }
 
+    /// 更新已写入日历事件的标题（完成弹窗内输入日程标题时，覆盖 auto 写入的默认标题）
+    func updateEventTitle(eventIdentifier: String, newTitle: String) -> Bool {
+        guard isAuthorized || grantedByRequest else {
+            os_log("Update event title skipped: calendar not authorized", log: log, type: .error)
+            return false
+        }
+        guard let event = store.event(withIdentifier: eventIdentifier) else {
+            os_log("Update event title: event %{public}@ not found", log: log, type: .info, eventIdentifier)
+            return false
+        }
+        event.title = newTitle
+        do {
+            try store.save(event, span: .thisEvent, commit: true)
+            os_log("Calendar event title updated → %{public}@", log: log, type: .info, newTitle)
+            return true
+        } catch {
+            os_log("Failed to update event title: %{public}@",
+                   log: log, type: .error, error.localizedDescription)
+            return false
+        }
+    }
+
     /// 按 eventIdentifier 删除日历事件（预约删除时同步清理；未授权/找不到返回 false）
     func deleteEvent(eventIdentifier: String) -> Bool {
         guard isAuthorized || grantedByRequest else {

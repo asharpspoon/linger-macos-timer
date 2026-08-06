@@ -120,25 +120,43 @@ final class CalendarRecorder {
     /// 完成弹窗的「确认/输入日程」调用：auto 已自动写则跳过；ask/manual 写并标记。
     /// title 传 nil 表示用条目自带标题（或默认标题）。
     func recordFromBanner(_ entry: TimerEntry, title: String?) {
+        let manager = CalendarManager.shared
+        let typed = (title ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+
+        // 用户显式输入了标题 → 无论 auto/ask/manual 都保证日历里用的是这个标题：
+        // auto 已完成写入（默认标题）→ 更新已有事件的标题；否则按需写入。
+        if !typed.isEmpty {
+            entry.predefinedTitle = typed
+            if let eventId = entry.calendarEventId {
+                if manager.updateEventTitle(eventIdentifier: eventId, newTitle: typed) {
+                    os_log("Banner typed title applied to existing event: %{public}@", log: log, type: .info, typed)
+                } else {
+                    os_log("Banner typed title update failed (event not found / no auth)", log: log, type: .info)
+                }
+                return
+            }
+            // 没有已有事件（ask/manual 尚未写）→ 走正常写入
+        }
+
         guard !entry.hasRecorded else {
             os_log("Banner confirm: already recorded, skip", log: log, type: .debug)
             return
         }
-        if CalendarManager.shared.writeMode == .auto {
+        if manager.writeMode == .auto {
             os_log("Banner confirm in auto mode: already auto-written, skip", log: log, type: .info)
             return
         }
         let resolved: String
-        if let title, !title.isEmpty {
-            resolved = title
+        if !typed.isEmpty {
+            resolved = typed
         } else if let t = entry.predefinedTitle, !t.isEmpty {
             resolved = t
         } else {
-            resolved = CalendarManager.shared.defaultTitle
+            resolved = manager.defaultTitle
         }
         let start = resolveStart(entry)
         let end = resolveEnd(entry, start: start)
-        if let eventId = CalendarManager.shared.writeEventOnFinish(title: resolved, start: start, end: end) {
+        if let eventId = manager.writeEventOnFinish(title: resolved, start: start, end: end) {
             markRecorded(entry, eventId: eventId)
             os_log("Banner confirm record written: %{public}@", log: log, type: .info, resolved)
         }

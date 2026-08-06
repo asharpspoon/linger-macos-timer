@@ -115,6 +115,13 @@ final class CompletionBannerWindow: NSWindow {
                                             guard let self else { return }
                                             CalendarRecorder.shared.recordFromBanner(entry, title: title)
                                             self.manager?.dismiss(self)
+                                        },
+                                        onBeginEditing: { [weak self] in
+                                            // 输入日程标题时暂停自动消失，避免被打断
+                                            self?.dismissWorkItem?.cancel()
+                                        },
+                                        onEndEditing: { [weak self] in
+                                            self?.scheduleAutoDismiss()
                                         })
         contentView = view
         setContentSize(frame.size)
@@ -173,6 +180,8 @@ final class CompletionBannerView: NSView {
     private let onClose: () -> Void
     private let onRepeat: () -> Void
     private let onConfirm: (String?) -> Void
+    private let onBeginEditing: () -> Void
+    private let onEndEditing: () -> Void
 
     private let titleField: NSTextField
     private let timeLabel: NSTextField
@@ -187,11 +196,15 @@ final class CompletionBannerView: NSView {
     init(entry: TimerEntry,
          onClose: @escaping () -> Void,
          onRepeat: @escaping () -> Void,
-         onConfirm: @escaping (String?) -> Void) {
+         onConfirm: @escaping (String?) -> Void,
+         onBeginEditing: @escaping () -> Void = {},
+         onEndEditing: @escaping () -> Void = {}) {
         self.entry = entry
         self.onClose = onClose
         self.onRepeat = onRepeat
         self.onConfirm = onConfirm
+        self.onBeginEditing = onBeginEditing
+        self.onEndEditing = onEndEditing
 
         let hasTitle = !(entry.predefinedTitle ?? "").isEmpty
 
@@ -438,6 +451,14 @@ private final class BannerIconButton: NSButton {
 // MARK: - 输入框回车提交
 
 extension CompletionBannerView: NSTextFieldDelegate {
+    func controlTextDidBeginEditing(_ obj: Notification) {
+        onBeginEditing()
+    }
+
+    func controlTextDidEndEditing(_ obj: Notification) {
+        onEndEditing()
+    }
+
     func control(_ control: NSControl, textView: NSTextView, doCommandBy commandSelector: Selector) -> Bool {
         if commandSelector == #selector(NSResponder.insertNewline(_:)) {
             confirmTapped(nil)
