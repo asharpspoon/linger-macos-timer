@@ -36,9 +36,31 @@ final class CalendarManager {
         return WriteMode(rawValue: raw) ?? .auto
     }
 
+    /// 用户是否显式设置过写入方式（true 后不再做默认值迁移）
+    private static let explicitWriteModeKey = "linger_calendarWriteModeExplicit"
+
     func setWriteMode(_ mode: WriteMode) {
-        UserDefaults.standard.set(mode.rawValue,
-                                  forKey: LingerTheme.UserDefaultsKey.calendarWriteMode.rawValue)
+        let defaults = UserDefaults.standard
+        defaults.set(mode.rawValue,
+                     forKey: LingerTheme.UserDefaultsKey.calendarWriteMode.rawValue)
+        defaults.set(true, forKey: Self.explicitWriteModeKey)
+    }
+
+    /// 2026-08-06：写入方式默认由 manual 改为 auto（用户需求：拖拽计时完成即记入日程）。
+    /// 老版本把默认 manual 持久化进了 UserDefaults，导致新默认不生效（实机日志确认
+    /// 「Manual write mode: completion record skipped」）。
+    /// 一次性迁移：只要用户从未显式设置过（linger_calendarWriteModeExplicit=false），
+    /// 就把残留的 manual 升为 auto；显式选过手动/询问的用户不受影响。
+    private func migrateLegacyWriteModeDefault() {
+        let defaults = UserDefaults.standard
+        guard !defaults.bool(forKey: Self.explicitWriteModeKey) else { return }
+        let raw = defaults.string(forKey: LingerTheme.UserDefaultsKey.calendarWriteMode.rawValue)
+        if raw == WriteMode.manual.rawValue {
+            defaults.set(WriteMode.auto.rawValue,
+                         forKey: LingerTheme.UserDefaultsKey.calendarWriteMode.rawValue)
+            os_log("Migrated legacy writeMode manual -> auto (new default)", log: log, type: .info)
+        }
+        defaults.set(true, forKey: Self.explicitWriteModeKey)
     }
 
     /// 默认标题（持久化于 UserDefaults，缺省 "记录一段专注"）
@@ -70,6 +92,7 @@ final class CalendarManager {
 
     private init() {
         loadRecordedEntries()
+        migrateLegacyWriteModeDefault()
     }
 
     // MARK: - 已记录追踪

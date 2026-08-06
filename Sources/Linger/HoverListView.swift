@@ -1239,9 +1239,12 @@ final class HoverListView: NSView {
             if p >= 1 {
                 t.invalidate()
                 self.scheduleHeightAnimTimer = nil
-                // 强制解析子树 autolayout，保证胶囊/输入框 frame 正确、可命中
-                sv.layoutSubtreeIfNeeded()
-                sv.window?.contentView?.layoutSubtreeIfNeeded()
+                // 延迟到当前 layout pass 结束后再强制解析子树（直接调用会触发
+                // "layoutSubtreeIfNeeded on a view already being laid out" 警告）
+                DispatchQueue.main.async { [weak sv] in
+                    sv?.layoutSubtreeIfNeeded()
+                    sv?.window?.contentView?.layoutSubtreeIfNeeded()
+                }
                 // 动画结束再确认一次 key window（保险）
                 NSApp.activate(ignoringOtherApps: true)
                 sv.window?.makeKeyAndOrderFront(nil)

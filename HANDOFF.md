@@ -14,6 +14,32 @@ s=d² 曲线 + 整分钟吸附），松手即开始计时。AppKit 原生、暗�
 > 每次交接/里程碑后在此**顶部**追加一段（最新在上），格式见 `.agents/skills/linger-handoff/`。
 > 上次交接见 git 历史；当前状态以「最新进度」为准。
 
+- **2026-08-06 · 日历记录实机修复（用户实测：1 分钟计时无事件）**
+  - 现象：日志 `Manual write mode: completion record skipped (user records manually)` —— 记录逻辑已跑，但写入方式还是老的 manual
+  - 根因：老版本把默认 `manual` 持久化进 `linger_calendarWriteMode`，新默认 auto 对老用户不生效
+  - 修复：`CalendarManager` 一次性迁移 —— 只要用户从未显式设置过（`linger_calendarWriteModeExplicit=false`），残留 manual → auto；`setWriteMode`（设置下拉）置 explicit=true 后不再迁移
+  - 顺手修：`animateScheduleViewHeight` 完成处 `layoutSubtreeIfNeeded` 直接调用触发 "already being laid out" 警告 → 改 `DispatchQueue.main.async` 延迟到 layout pass 结束后
+  - 编译 15/15 绿；下次启动即迁移
+
+- **2026-08-06 · 计时→macOS 日历记录（用户「重要功能」）**
+  - 本次完成（`swift build` 通过，`swift test` 15/15 绿）：
+    1. **拖拽发起的计时完成时记入日程**：新增 `CalendarRecorder`（独立协调器，订阅 `timerDidFinishNotification`），按「写入方式」编排：
+       - auto（**默认已从 manual 改为 auto**）：完成即自动写入（无标题用默认标题，5 分钟向上取整）
+       - ask：通知横幅可用时由横幅 ✓/✎ 承担询问；横幅不可用（通知关 / 无 bundle / 权限被拒）时应用内弹窗询问（可编辑标题）
+       - manual：保持既有手动路径（hover 标题编辑 / 横幅动作）
+       - 与通知开关解耦：日历记录不再被「计时完成时通知」关闭 / 通知权限影响（原实现把 auto 写入放在 NotificationManager 且被 notifyOnComplete guard 挡住，是 bug）
+    2. **预约计时创建即记入日程**：`createScheduledTimer` 确认后按「记录的日期-时间-时长」精确写入（不 5 分钟取整），标题用日程名称或默认标题；未授权时引导开权限；已记录的完成时不再重复写
+    3. **防重复**：横幅 userInfo 增加 entryID，Confirm/✎ 写入前查 `entry.hasRecorded` 跳过；CalendarRecorder 各处先查 hasRecorded
+  - 未完成/卡点：**实机验收**（需真机 EventKit）：拖一个计时跑完 → 看「Linger」日历有没有事件；预约一个未来时间 → 立即出现在日历；设置切换写入方式再验证
+  - 下一步：验收 → 拍板通知横幅方向（自定义玻璃 vs 系统，现仍系统通知）
+  - 如何验证：`./script/build_and_run.sh` → 拖拽计时到归零 → 打开「日历」app 看 Linger 日历事件（标题=预设/默认标题，时间=起止 5 分钟取整）；hover 列表点日历 → 创建预约 → 日历立即出现未来事件；设置 → 日历 → 写入方式切「每次询问」→ 再完成一个计时应弹询问
+  - 给下一位：
+    - **关键决策**：日历记录独立成 `CalendarRecorder`（不塞进 NotificationManager），避免与通知开关/通知权限耦合
+    - **关键决策**：预约 = 用户明确安排 → 创建即记录（精确时间）；拖拽 = 完成时记录（5 分钟取整，PRD §3.5.3）
+    - **关键决策**：ask 模式优先用系统横幅承担询问；仅横幅不可用时应用内 NSAlert（accessory 应用 runModal 可用）
+    - 默认写入方式改为 auto（`CalendarManager.writeMode`），设置页可切回每次询问/手动
+    - `requestPermissionIfNeeded` 会弹「打开系统设置」引导；.accessory 模式下 TCC 弹窗不可靠，这是既有模式
+
 - **2026-08-06 上午 · 预约编辑区 5 项反馈（Codex）**
   - 本次完成（`swift build` 通过，`swift test` 15/15 绿）：
     1. **4 个输入框等宽**：行1/行2 改 `distribution = .fillEqually`（日期/时间/时长/日程宽度一致）
@@ -140,6 +166,8 @@ Linger2.5/
 
 ## 最新进度（2026-08-06 增补）
 
+- [x] **计时→macOS 日历记录**（2026-08-06，重要功能）：新增 CalendarRecorder 协调器；拖拽计时完成按写入方式记录（默认 auto，已从 manual 改）；预约计时创建即按日期-时间-时长记录；横幅 Confirm/✎ 防重复；日历记录与通知开关解耦
+- [ ] **日历记录实机验收**（写入方式已做 manual→auto 一次性迁移）：跑 `./script/build_and_run.sh` → 拖拽计时归零 / 创建预约 → 打开日历 app 看「Linger」日历事件
 - [x] **预约编辑区 5 项反馈**（2026-08-06）：4 输入框等宽（fillEqually）；时间恒 24h；日程/时长输入框点击加固（HoverListWindow.sendEvent 强制 key + 动画后 layoutSubtreeIfNeeded + mouseDown 诊断）；日期格式地区设置（通用页选择器，默认 ISO sv_SE）；新增 ScheduleEditorLayoutTests 3 个
 - [ ] **预约编辑区输入实机验收**：跑 `./script/build_and_run.sh` 确认 4 输入框可点击输入，看 LingerDiag 日志，通过后清诊断日志
 
