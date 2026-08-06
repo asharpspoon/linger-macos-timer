@@ -27,6 +27,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             NSApp.setActivationPolicy(.accessory)
         }
 
+        // 必须建立应用主菜单（含 Edit 菜单的标准编辑命令）。
+        // macOS 的 Cmd+X/C/V/Z/Y/A 派发依赖 mainMenu 中的 Edit 菜单项 → responder chain。
+        // .accessory app 不显示菜单栏，但菜单项必须存在，否则 NSTextField 即使是
+        // firstResponder 也收不到 paste: 等 action（Cmd+V 失效）。
+        // 这是菜单栏 app 的经典坑，影响 hover 列表标题编辑、预约编辑区日程名称等所有输入框。
+        setUpMainMenu()
+
         // 提前初始化 TimerManager（避免首次 addTimer 时 .shared init 阻塞主线程）
         _ = TimerManager.shared
 
@@ -37,6 +44,30 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         menuBarManager = MenuBarManager()
         NSLog("[Linger] MenuBarManager created")
+    }
+
+    /// 建立最小主菜单（含 Edit 菜单标准编辑命令），让 .accessory app 的 NSTextField
+    /// 能响应 Cmd+X/C/V/Z/Y/A。菜单栏不显示但菜单项必须存在以驱动系统快捷键派发。
+    private func setUpMainMenu() {
+        let mainMenu = NSMenu()
+
+        // Edit 菜单（关键）：cut/copy/paste/selectAll/undo/redo
+        let editMenuItem = NSMenuItem(title: "编辑", action: nil, keyEquivalent: "")
+        let editMenu = NSMenu(title: "编辑")
+        editMenu.addItem(withTitle: "撤销", action: Selector(("undo:")), keyEquivalent: "z")
+        let redoItem = NSMenuItem(title: "重做", action: Selector(("redo:")), keyEquivalent: "z")
+        redoItem.keyEquivalentModifierMask = [.command, .shift]
+        editMenu.addItem(redoItem)
+        editMenu.addItem(NSMenuItem.separator())
+        editMenu.addItem(withTitle: "剪切", action: #selector(NSText.cut(_:)), keyEquivalent: "x")
+        editMenu.addItem(withTitle: "复制", action: #selector(NSText.copy(_:)), keyEquivalent: "c")
+        editMenu.addItem(withTitle: "粘贴", action: #selector(NSText.paste(_:)), keyEquivalent: "v")
+        editMenu.addItem(withTitle: "全选", action: #selector(NSText.selectAll(_:)), keyEquivalent: "a")
+        editMenuItem.submenu = editMenu
+        mainMenu.addItem(editMenuItem)
+
+        NSApp.mainMenu = mainMenu
+        NSLog("[Linger] mainMenu set up with Edit menu (Cmd+X/C/V/Z/Y/A enabled)")
     }
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
