@@ -752,10 +752,7 @@ final class MenuBarManager: NSObject {
         // 取消之前的延迟关闭（如果鼠标快速进出又进）
         cancelScheduledHoverHide()
 
-        // 无计时器 → 不弹
-        guard TimerManager.shared.hasActiveTimers else {
-            return
-        }
+        // 2026-08-06: 无计时也弹（空态面板 + 底栏日历按钮），方便直接预约
 
         // 已有面板 → 仅取消延迟关闭 + 标记锁定
         if hoverListWindow != nil {
