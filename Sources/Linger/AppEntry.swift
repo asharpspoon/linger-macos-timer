@@ -41,6 +41,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         _ = NotificationManager.shared
         _ = CompletionBannerManager.shared
         _ = CalendarRecorder.shared
+        // 启动即初始化 CalendarManager：让授权状态（init 日志 + probe + 历史写入证据迁移）
+        // 在第一次右键前就绪，右键菜单直接读到正确状态
+        _ = CalendarManager.shared
 
         menuBarManager = MenuBarManager()
         NSLog("[Linger] MenuBarManager created")

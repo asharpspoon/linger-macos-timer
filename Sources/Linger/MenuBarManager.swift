@@ -307,6 +307,15 @@ final class MenuBarManager: NSObject {
         calItem.isEnabled = !calAuth
         rightClickMenu.addItem(calItem)
 
+        // 上线规范（2026-08-06 用户补充）：保留「退出」入口，快捷键 Command+Q
+        rightClickMenu.addItem(NSMenuItem.separator())
+
+        let quitItem = NSMenuItem(title: "退出",
+                                  action: #selector(quitApp(_:)),
+                                  keyEquivalent: "q")
+        quitItem.target = self
+        rightClickMenu.addItem(quitItem)
+
         let location = NSPoint(x: 0, y: statusItemView.bounds.height)
         rightClickMenu.popUp(positioning: nil, at: location, in: statusItemView)
     }

@@ -113,7 +113,17 @@ final class CalendarManager {
     private init() {
         loadRecordedEntries()
         migrateLegacyWriteModeDefault()
-        os_log("CalendarManager init: bundleID=%@ status=%d grantedByRequest=%d",
+        // 2026-08-06 加固：TCC 归因漂移时 authorizationStatus(for:) 恒返回 notDetermined
+        // （ad-hoc 签名每次重建变化，TCC 可能不再把授权记录归因到新二进制），
+        // 但 recordedCalendarEntries 非空 = 本 app 曾成功写入过日历 = 实际已授权。
+        // 此时用历史写入证据把 grantedByRequest 补为 true，避免"已授权但菜单仍可点"。
+        if currentAuthorizationStatus() == .notDetermined
+            && !grantedByRequest && !recordedEntryIDs.isEmpty {
+            grantedByRequest = true
+            os_log("CalendarManager: inferred granted from %d recorded entries (status notDetermined)",
+                   log: log, type: .info, recordedEntryIDs.count)
+        }
+        os_log("CalendarManager init: bundleID=%{public}@ status=%d grantedByRequest=%d",
                log: log, type: .info,
                Bundle.main.bundleIdentifier ?? "nil",
                currentAuthorizationStatus().rawValue,
