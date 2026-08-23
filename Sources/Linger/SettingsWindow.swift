@@ -225,10 +225,12 @@ final class SettingsWindow: NSWindow {
             panelContainer.subviews.forEach { $0.removeFromSuperview() }
             panel.translatesAutoresizingMaskIntoConstraints = false
             panelContainer.addSubview(panel)
+            // 2026-08-23：所有 sheet 统一内容宽度 520 + 水平居中（含关于页），
+            // 避免关于页（独立构建不走 makePanel）宽度与其他 sheet 不一致。
             NSLayoutConstraint.activate([
                 panel.topAnchor.constraint(equalTo: panelContainer.topAnchor, constant: contentVSpacing),
-                panel.leadingAnchor.constraint(equalTo: panelContainer.leadingAnchor, constant: contentHPadding),
-                panel.trailingAnchor.constraint(equalTo: panelContainer.trailingAnchor, constant: -contentHPadding),
+                panel.widthAnchor.constraint(equalToConstant: 520),
+                panel.centerXAnchor.constraint(equalTo: panelContainer.centerXAnchor),
                 panel.bottomAnchor.constraint(lessThanOrEqualTo: panelContainer.bottomAnchor, constant: -contentVSpacing)
             ])
             panel.alphaValue = alpha
@@ -432,9 +434,8 @@ final class SettingsWindow: NSWindow {
                 section.bottomAnchor.constraint(equalTo: panel.bottomAnchor).isActive = true
             }
         }
-        // 2026-08-23：固定面板内容宽度（与窗口 600 - 左右 padding 一致），
-        // 避免通用页等 tab 因内容更宽导致窗口/面板变宽，各 sheet 保持一致。
-        panel.widthAnchor.constraint(equalToConstant: 520).isActive = true
+        // 2026-08-23：面板宽度统一由 selectTab.installPanel 约束（520 + 居中），
+        // 此处不再加宽度约束，避免与外部约束重复冲突。
         return panel
     }
 
