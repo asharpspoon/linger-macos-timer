@@ -799,12 +799,16 @@ final class HoverListView: NSView {
         }
 
         // ④ hover 高亮：平铺行用极淡背景（对齐原型，无卡片/色条）
+        // 2026-08-06：高亮保持行全宽，内容向内缩 12pt 留出左右内边距，
+        // 避免计时元素紧贴高亮边缘（之前误把高亮向内缩，反而更窄）
         if hoveredEntryID == entry.id {
             HoverDesign.rowHover.setFill()
             NSBezierPath(roundedRect: rowRect, xRadius: 8, yRadius: 8).fill()
         }
 
-        drawRowContent(entry: entry, rowRect: rowRect)
+        // 内容区在高亮内缩 12pt 排版，分隔线仍贯穿整行
+        let contentRect = rowRect.insetBy(dx: 12, dy: 0)
+        drawRowContent(entry: entry, rowRect: contentRect)
 
         // 组内行间 1px 分隔线（原型 h-px line）
         if drawDivider {

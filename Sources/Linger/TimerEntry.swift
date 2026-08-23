@@ -269,30 +269,23 @@ final class TimerEntry {
     ///   - "hm"  → HH:MM（不足 1 小时补 00）
     ///   - "ms"  → MM:SS
     ///   - 其它  → 有小时 HH:MM:SS，无小时 MM:SS
-    static func displayString(seconds: TimeInterval, format: String) -> String {
+    /// 2026-08-23 用户确认：时间格式不是是否显示秒，秒固定显示。
+    /// 倒计时统一格式：超过 1h 显示 HH:MM:SS，不足 1h 显示 MM:SS。
+    /// 地区习惯走 linger_timeFormat locale（影响结束时刻和日期格式）。
+    static func displayString(seconds: TimeInterval, format: String = "hms") -> String {
         let total = max(0, Int(ceil(seconds)))
         let h = total / 3600
         let m = (total % 3600) / 60
         let s = total % 60
-        switch format {
-        case "hm":
-            if h > 0 {
-                return String(format: "%02d:%02d", h, m)
-            }
-            return String(format: "%02d:%02d", 0, m)
-        case "ms":
-            return String(format: "%02d:%02d", m, s)
-        default:
-            if h > 0 {
-                return String(format: "%02d:%02d:%02d", h, m, s)
-            }
-            return String(format: "%02d:%02d", m, s)
+        if h > 0 {
+            return String(format: "%02d:%02d:%02d", h, m, s)
         }
+        return String(format: "%02d:%02d", m, s)
     }
 
-    /// 当前时间格式（UserDefaults `linger_timeFormat`，缺省 hms）。
+    /// 当前地区格式（UserDefaults `linger_timeFormat`，缺省 sv_SE=ISO；影响结束时刻/日期格式）。
     static var currentTimeFormat: String {
-        return UserDefaults.standard.string(forKey: "linger_timeFormat") ?? "hms"
+        return UserDefaults.standard.string(forKey: "linger_timeFormat") ?? "sv_SE"
     }
 
     var displayTime: String {

@@ -221,12 +221,8 @@ final class TimerManager {
             DispatchQueue.main.sync {
                 let before = self.entries.count
                 let pruned = TimerManager.entriesToPrune(self.entries, interval: interval)
-                // 用户开启「导出记录（Markdown）」：清理前先归档为 md（按天去重追加）
-                let exportOn = UserDefaults.standard.bool(
-                    forKey: LingerTheme.UserDefaultsKey.exportMarkdown.rawValue)
-                if exportOn && !pruned.isEmpty {
-                    RecordExporter.export(pruned)
-                }
+                // 2026-08-06：导出逻辑已迁移到日历事件数据源（RecordExporter.exportIncremental），
+                // 不再依赖 pruned entries，清理时无需调导出
                 let ids = Set(pruned.map { $0.id })
                 self.entries.removeAll { ids.contains($0.id) }
                 if self.entries.count != before {

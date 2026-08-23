@@ -206,6 +206,10 @@ enum LingerTheme {
         case dateLocale = "linger_dateLocale"
         /// 2026-08-06: 每周清理前把已记录计时导出为 Markdown（~/Documents/Linger 计时记录.md）
         case exportMarkdown = "linger_exportMarkdown"
+        /// 2026-08-06: Markdown 导出目录路径（用户选择，每月一个文档）
+        case exportDirectory = "linger_exportDirectory"
+        /// 2026-08-06: 上次 Markdown 导出的日期（每天首次运行触发增量导出）
+        case lastExportDate = "linger_lastExportDate"
         /// 2026-08-04: 拖拽引导提示已显示次数（前 3 次显示，之后永久隐藏）
         case dragHintUsageCount = "linger_dragHintUsageCount"
 

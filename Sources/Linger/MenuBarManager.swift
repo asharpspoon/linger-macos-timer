@@ -25,7 +25,7 @@ final class MenuBarManager: NSObject {
     //   1. 按钮只在 leftMouseDown 触发 action（不消费 mouseUp）；
     //   2. 拖拽期挂 **局部** monitor 收 .leftMouseUp / .flagsChanged；
     //   3. 30fps 轮询只负责「算距离 + 刷新反馈」，**不**负责判定松手。
-    private enum DragState { case idle, pressed, dragging, cancelling }
+    private enum DragState { case idle, pressed, dragging, cancelling, finishing }
     private var dragState: DragState = .idle
     private var dragStartLocation: NSPoint = .zero
     private var pollTimer: Timer?
@@ -508,6 +508,15 @@ final class MenuBarManager: NSObject {
     }
 
     private func finishDrag() {
+        // 入口立即拆监听器 + 改状态，防止动画期间第二次 mouseUp reentry（创建重复计时）。
+        detachDragInput()
+        guard dragState == .dragging || dragState == .pressed else {
+            // 已被 Esc/前一次 finishDrag 收尾，不再处理
+            os_log("finishDrag: skipped (state=%{public}@)",
+                   log: log, type: .debug, String(describing: dragState))
+            return
+        }
+
         let current = NSEvent.mouseLocation
         let distance = max(0, dragStartLocation.y - current.y)
 
@@ -526,9 +535,19 @@ final class MenuBarManager: NSObject {
         // 与 pollDrag 用同一套曲线 + 同一次吸附 → 松手所得 == 松手前所见（WYSIWYG）
         let seconds = TimerEntry.snapToMinuteIfClose(rawSeconds)
 
-        finishDrag(with: seconds)
-        cleanupDrag()
-        os_log("finishDrag: %.1fs (d=%.1f)", log: log, type: .info, seconds, distance)
+        let created = finishDrag(with: seconds)
+        if created {
+            // 成功创建计时 → 播「向下收起 + 圆圈扩散」动画再 cleanupDrag
+            // （detachDragInput 已拆 monitor/pollTimer，动画期间不会 reentry）
+            dragState = .finishing
+            dragFeedback?.animateCreate { [weak self] in
+                self?.cleanupDrag()
+            }
+        } else {
+            cleanupDrag()
+        }
+        os_log("finishDrag: %.1fs (d=%.1f) created=%{public}@",
+               log: log, type: .info, seconds, distance, String(describing: created))
     }
 
     /// 取消拖拽。`animated` 为 true（Esc）时先播断线动画再复位；
@@ -555,7 +574,9 @@ final class MenuBarManager: NSObject {
 
     /// 清理拖拽期资源：移除 monitor、停轮询、关反馈与提示、复位状态与菜单栏文字。
     /// 所有退出路径（松手 / Command 取消 / 纯点击）都收敛到这里，杜绝状态残留。
-    private func cleanupDrag() {
+    /// 拆除拖拽输入监听（monitor + pollTimer + clickHint），不隐藏反馈面板。
+    /// 供 finishDrag 入口调用，防止动画期间第二次 mouseUp reentry。
+    private func detachDragInput() {
         if let m = localMonitor {
             NSEvent.removeMonitor(m)
             localMonitor = nil
@@ -564,6 +585,10 @@ final class MenuBarManager: NSObject {
         pollTimer = nil
         clickHintTimer?.invalidate()
         clickHintTimer = nil
+    }
+
+    private func cleanupDrag() {
+        detachDragInput()
         dragFeedback?.hide()
         hideClickHint()
         dragState = .idle
@@ -575,7 +600,8 @@ final class MenuBarManager: NSObject {
     }
 
     /// 真正创建计时：沿用 2.0 的修饰键预设标题 + 并发上限 Toast 语义。
-    private func finishDrag(with seconds: TimeInterval) {
+    @discardableResult
+    private func finishDrag(with seconds: TimeInterval) -> Bool {
         // 松手瞬间再读一次修饰键，覆盖拖拽期间 flagsChanged 未捕获到的情况
         let title = pendingTitle ?? currentPresetTitle(for: NSEvent.modifierFlags)
 
@@ -583,12 +609,14 @@ final class MenuBarManager: NSObject {
             bumpDragHintUsage()
             os_log("Created timer entry %{public}@ for %.1fs",
                    log: log, type: .info, entry.id.uuidString, seconds)
+            return true
         } else {
             // 走到这里说明拖拽链路是通的，失败在 TimerManager 并发上限
             //（B2 的 reclaimFinishedEntries 回收逻辑已在 addTimer 内先跑过一轮）
             os_log("finishDrag rejected by TimerManager (limit reached) for %.1fs",
                    log: log, type: .error, seconds)
             showToast(message: "已达 \(TimerManager.maxConcurrentEntries) 个计时上限")
+            return false
         }
     }
 

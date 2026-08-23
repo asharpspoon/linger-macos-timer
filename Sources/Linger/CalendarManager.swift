@@ -575,6 +575,8 @@ final class CalendarManager {
         event.startDate = startDate
         event.endDate = endDate
         event.calendar = calendar
+        // 2026-08-06：notes 加 [Linger 计时] 标记，供 Markdown 导出识别哪些事件是 Linger 写的
+        event.notes = "[Linger 计时]"
 
         do {
             try store.save(event, span: .thisEvent, commit: true)
@@ -586,6 +588,30 @@ final class CalendarManager {
                    log: log, type: .error, error.localizedDescription)
             return nil
         }
+    }
+
+    // MARK: - 查询事件（Markdown 导出用，2026-08-06）
+
+    /// 查询指定时间范围内的所有日历事件（用于 Markdown 导出）。
+    /// - Parameters:
+    ///   - from: 起始时间（含）
+    ///   - to: 结束时间（含）
+    /// - Returns: 事件数组（按开始时间升序）；授权失败返回空数组
+    func fetchEvents(from: Date, to: Date) -> [EKEvent] {
+        guard isAuthorized || grantedByRequest else {
+            os_log("fetchEvents skipped: calendar not authorized", log: log, type: .error)
+            return []
+        }
+        let predicate = store.predicateForEvents(withStart: from, end: to, calendars: nil)
+        let events = store.events(matching: predicate).sorted { $0.startDate < $1.startDate }
+        os_log("fetchEvents: %d events from %@ to %@", log: log, type: .info,
+               events.count, from.description, to.description)
+        return events
+    }
+
+    /// 判断事件是否由 Linger 写入（notes 含 "[Linger 计时]" 标记）
+    func isLingerEvent(_ event: EKEvent) -> Bool {
+        return event.notes?.contains("[Linger 计时]") == true
     }
 
     // MARK: - 写入事件（计时归零专用，含 5 分钟向上取整）

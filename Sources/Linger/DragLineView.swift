@@ -21,6 +21,10 @@ final class DragLineView: NSView {
     var isOverflowing: Bool = false { didSet { needsDisplay = true } }
     /// Esc 取消动画进度 0→1（0=正常，1=完全收回消失）
     var breakProgress: CGFloat = 0 { didSet { needsDisplay = true } }
+    /// 松手创建计时动画进度 0→1（0=正常，1=完全消失）
+    /// 2026-08-06：阶段1(0-60%) 线条变细+从顶部向下缩短（dot 端固定）；
+    /// 阶段2(60-100%) 圆圈从中间扩散淡出消失
+    var createProgress: CGFloat = 0 { didSet { needsDisplay = true } }
 
     /// 圆点直径（溢出时 +2 放大；对齐 2.0：10pt）
     static let dotDiameter: CGFloat = 10
@@ -39,53 +43,60 @@ final class DragLineView: NSView {
 
     override var isOpaque: Bool { false }
 
+    /// 绘制一段竖线（带渐变 + 发光）。从 fromTop 向下 height 高度。
+    private func drawSegment(fromTop: CGFloat, height: CGFloat, alpha: CGFloat,
+                             x: CGFloat, width: CGFloat) {
+        guard height > 0.5 else { return }
+        let rect = NSRect(x: x - width / 2, y: fromTop - height, width: width, height: height)
+        let path = NSBezierPath(roundedRect: rect, xRadius: width / 2, yRadius: width / 2)
+        guard let gradient = NSGradient(colors: [
+            LingerTheme.nsColor(LingerTheme.Color.amberDarker).withAlphaComponent(alpha),
+            LingerTheme.nsColor(LingerTheme.Color.amber).withAlphaComponent(alpha),
+            LingerTheme.nsColor(LingerTheme.Color.amberLight).withAlphaComponent(alpha)
+        ]) else { return }
+        NSGraphicsContext.saveGraphicsState()
+        let glow = NSShadow()
+        glow.shadowColor = LingerTheme.nsColor(LingerTheme.Color.amberGlow).withAlphaComponent(alpha)
+        glow.shadowBlurRadius = isOverflowing ? 12 : 9
+        glow.shadowOffset = .zero
+        glow.set()
+        gradient.draw(in: path, angle: -90)
+        NSGraphicsContext.restoreGraphicsState()
+    }
+
+    /// 绘制圆点（带发光）。
+    private func drawDot(center: NSPoint, diameter: CGFloat, alpha: CGFloat) {
+        guard diameter > 0.5 else { return }
+        let dotRect = NSRect(x: center.x - diameter / 2,
+                             y: center.y - diameter / 2,
+                             width: diameter,
+                             height: diameter)
+        let dotPath = NSBezierPath(ovalIn: dotRect)
+        NSGraphicsContext.saveGraphicsState()
+        let dotGlow = NSShadow()
+        dotGlow.shadowColor = LingerTheme.nsColor(LingerTheme.Color.amberGlow).withAlphaComponent(alpha)
+        dotGlow.shadowBlurRadius = isOverflowing ? 8 : 5
+        dotGlow.shadowOffset = .zero
+        dotGlow.set()
+        LingerTheme.nsColor(LingerTheme.Color.amberLight).withAlphaComponent(alpha).setFill()
+        dotPath.fill()
+        NSGraphicsContext.restoreGraphicsState()
+    }
+
     override func draw(_ dirtyRect: NSRect) {
         let h = max(minLineHeight, lineHeight)
         let w = max(1, lineWidth)
         let midX = bounds.midX
         let lineTop = bounds.height - topY
 
-        func drawSegment(fromTop: CGFloat, height: CGFloat, alpha: CGFloat,
-                         x: CGFloat = bounds.midX, width: CGFloat = max(1, lineWidth)) {
-            guard height > 0.5 else { return }
-            let rect = NSRect(x: x - width / 2, y: fromTop - height, width: width, height: height)
-            let path = NSBezierPath(roundedRect: rect, xRadius: width / 2, yRadius: width / 2)
-            guard let gradient = NSGradient(colors: [
-                LingerTheme.nsColor(LingerTheme.Color.amberDarker).withAlphaComponent(alpha),
-                LingerTheme.nsColor(LingerTheme.Color.amber).withAlphaComponent(alpha),
-                LingerTheme.nsColor(LingerTheme.Color.amberLight).withAlphaComponent(alpha)
-            ]) else { return }
-            NSGraphicsContext.saveGraphicsState()
-            let glow = NSShadow()
-            glow.shadowColor = LingerTheme.nsColor(LingerTheme.Color.amberGlow).withAlphaComponent(alpha)
-            glow.shadowBlurRadius = isOverflowing ? 12 : 9
-            glow.shadowOffset = .zero
-            glow.set()
-            gradient.draw(in: path, angle: -90)
-            NSGraphicsContext.restoreGraphicsState()
-        }
-
-        func drawDot(center: NSPoint, diameter: CGFloat, alpha: CGFloat) {
-            guard diameter > 0.5 else { return }
-            let dotRect = NSRect(x: center.x - diameter / 2,
-                                 y: center.y - diameter / 2,
-                                 width: diameter,
-                                 height: diameter)
-            let dotPath = NSBezierPath(ovalIn: dotRect)
-            NSGraphicsContext.saveGraphicsState()
-            let dotGlow = NSShadow()
-            dotGlow.shadowColor = LingerTheme.nsColor(LingerTheme.Color.amberGlow).withAlphaComponent(alpha)
-            dotGlow.shadowBlurRadius = isOverflowing ? 8 : 5
-            dotGlow.shadowOffset = .zero
-            dotGlow.set()
-            LingerTheme.nsColor(LingerTheme.Color.amberLight).withAlphaComponent(alpha).setFill()
-            dotPath.fill()
-            NSGraphicsContext.restoreGraphicsState()
-        }
-
         let dotDiameter = isOverflowing ? Self.dotDiameter + 2 : Self.dotDiameter
 
         guard breakProgress > 0 else {
+            if createProgress > 0 {
+                drawCreateAnimation(h: h, w: w, lineTop: lineTop, midX: midX,
+                                    dotDiameter: dotDiameter)
+                return
+            }
             drawSegment(fromTop: lineTop, height: h, alpha: 1, x: midX, width: w)
             drawDot(center: NSPoint(x: midX, y: lineTop - h), diameter: dotDiameter, alpha: 1)
             return
@@ -117,6 +128,43 @@ final class DragLineView: NSView {
         drawSegment(fromTop: segTop, height: segH, alpha: alpha, x: midX, width: thinW)
         if dotD > 0.5 {
             drawDot(center: NSPoint(x: midX, y: lineTop - h), diameter: dotD, alpha: alpha)
+        }
+    }
+
+    /// 松手创建计时动画（用户分镜，2026-08-06）：
+    ///   1. 线条变细 + 从顶部向下缩短收起（0–60%，easeOut，dot 端固定不动）
+    ///   2. 圆圈从中间扩散淡出消失（60–100%，easeOut）
+    private func drawCreateAnimation(h: CGFloat, w: CGFloat, lineTop: CGFloat,
+                                     midX: CGFloat, dotDiameter: CGFloat) {
+        let t = min(1, createProgress)
+        let dotY = lineTop - h   // dot 中心固定（下沿不动）
+
+        // 阶段1（0–60%）：线条变细 + 从顶部向下缩短
+        let linePhase = min(1, t / 0.6)
+        let lineEase = 1 - pow(1 - linePhase, 2)        // easeOut
+        let segH = h * (1 - lineEase)                   // h → 0
+        let thinW = max(1, w * (1 - lineEase * 0.75))   // 当前宽 → 1pt
+        // dot 端固定，lineTop 向下移（向 dot 靠近）：新 lineTop = dotY + segH
+        let newLineTop = dotY + segH
+
+        if segH > 0.5 {
+            drawSegment(fromTop: newLineTop, height: segH, alpha: 1,
+                        x: midX, width: thinW)
+        }
+
+        // 阶段2（60–100%）：圆圈从中间扩散淡出
+        if t < 0.6 {
+            // 阶段1：圆圈保持原样
+            drawDot(center: NSPoint(x: midX, y: dotY), diameter: dotDiameter, alpha: 1)
+        } else {
+            let dotPhase = min(1, (t - 0.6) / 0.4)
+            let dotEase = 1 - pow(1 - dotPhase, 2)      // easeOut
+            let expandD = dotDiameter * (1 + dotEase * 3)  // 扩散到 4 倍
+            let dotAlpha = 1 - dotEase                   // 1 → 0
+            if dotAlpha > 0.01 {
+                drawDot(center: NSPoint(x: midX, y: dotY),
+                        diameter: expandD, alpha: dotAlpha)
+            }
         }
     }
 }

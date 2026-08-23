@@ -516,7 +516,7 @@ final class SettingsWindow: NSWindow {
     }
 
     private func buildDragLineRow() -> NSView {
-        let slider = NSSlider(value: Double(currentDragLinePercent()), minValue: 25, maxValue: 75,
+        let slider = NSSlider(value: Double(currentDragLinePercent()), minValue: 0, maxValue: 100,
                               target: self, action: #selector(dragLineChanged(_:)))
         slider.widthAnchor.constraint(equalToConstant: 160).isActive = true
         let valueLabel = NSTextField(labelWithString: "\(currentDragLinePercent())%")
@@ -559,8 +559,8 @@ final class SettingsWindow: NSWindow {
     private func buildDualRailRow() -> NSView {
         let popup = NSPopUpButton()
         styleSelect(popup)
-        popup.addItems(withTitles: ["倒计时 + 结束时间", "仅倒计时", "仅结束时间"])
-        let raws = ["both", "countdown", "endTime"]
+        popup.addItems(withTitles: ["倒计时 + 结束时间", "仅倒计时"])
+        let raws = ["both", "countdown"]
         let current = UserDefaults.standard.string(forKey: LingerTheme.UserDefaultsKey.dualRailMode.rawValue) ?? "both"
         if let idx = raws.firstIndex(of: current) { popup.selectItem(at: idx) }
         popup.target = self
@@ -568,16 +568,27 @@ final class SettingsWindow: NSWindow {
         return makeRow(label: "双轨显示", control: popup)
     }
 
+    /// 2026-08-23 用户修正：时间格式 ≠ 是否显示秒钟，而是适配不同国家地区习惯。
+    /// 统一使用 24 小时制，日期格式随以下地区习惯自动切换：
+    /// - ISO（sv_SE）：2026-08-01
+    /// - 中国（zh_CN）：2026/8/1
+    /// - 美国（en_US）：8/1/2026
+    /// - 日本（ja_JP）：2026/8/1
     private func buildTimeFormatRow() -> NSView {
         let popup = NSPopUpButton()
         styleSelect(popup)
-        popup.addItems(withTitles: ["HH:MM:SS", "HH:MM", "MM:SS"])
-        let raws = ["hms", "hm", "ms"]
-        let current = UserDefaults.standard.string(forKey: LingerTheme.UserDefaultsKey.timeFormat.rawValue) ?? "hms"
-        if let idx = raws.firstIndex(of: current) { popup.selectItem(at: idx) }
+        popup.addItems(withTitles: [
+            "国际标准 ISO（2026-08-01 24:00）",
+            "中国（2026/8/1 24:00）",
+            "美国（8/1/2026 24:00）",
+            "日本（2026/8/1 24:00）"
+        ])
+        let raws = ["sv_SE", "zh_CN", "en_US", "ja_JP"]
+        let stored = UserDefaults.standard.string(forKey: LingerTheme.UserDefaultsKey.timeFormat.rawValue) ?? "sv_SE"
+        if let idx = raws.firstIndex(of: stored) { popup.selectItem(at: idx) }
         popup.target = self
         popup.action = #selector(timeFormatChanged(_:))
-        return makeRow(label: "时间格式", control: popup)
+        return makeRow(label: "时间格式", control: popup, hint: "影响拖拽预览结束时刻、完成弹窗时间、记录导出日期的地区格式")
     }
 
     private func buildPreviewFontSizeRow() -> NSView {
@@ -886,43 +897,37 @@ final class SettingsWindow: NSWindow {
 
         let exportSwitch = makeSwitch(initial: currentExportMarkdown(),
                                        action: #selector(exportMarkdownChanged(_:)))
-        let exportBtn = NSButton(title: "立即导出", target: self, action: #selector(exportNowTapped(_:)))
-        exportBtn.bezelStyle = .rounded
-        exportBtn.controlSize = .small
-        let exportControl = NSStackView(views: [exportSwitch, exportBtn])
+        let exportDirBtn = NSButton(title: "选择目录…", target: self, action: #selector(exportDirTapped(_:)))
+        exportDirBtn.bezelStyle = .rounded
+        exportDirBtn.controlSize = .small
+        let exportNowBtn = NSButton(title: "立即导出", target: self, action: #selector(exportNowTapped(_:)))
+        exportNowBtn.bezelStyle = .rounded
+        exportNowBtn.controlSize = .small
+        let exportControl = NSStackView(views: [exportSwitch, exportDirBtn, exportNowBtn])
         exportControl.orientation = .horizontal
-        exportControl.spacing = LingerTheme.space3
+        exportControl.spacing = LingerTheme.space2
         exportControl.alignment = .centerY
+
+        // 当前导出目录显示
+        let dirDisplay = NSTextField(labelWithString: currentExportDirDisplay())
+        dirDisplay.font = NSFont.systemFont(ofSize: 11)
+        dirDisplay.textColor = LingerTheme.nsColor(LingerTheme.Color.ink3)
 
         return makePanel(sections: [
             // 2026-08-06 排版重设计：合并"启动"+"维护"为"通用"（都是日常维护类，单行 section 太碎）
             makeSection(title: "通用", rows: [
                 makeRow(label: "开机自启", control: launchSwitch),
                 makeRow(label: "自动清理", control: cleanupPopup),
-                makeRow(label: "导出记录（Markdown）", control: exportControl,
-                        hint: "开启后每周清理前把计时归档到「文稿/Linger 计时记录.md」；关闭则每周清理缓存")
+                makeRow(label: "日历归档导出", control: exportControl,
+                        hint: "开启后每天首次运行自动把日历事件导出为 Markdown（按月分文档），供 AI 做周报/复盘"),
+                makeRow(label: "导出目录", control: dirDisplay,
+                        hint: "每月一个文档（如 Linger-日历归档-2026-08.md）")
             ]),
-            makeSection(title: "日期与时间", rows: [buildDateLocaleRow()])
+            // 日期格式已合并到时间格式选择器（2026-08-23）
         ])
     }
 
-    /// 通用页：日期格式地区选择（跟随系统区域习惯，影响预约计时的日期显示；时间恒为 24 小时制）
-    private func buildDateLocaleRow() -> NSView {
-        let popup = NSPopUpButton()
-        styleSelect(popup)
-        popup.addItems(withTitles: [
-            "国际标准 ISO（2026-08-01）",
-            "中国（2026/8/1）",
-            "美国（8/1/2026）",
-            "日本（2026/8/1）"
-        ])
-        let raws = ["sv_SE", "zh_CN", "en_US", "ja_JP"]
-        let stored = UserDefaults.standard.string(forKey: LingerTheme.UserDefaultsKey.dateLocale.rawValue) ?? "sv_SE"
-        if let idx = raws.firstIndex(of: stored) { popup.selectItem(at: idx) }
-        popup.target = self
-        popup.action = #selector(dateLocaleChanged(_:))
-        return makeRow(label: "日期格式", control: popup, hint: "预约计时中日期显示的地区习惯（时间为 24 小时制）")
-    }
+
 
     // MARK: - 面板 4：关于（票据风格）
 
@@ -962,14 +967,14 @@ final class SettingsWindow: NSWindow {
     }
 
     @objc private func dualRailChanged(_ sender: NSPopUpButton) {
-        let raws = ["both", "countdown", "endTime"]
+        let raws = ["both", "countdown"]
         guard raws.indices.contains(sender.indexOfSelectedItem) else { return }
         UserDefaults.standard.set(raws[sender.indexOfSelectedItem],
                                   forKey: LingerTheme.UserDefaultsKey.dualRailMode.rawValue)
     }
 
     @objc private func timeFormatChanged(_ sender: NSPopUpButton) {
-        let raws = ["hms", "hm", "ms"]
+        let raws = ["sv_SE", "zh_CN", "en_US", "ja_JP"]
         guard raws.indices.contains(sender.indexOfSelectedItem) else { return }
         UserDefaults.standard.set(raws[sender.indexOfSelectedItem],
                                   forKey: LingerTheme.UserDefaultsKey.timeFormat.rawValue)
@@ -1046,12 +1051,64 @@ final class SettingsWindow: NSWindow {
     @objc private func exportMarkdownChanged(_ sender: LingerSwitch) {
         UserDefaults.standard.set(sender.isOn,
                                   forKey: LingerTheme.UserDefaultsKey.exportMarkdown.rawValue)
+        if sender.isOn && RecordExporter.savedDirectory() == nil {
+            // 首次开启：弹目录选择
+            exportDirTapped(nil)
+        }
+    }
+
+    @objc private func exportDirTapped(_ sender: Any?) {
+        let panel = NSOpenPanel()
+        panel.canChooseFiles = false
+        panel.canChooseDirectories = true
+        panel.canCreateDirectories = true
+        panel.allowsMultipleSelection = false
+        panel.prompt = "选择导出目录"
+        panel.message = "Linger 会在此目录下按月生成 Markdown 归档文档"
+        if let current = RecordExporter.savedDirectory() {
+            panel.directoryURL = current
+        }
+        if panel.runModal() == .OK, let url = panel.url {
+            RecordExporter.setSavedDirectory(url)
+            rebuildGeneralPanelDirDisplay()
+            // 选择目录后立即触发一次增量导出
+            RecordExporter.exportIncremental(directory: url)
+            NSWorkspace.shared.activateFileViewerSelecting([url])
+        }
     }
 
     @objc private func exportNowTapped(_ sender: Any?) {
-        RecordExporter.export(TimerManager.shared.allDisplayEntries)
-        if let url = RecordExporter.fileURL() {
-            NSWorkspace.shared.activateFileViewerSelecting([url])
+        // 立即导出：当前月全量
+        let now = Date()
+        let cal = Calendar.current
+        let monthStart = cal.date(from: cal.dateComponents([.year, .month], from: now)) ?? now
+        let written = RecordExporter.exportRange(from: monthStart, to: now)
+        let dir = RecordExporter.savedDirectory() ?? RecordExporter.defaultDirectory()
+        if written > 0 {
+            NSWorkspace.shared.activateFileViewerSelecting([dir])
+        } else {
+            let alert = NSAlert()
+            alert.messageText = "本月暂无可导出的日历事件"
+            alert.informativeText = "请确认日历已授权，且本月有日程记录"
+            alert.alertStyle = .informational
+            alert.addButton(withTitle: "好")
+            alert.runModal()
+        }
+    }
+
+    private func currentExportDirDisplay() -> String {
+        if let url = RecordExporter.savedDirectory() {
+            return url.path
+        }
+        return RecordExporter.defaultDirectory().path + "（默认）"
+    }
+
+    private func rebuildGeneralPanelDirDisplay() {
+        // 重建通用面板让目录显示更新
+        // 2026-08-06：设置页是惰性构建 + 缓存。清缓存后重选当前 tab 触发重建。
+        if currentIndex == 3 {  // 通用 tab 索引
+            builtPanels[3] = nil
+            selectTab(3, animated: false)
         }
     }
 

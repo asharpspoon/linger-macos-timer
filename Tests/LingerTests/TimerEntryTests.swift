@@ -12,15 +12,18 @@ final class TimerEntryTests: XCTestCase {
         XCTAssertEqual(TimerEntry.displayString(seconds: 0, format: "hms"), "00:00")
     }
 
+    /// 2026-08-23：displayString 不再支持 hm/ms 格式参数（统一标准格式 HH:MM:SS / MM:SS）
     func testDisplayStringHM() {
-        XCTAssertEqual(TimerEntry.displayString(seconds: 3725, format: "hm"), "01:02")
-        XCTAssertEqual(TimerEntry.displayString(seconds: 60, format: "hm"), "00:01")
-        XCTAssertEqual(TimerEntry.displayString(seconds: 59, format: "hm"), "00:00")
+        XCTAssertEqual(TimerEntry.displayString(seconds: 3725, format: "hms"), "01:02:05")
+        XCTAssertEqual(TimerEntry.displayString(seconds: 60, format: "hms"), "01:00")
+        XCTAssertEqual(TimerEntry.displayString(seconds: 59, format: "hms"), "00:59")
+        XCTAssertEqual(TimerEntry.displayString(seconds: 0, format: "hms"), "00:00")
     }
 
+    /// 2026-08-23：displayString 不再支持 ms 格式（统一格式，>1h 显示 HH:MM:SS）
     func testDisplayStringMS() {
-        XCTAssertEqual(TimerEntry.displayString(seconds: 65, format: "ms"), "01:05")
-        XCTAssertEqual(TimerEntry.displayString(seconds: 3600, format: "ms"), "00:00")
+        XCTAssertEqual(TimerEntry.displayString(seconds: 65, format: "hms"), "01:05")
+        XCTAssertEqual(TimerEntry.displayString(seconds: 3600, format: "hms"), "01:00:00")
     }
 
     // MARK: - 拖拽距离 → 时长（s=d² 曲线）

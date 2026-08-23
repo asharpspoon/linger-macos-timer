@@ -15,7 +15,7 @@ final class DragFeedbackView: NSView {
     // MARK: - 对外类型
 
     /// 双轨模式（对应 UserDefaults `linger_dualRailMode`）
-    enum DualRailMode: String { case both, countdown, endTime }
+    enum DualRailMode: String { case both, countdown }
 
     /// 左右半区高亮侧（拖拽时按鼠标 x 判定，见 MenuBarManager.highlightSide）
     enum HighlightSide { case forSide, tilSide }
@@ -37,7 +37,11 @@ final class DragFeedbackView: NSView {
 
     private static let kContentWidthMin: CGFloat = 280
     private static let kTopY: CGFloat = 12
-    private static let kDefaultMaxLineHeight: CGFloat = 360
+    /// 2026-08-06：线条整体上移量——窗口顶部上移到按钮底边上方 kAnchorLift 处，
+    /// 使线条顶部出现在「菜单栏下边框上方一点点」（按钮内部偏下）。
+    /// 线条顶部屏幕坐标 = anchorRect.minY + kAnchorLift - kTopY = 按钮底边上方 4pt。
+    private static let kAnchorLift: CGFloat = 16
+    // kDefaultMaxLineHeight removed (2026-08-23: using screen%)
     private static let kBottomBlockHeight: CGFloat = 124   // 双轨 + 提示 + 边距
     private static let kRubberHeadroom: CGFloat = 24       // 橡皮筋最大延伸（触顶后「微微拉长」要看得见）
     private static let kHighlightFontBump: CGFloat = 4     // 高亮侧字号增量（要明显）
@@ -46,12 +50,14 @@ final class DragFeedbackView: NSView {
     private let topY = DragFeedbackView.kTopY
     private let minLineHeight: CGFloat = 40
     private var contentWidth: CGFloat = DragFeedbackView.kContentWidthMin
-    private var maxLineHeight: CGFloat = DragFeedbackView.kDefaultMaxLineHeight
+    private var maxLineHeight: CGFloat = 360
     private var rubberHeight: CGFloat = 0                  // 橡皮筋延伸量（面板增高）
 
     private var currentHighlight: HighlightSide = .forSide
     /// Esc 断线动画进行中：期间忽略一切 update（防闪一帧完整线的影子）
     private var isBreaking = false
+    /// 松手创建计时动画进行中：期间忽略一切 update
+    private var isCreating = false
 
     /// 当前预览字号（UserDefaults `linger_dragPreviewFontSize`，缺省 16，范围 12–24）
     private var previewFontSize: CGFloat {
@@ -78,7 +84,7 @@ final class DragFeedbackView: NSView {
         super.init(frame: NSRect(x: 0, y: 0,
                                  width: DragFeedbackView.kContentWidthMin,
                                  height: DragFeedbackView.kTopY
-                                    + DragFeedbackView.kDefaultMaxLineHeight
+                                    + 360.0
                                     + DragFeedbackView.kBottomBlockHeight))
         setupSubviews()
     }
@@ -100,7 +106,7 @@ final class DragFeedbackView: NSView {
         lineView.frame = NSRect(x: 0, y: 0,
                                 width: DragFeedbackView.kContentWidthMin,
                                 height: DragFeedbackView.kTopY
-                                    + DragFeedbackView.kDefaultMaxLineHeight
+                                    + 360.0
                                     + DragFeedbackView.kBottomBlockHeight)
         addSubview(lineView)
 
@@ -136,17 +142,22 @@ final class DragFeedbackView: NSView {
     // MARK: - 显示 / 隐藏
 
     func show(at anchorRect: NSRect) {
-        // 线长上限 = min(达到最大时长所需的距离, 用户百分比上限)，保证
-        // 「时间到最大时长（如 30:00）时线正好到顶，之后不再长」。
-        let percent = UserDefaults.standard.double(forKey: LingerTheme.UserDefaultsKey.maxDragLinePercent.rawValue)
-        let p = (percent >= 25 && percent <= 75) ? percent : LingerTheme.defaultMaxDragLinePercent
-        let percentLimit = DragFeedbackView.kDefaultMaxLineHeight * CGFloat(p / 50)
-        let maxDur = UserDefaults.standard.double(forKey: LingerTheme.UserDefaultsKey.maxDurationMinutes.rawValue)
+        // 2026-08-23：下拉线最大长度 = 屏幕可见高度 * userPercent/100（0-100 直观百分比）
+        // 同时受最大时长对应的物理拖拽距离约束，保证「时间到最大时长时线正好到顶」。
+        let percent = UserDefaults.standard.double(
+            forKey: LingerTheme.UserDefaultsKey.maxDragLinePercent.rawValue)
+        let p = max(0, min(100, percent == 0 ? 50 : percent))  // 默认 50%
+        let screenHeight = NSScreen.main?.visibleFrame.height ?? 800
+        let percentLimit = screenHeight * CGFloat(p / 100)
+        let maxDur = UserDefaults.standard.double(
+            forKey: LingerTheme.UserDefaultsKey.maxDurationMinutes.rawValue)
         let syncDistance = CGFloat(DragPhysics.lineMaxDistance(maxMinutes: maxDur))
-        maxLineHeight = max(100, min(syncDistance, percentLimit))
+        maxLineHeight = max(40, min(syncDistance, percentLimit))
         rubberHeight = 0
         isBreaking = false
+        isCreating = false
         lineView.breakProgress = 0   // 复位 Esc 断线动画
+        lineView.createProgress = 0  // 复位创建计时动画
 
         // 面板宽度按字号自适应（两轨都按「高亮侧 +2pt」的最宽值算，避免切换时挤破）
         contentWidth = max(DragFeedbackView.kContentWidthMin, requiredPanelWidth())
@@ -175,8 +186,9 @@ final class DragFeedbackView: NSView {
         if let visible = NSScreen.main?.visibleFrame {
             x = min(max(x, visible.minX + 4), visible.maxX - contentWidth - 4)
         }
-        // 窗口顶部对齐菜单栏按钮底边（anchorRect.minY），向下延伸。
-        let y = anchorRect.minY - height
+        // 窗口顶部上移 kAnchorLift，使线条顶部出现在「菜单栏下边框上方一点点」（按钮内部偏下）。
+        // 顶部固定后，橡皮筋向下生长逻辑（update 里）以新顶部为锚，不受影响。
+        let y = anchorRect.minY - height + DragFeedbackView.kAnchorLift
 
         panelWindow?.setFrame(NSRect(x: x, y: y, width: contentWidth, height: height), display: false)
         frame = NSRect(x: 0, y: 0, width: contentWidth, height: height)
@@ -191,6 +203,7 @@ final class DragFeedbackView: NSView {
     func hide() {
         stopBreathing()
         isBreaking = false
+        isCreating = false
         panelWindow?.orderOut(nil)
     }
 
@@ -222,6 +235,35 @@ final class DragFeedbackView: NSView {
         RunLoop.main.add(timer, forMode: .common)
     }
 
+    // MARK: - 松手创建计时动画
+
+    /// 松手创建计时「向下收起 + 圆圈扩散」动画（约 0.5s）：
+    /// 阶段1(0-60%) 线条变细 + 从顶部向下缩短（dot 端固定）；
+    /// 阶段2(60-100%) 圆圈从中间扩散淡出消失。
+    func animateCreate(completion: @escaping () -> Void) {
+        stopBreathing()
+        isCreating = true
+        lineView.createProgress = 0.05
+        let duration: TimeInterval = 0.5
+        let start = CACurrentMediaTime()
+        let timer = Timer(timeInterval: 1.0 / 60.0, repeats: true) { [weak self] t in
+            guard let self else {
+                t.invalidate()
+                return
+            }
+            let progress = CGFloat((CACurrentMediaTime() - start) / duration)
+            if progress >= 1 {
+                t.invalidate()
+                self.lineView.createProgress = 1
+                self.isCreating = false
+                completion()
+                return
+            }
+            self.lineView.createProgress = min(1, progress)
+        }
+        RunLoop.main.add(timer, forMode: .common)
+    }
+
     // MARK: - 呼吸微动画（柔和的 opacity 脉动）
 
     private func startBreathing() {
@@ -249,8 +291,8 @@ final class DragFeedbackView: NSView {
                 highlight: HighlightSide,
                 overflow: Bool,
                 title: String?) {
-        // 断线动画期间忽略任何拖拽帧更新（Esc 后 pollDrag 可能还有一帧排队）
-        guard !isBreaking else { return }
+        // 断线/创建动画期间忽略任何拖拽帧更新（Esc/松手后 pollDrag 可能还有一帧排队）
+        guard !isBreaking && !isCreating else { return }
 
         // 1) 竖线：正常拉到 maxLineHeight；越过则按 iOS 橡皮筋阻尼继续延伸（阻力渐增）
         let baseLine = min(maxLineHeight, max(minLineHeight, distance))
@@ -289,7 +331,7 @@ final class DragFeedbackView: NSView {
 
         // 5) 双轨显隐（单轨模式）
         let showFor = (mode == .both || mode == .countdown)
-        let showTil = (mode == .both || mode == .endTime)
+        let showTil = (mode == .both)  // endTime removed per user (2026-08-23)
         forPrefix.isHidden = !showFor
         forTime.isHidden = !showFor
         tilPrefix.isHidden = !showTil
@@ -386,26 +428,44 @@ final class DragFeedbackView: NSView {
     private func applyHighlight(_ side: HighlightSide) {
         let sideChanged = (currentHighlight != side)
         currentHighlight = side
-        let forActive = (side == .forSide)
+        let modeRaw = UserDefaults.standard.string(
+            forKey: LingerTheme.UserDefaultsKey.dualRailMode.rawValue) ?? "both"
+        let isCountdownMode = (modeRaw == "countdown")
+        let forActive = isCountdownMode || (side == .forSide)  // countdown: both always active
         let amber = LingerTheme.nsColor(LingerTheme.Color.amber)
         let ink3 = LingerTheme.nsColor(LingerTheme.Color.ink3)
 
         NSAnimationContext.runAnimationGroup { ctx in
             ctx.duration = 0.35
             ctx.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
-            forTime.animator().alphaValue = forActive ? 1.0 : 0.3
-            forPrefix.animator().alphaValue = forActive ? 0.7 : 0.3
-            tilTime.animator().alphaValue = forActive ? 0.3 : 1.0
-            tilPrefix.animator().alphaValue = forActive ? 0.3 : 0.7
+            if isCountdownMode {
+                // countdown mode: 倒计时永远亮色（无高亮切换）
+                forTime.animator().alphaValue = 1.0
+                forPrefix.animator().alphaValue = 0.7
+                tilTime.animator().alphaValue = 0.0   // 隐藏
+                tilPrefix.animator().alphaValue = 0.0
+            } else {
+                forTime.animator().alphaValue = forActive ? 1.0 : 0.3
+                forPrefix.animator().alphaValue = forActive ? 0.7 : 0.3
+                tilTime.animator().alphaValue = forActive ? 0.3 : 1.0
+                tilPrefix.animator().alphaValue = forActive ? 0.3 : 0.7
+            }
         }
 
-        forTime.textColor = forActive ? amber : ink3
-        forPrefix.textColor = forActive ? amber : ink3
-        tilTime.textColor = forActive ? ink3 : amber
-        tilPrefix.textColor = forActive ? ink3 : amber
+        if isCountdownMode {
+            forTime.textColor = amber
+            forPrefix.textColor = amber
+            tilTime.textColor = ink3
+            tilPrefix.textColor = ink3
+        } else {
+            forTime.textColor = forActive ? amber : ink3
+            forPrefix.textColor = forActive ? amber : ink3
+            tilTime.textColor = forActive ? ink3 : amber
+            tilPrefix.textColor = forActive ? ink3 : amber
+        }
 
-        // 切换侧的瞬间给一个「变大」弹跳，让字号变化一眼可见（仅切侧时触发一次）
-        if sideChanged {
+        // 切换侧的瞬间给一个「变大」弹跳（仅 both 模式触发）
+        if !isCountdownMode && sideChanged {
             animateFontPop(forTime, growing: forActive)
             animateFontPop(tilTime, growing: !forActive)
         }

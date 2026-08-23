@@ -47,6 +47,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         menuBarManager = MenuBarManager()
         NSLog("[Linger] MenuBarManager created")
+
+        // 2026-08-06：日历归档导出 — 每天首次运行时增量导出日历事件到 Markdown
+        // 异步执行，不阻塞启动；需用户在设置里开启开关
+        DispatchQueue.global(qos: .utility).async {
+            let exportOn = UserDefaults.standard.bool(
+                forKey: LingerTheme.UserDefaultsKey.exportMarkdown.rawValue)
+            guard exportOn else { return }
+            guard !RecordExporter.hasExportedToday() else { return }
+            // 等日历授权探测完成（CalendarManager.init 已启动异步 probe，给它 2s）
+            Thread.sleep(forTimeInterval: 2)
+            DispatchQueue.main.async {
+                _ = RecordExporter.exportIncremental()
+            }
+        }
     }
 
     /// 建立最小主菜单（含 Edit 菜单标准编辑命令），让 .accessory app 的 NSTextField
