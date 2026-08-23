@@ -324,9 +324,11 @@ final class SettingsWindow: NSWindow {
     }
 
     private func makeHint(_ text: String) -> NSTextField {
-        let f = NSTextField(labelWithString: text)
+        let f = NSTextField(wrappingLabelWithString: text)
         f.font = LingerTheme.labelFont(size: 11)
         f.textColor = .tertiaryLabelColor
+        f.maximumNumberOfLines = 3
+        f.lineBreakMode = .byWordWrapping
         return f
     }
 
@@ -351,6 +353,8 @@ final class SettingsWindow: NSWindow {
             left.spacing = 2
             left.addArrangedSubview(makeLabel(label))
             left.addArrangedSubview(makeHint(hint))
+            // 2026-08-23：label+hint 列宽上限，防长 hint 把面板/窗口撑宽
+            left.widthAnchor.constraint(lessThanOrEqualToConstant: 260).isActive = true
             row.addArrangedSubview(left)
         } else {
             row.addArrangedSubview(makeLabel(label))
@@ -428,6 +432,9 @@ final class SettingsWindow: NSWindow {
                 section.bottomAnchor.constraint(equalTo: panel.bottomAnchor).isActive = true
             }
         }
+        // 2026-08-23：固定面板内容宽度（与窗口 600 - 左右 padding 一致），
+        // 避免通用页等 tab 因内容更宽导致窗口/面板变宽，各 sheet 保持一致。
+        panel.widthAnchor.constraint(equalToConstant: 520).isActive = true
         return panel
     }
 
@@ -624,7 +631,7 @@ final class SettingsWindow: NSWindow {
     private func buildNotificationsPanel() -> NSView {
         // 2026-08-06 排版重设计：去掉冗余的"提醒方式"总标题（整个面板就是提醒方式），
         // 用无标题 section 直接承载 rows；弹窗位置改纵向 block 解决横向溢出"略宽"问题
-        let bannerRow = makeRow(label: "完成弹窗（强提醒）",
+        let bannerRow = makeRow(label: "计时完成时提醒",
                                 control: makeSwitch(initial: currentNotifyOnComplete(),
                                                     action: #selector(notifyChanged(_:))),
                                 hint: "计时完成时弹出横幅；关闭后仅保留菜单栏倒计时与提示音")
@@ -816,7 +823,7 @@ final class SettingsWindow: NSWindow {
                 buildWriteModeRow(),
                 buildDefaultTitleRow()
             ]),
-            makeSection(title: "快捷键预设", rows: [
+            makeSection(title: "快捷键预设 (Beta)", rows: [
                 buildPresetCardRow(key: .fnTitle, kbd: "fn"),
                 buildPresetCardRow(key: .ctrlTitle, kbd: "⌃"),
                 buildPresetCardRow(key: .optTitle, kbd: "⌥")
@@ -824,17 +831,16 @@ final class SettingsWindow: NSWindow {
         ])
     }
 
+    /// 2026-08-23 用户要求：目标日历改为文本输入（用户填系统中日历的名称）
     private func buildTargetCalendarRow() -> NSView {
-        let calendars = CalendarManager.shared.availableCalendars()
-        let titles = calendars.map { $0.title }
-        let popup = NSPopUpButton()
-        styleSelect(popup)
-        popup.addItems(withTitles: titles.isEmpty ? ["Linger"] : titles)
-        let current = UserDefaults.standard.string(forKey: LingerTheme.UserDefaultsKey.targetCalendar.rawValue) ?? "Linger"
-        if let idx = titles.firstIndex(of: current) { popup.selectItem(at: idx) }
-        popup.target = self
-        popup.action = #selector(targetCalendarChanged(_:))
-        return makeRow(label: "目标日历", control: popup)
+        let field = NSTextField()
+        field.bezelStyle = .roundedBezel
+        let stored = UserDefaults.standard.string(forKey: LingerTheme.UserDefaultsKey.targetCalendar.rawValue) ?? "Linger"
+        field.stringValue = stored
+        field.target = self
+        field.action = #selector(targetCalendarChanged(_:))
+        field.widthAnchor.constraint(equalToConstant: 160).isActive = true
+        return makeRow(label: "目标日历", control: field, hint: "填写你的日历 app 中已有的日历分类名称（如「工作」「个人」）")
     }
 
     private func buildWriteModeRow() -> NSView {
@@ -858,7 +864,7 @@ final class SettingsWindow: NSWindow {
         field.widthAnchor.constraint(equalToConstant: 240).isActive = true
         field.isEnabled = CalendarManager.shared.writeMode == .auto
         defaultTitleField = field
-        return makeRow(label: "默认标题", control: field, hint: "仅在「自动写入」模式下使用")
+        return makeRow(label: "默认标题 (Beta)", control: field, hint: "仅在「自动写入」模式下使用")
     }
 
     private func buildPresetCardRow(key: LingerTheme.UserDefaultsKey, kbd: String) -> NSView {
@@ -1000,9 +1006,10 @@ final class SettingsWindow: NSWindow {
 
     // MARK: - 动作：日历面板
 
-    @objc private func targetCalendarChanged(_ sender: NSPopUpButton) {
-        let title = sender.titleOfSelectedItem ?? "Linger"
-        UserDefaults.standard.set(title, forKey: LingerTheme.UserDefaultsKey.targetCalendar.rawValue)
+    @objc private func targetCalendarChanged(_ sender: NSTextField) {
+        let title = sender.stringValue.trimmingCharacters(in: .whitespaces)
+        UserDefaults.standard.set(title.isEmpty ? "Linger" : title,
+                                  forKey: LingerTheme.UserDefaultsKey.targetCalendar.rawValue)
     }
 
     @objc private func writeModeChanged(_ sender: NSPopUpButton) {

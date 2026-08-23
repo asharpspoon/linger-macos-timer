@@ -59,9 +59,11 @@ final class AboutTicketView: NSView {
         stack.setCustomSpacing(22, after: footer)
     }
 
-    /// 纸张纹理 pattern（平铺由系统优化，避免每帧重建数万个点 → 窗口动画卡顿）
-    private lazy var paperPattern: NSColor = makePattern(dotAlpha: 0.015, spacing: 4)
-    private lazy var paperPattern2: NSColor = makePattern(dotAlpha: 0.010, spacing: 9)
+    /// 2026-08-23 增强：热敏纸粗糙纹理（三层点阵 + 一层纤维竖纹）
+    private lazy var paperPattern: NSColor = makePattern(dotAlpha: 0.035, spacing: 3)
+    private lazy var paperPattern2: NSColor = makePattern(dotAlpha: 0.025, spacing: 7)
+    private lazy var paperPattern3: NSColor = makePattern(dotAlpha: 0.015, spacing: 13)
+    private lazy var paperLines: NSColor = makeLinePattern(alpha: 0.05, spacing: 4)
 
     private func makePattern(dotAlpha: CGFloat, spacing: CGFloat) -> NSColor {
         let size = NSSize(width: spacing, height: spacing)
@@ -75,6 +77,19 @@ final class AboutTicketView: NSView {
         return NSColor(patternImage: image)
     }
 
+    /// 细垂直线纹理（模拟热敏纸纤维纹路）
+    private func makeLinePattern(alpha: CGFloat, spacing: CGFloat) -> NSColor {
+        let size = NSSize(width: spacing, height: spacing)
+        let image = NSImage(size: size)
+        image.lockFocus()
+        NSColor.clear.setFill()
+        NSRect(origin: .zero, size: size).fill()
+        NSColor(calibratedWhite: 0, alpha: alpha).setFill()
+        NSRect(x: spacing * 0.5 - 0.5, y: 0, width: 1, height: spacing).fill()
+        image.unlockFocus()
+        return NSColor(patternImage: image)
+    }
+
     override func draw(_ dirtyRect: NSRect) {
         guard bounds.width > 0, bounds.height > 0 else { return }
 
@@ -82,10 +97,15 @@ final class AboutTicketView: NSView {
         LingerTheme.nsColor(LingerTheme.Color.ticketPaper).setFill()
         NSRect(x: 0, y: 0, width: bounds.width, height: bounds.height).fill()
 
-        // 点状纹理（双层，pattern 平铺）
+        // 点状纹理（三层叠加，制造粗糙纸面感）
         paperPattern.setFill()
         NSRect(x: 0, y: 0, width: bounds.width, height: bounds.height).fill()
         paperPattern2.setFill()
+        NSRect(x: 0, y: 0, width: bounds.width, height: bounds.height).fill()
+        paperPattern3.setFill()
+        NSRect(x: 0, y: 0, width: bounds.width, height: bounds.height).fill()
+        // 纤维竖纹（热敏纸质感）
+        paperLines.setFill()
         NSRect(x: 0, y: 0, width: bounds.width, height: bounds.height).fill()
 
         // 上下锯齿边：黑点圆心与白纸上下边缘对齐（圆心 y=0 / y=bounds.height）

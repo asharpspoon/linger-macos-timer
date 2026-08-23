@@ -146,7 +146,10 @@ final class DragFeedbackView: NSView {
         // 同时受最大时长对应的物理拖拽距离约束，保证「时间到最大时长时线正好到顶」。
         let percent = UserDefaults.standard.double(
             forKey: LingerTheme.UserDefaultsKey.maxDragLinePercent.rawValue)
-        let p = max(0, min(100, percent == 0 ? 50 : percent))  // 默认 50%
+        // 2026-08-23: 当用户显式设过值（!=0 或 slider 拖过）才用，否则默认 50%
+        let hasSetValue = UserDefaults.standard.object(
+            forKey: LingerTheme.UserDefaultsKey.maxDragLinePercent.rawValue) != nil
+        let p = hasSetValue ? max(0, min(100, percent)) : 50
         let screenHeight = NSScreen.main?.visibleFrame.height ?? 800
         let percentLimit = screenHeight * CGFloat(p / 100)
         let maxDur = UserDefaults.standard.double(
