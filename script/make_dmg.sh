@@ -8,8 +8,9 @@
 set -euo pipefail
 
 APP_NAME="Linger"
-APP_VERSION="2.5.0"
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+# 版本号唯一真源：Sources/Linger/AppVersion.swift（与 build_and_run.sh 同源）
+APP_VERSION="$(sed -n 's/.*static let current = "\(.*\)".*/\1/p' "$ROOT_DIR/Sources/Linger/AppVersion.swift")"
 APP_BUNDLE="$ROOT_DIR/dist/$APP_NAME.app"
 STAGING="$ROOT_DIR/dist/dmg-staging"
 DMG="$ROOT_DIR/$APP_NAME-$APP_VERSION.dmg"
