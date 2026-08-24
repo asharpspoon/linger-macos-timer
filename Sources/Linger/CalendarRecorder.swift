@@ -64,8 +64,10 @@ final class CalendarRecorder {
     }
 
     /// auto：完成即写入（未授权时按需发起系统授权，PRD §3.5.1「首次尝试写入时请求权限」；
-    /// 已授权/已请求过则直接写）
-    private func writeCompletion(_ entry: TimerEntry) {
+    /// 已授权/已请求过则直接写）。
+    /// 2026-08-23：首次授权回调可能早于 EventKit 数据库就绪（calendars/sources 仍为空
+    /// → 找不到日历 source 写入失败），失败时延迟 1.5s 重试一次。
+    private func writeCompletion(_ entry: TimerEntry, retryOnFailure: Bool = true) {
         let manager = CalendarManager.shared
         manager.ensureFullAccess { [weak self] granted in
             guard granted else {
@@ -79,6 +81,12 @@ final class CalendarRecorder {
             if let eventId = manager.writeEventOnFinish(title: title, start: start, end: end) {
                 self.markRecorded(entry, eventId: eventId)
                 os_log("Auto record written: %{public}@", log: self.log, type: .info, title.isEmpty ? "(default)" : title)
+            } else if retryOnFailure {
+                os_log("Auto record failed (store may not be ready), retrying in 1.5s",
+                       log: self.log, type: .info)
+                DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { [weak self] in
+                    self?.writeCompletion(entry, retryOnFailure: false)
+                }
             }
         }
     }

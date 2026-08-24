@@ -142,20 +142,17 @@ final class DragFeedbackView: NSView {
     // MARK: - 显示 / 隐藏
 
     func show(at anchorRect: NSRect) {
-        // 2026-08-23：下拉线最大长度 = 屏幕可见高度 * userPercent/100（0-100 直观百分比）
-        // 同时受最大时长对应的物理拖拽距离约束，保证「时间到最大时长时线正好到顶」。
+        // 2026-08-23：下拉线最大长度按滑块 0-100 线性映射到屏幕可见高度的 25%-75%。
+        // 映射纯函数 DragPhysics.dragLineFraction 与 MenuBarManager.currentDragLineMaxLength
+        // 共用 —— 渲染线长上限 == 时间映射归一化分母，拉满线即拉满最大时长（WYSIWYG）。
         let percent = UserDefaults.standard.double(
             forKey: LingerTheme.UserDefaultsKey.maxDragLinePercent.rawValue)
-        // 2026-08-23: 当用户显式设过值（!=0 或 slider 拖过）才用，否则默认 50%
+        // 当用户显式设过值才用，否则默认 50%（= 50% 屏高的中点映射）
         let hasSetValue = UserDefaults.standard.object(
             forKey: LingerTheme.UserDefaultsKey.maxDragLinePercent.rawValue) != nil
         let p = hasSetValue ? max(0, min(100, percent)) : 50
         let screenHeight = NSScreen.main?.visibleFrame.height ?? 800
-        let percentLimit = screenHeight * CGFloat(p / 100)
-        let maxDur = UserDefaults.standard.double(
-            forKey: LingerTheme.UserDefaultsKey.maxDurationMinutes.rawValue)
-        let syncDistance = CGFloat(DragPhysics.lineMaxDistance(maxMinutes: maxDur))
-        maxLineHeight = max(40, min(syncDistance, percentLimit))
+        maxLineHeight = max(40, screenHeight * CGFloat(DragPhysics.dragLineFraction(percent: p)))
         rubberHeight = 0
         isBreaking = false
         isCreating = false

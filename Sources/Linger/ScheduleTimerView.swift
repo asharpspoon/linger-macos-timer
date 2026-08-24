@@ -43,8 +43,8 @@ final class ScheduleTimerView: NSView {
     private let durationField: NSTextField
     private let nameField: NSTextField
     private let estimatedEndLabel: NSTextField
-    private let confirmButton: NSButton
-    private let cancelButton: NSButton
+    private let confirmButton: CircularIconButton
+    private let cancelButton: CircularIconButton
     /// 内容容器：展开动画时整体 translateY 滑入
     private let contentContainer = NSView()
 
@@ -116,26 +116,22 @@ final class ScheduleTimerView: NSView {
         estimatedEndLabel.textColor = LingerTheme.ink3
         estimatedEndLabel.alignment = .left
 
-        // 确认：琥珀实底圆 + 白 check
-        confirmButton = NSButton()
-        confirmButton.isBordered = false
-        confirmButton.wantsLayer = true
-        confirmButton.layer?.backgroundColor = LingerTheme.amberGold.cgColor
-        confirmButton.layer?.cornerRadius = 12
-        if let raw = NSImage(systemSymbolName: "checkmark", accessibilityDescription: "确认") {
-            confirmButton.image = raw.withSymbolConfiguration(NSImage.SymbolConfiguration(pointSize: 14, weight: .bold))
-        }
-        confirmButton.contentTintColor = LingerTheme.nsColor(LingerTheme.Color.primaryForeground)
+        // 确认：琥珀实底正圆 + check（hover 提亮）
+        // 2026-08-24 用户要求：勾/叉做成正圆形按钮（此前取消是裸 × 悬浮，观感差）
+        confirmButton = CircularIconButton(
+            symbol: "checkmark", pointSize: 13, weight: .bold,
+            bg: LingerTheme.amberGold,
+            hover: LingerTheme.nsColor(LingerTheme.Color.amberLight),
+            tint: LingerTheme.nsColor(LingerTheme.Color.primaryForeground),
+            label: "确认")
 
-        // 取消：灰 x 圆，hover surface2 底
-        cancelButton = NSButton()
-        cancelButton.isBordered = false
-        cancelButton.wantsLayer = true
-        cancelButton.layer?.cornerRadius = 12
-        if let raw = NSImage(systemSymbolName: "xmark", accessibilityDescription: "取消") {
-            cancelButton.image = raw.withSymbolConfiguration(NSImage.SymbolConfiguration(pointSize: 14, weight: .medium))
-        }
-        cancelButton.contentTintColor = LingerTheme.ink3
+        // 取消：surface2 实底正圆 + ink2 ×（hover 提亮为 line 色）
+        cancelButton = CircularIconButton(
+            symbol: "xmark", pointSize: 11, weight: .medium,
+            bg: LingerTheme.nsColor(LingerTheme.Color.surface2),
+            hover: LingerTheme.nsColor(LingerTheme.Color.line),
+            tint: LingerTheme.ink2,
+            label: "取消")
 
         super.init(frame: frameRect)
         contentContainer.frame = bounds
@@ -150,10 +146,9 @@ final class ScheduleTimerView: NSView {
         timePicker.target = self
         timePicker.action = #selector(dateChanged(_:))
 
-        confirmButton.target = self
-        confirmButton.action = #selector(confirmTapped(_:))
-        cancelButton.target = self
-        cancelButton.action = #selector(cancelTapped(_:))
+        // 2026-08-24：按钮改 NSView 模式（CircularIconButton），target/action → onClick
+        confirmButton.onClick = { [weak self] in self?.confirmTapped(()) }
+        cancelButton.onClick = { [weak self] in self?.cancelTapped(()) }
 
         buildLayout()
         updateEstimatedEnd()
@@ -206,8 +201,8 @@ final class ScheduleTimerView: NSView {
         row3.spacing = 8
         row3.alignment = .centerY
         for b in [cancelButton, confirmButton] {
-            b.widthAnchor.constraint(equalToConstant: 24).isActive = true
-            b.heightAnchor.constraint(equalToConstant: 24).isActive = true
+            b.widthAnchor.constraint(equalToConstant: 26).isActive = true
+            b.heightAnchor.constraint(equalToConstant: 26).isActive = true
         }
 
         // —— 三行垂直堆叠（行间距 6/8，对齐原型）——
@@ -398,16 +393,107 @@ final class ScheduleTimerView: NSView {
     }
 
     @objc private func confirmTapped(_ sender: Any) {
-        let start = resolveStartDate()
+        // 2026-08-24 bug 修复：预约时间不能早于现在 ——
+        // 选了过去时间则钳制到当前时刻并回写选择器（所见即所得，创建即开始）
+        let resolved = resolveStartDate()
+        let start: Date
+        if resolved < Date() {
+            start = Date()
+            datePicker.dateValue = start
+            timePicker.dateValue = start
+        } else {
+            start = resolved
+        }
         let minutes = max(1, Int(durationField.stringValue) ?? 25)
         let dur = TimeInterval(minutes) * 60
         let title = nameField.stringValue.trimmingCharacters(in: .whitespaces)
+        updateEstimatedEnd()
         onConfirm?(start, dur, title)
     }
 
     @objc private func cancelTapped(_ sender: Any) {
         onCancel?()
     }
+}
+
+// MARK: - 正圆形图标按钮（行3 确认/取消）
+
+/// 2026-08-24 用户要求：勾/叉做成正圆形按钮。
+/// ⚠️ 必须用 NSView 而非 NSButton：NSButton 的 cell 有内部最小高度行为，
+/// 在 NSStackView 中会无视 required 高度约束（实测 26 约束被顶成 29/31 → 椭圆；
+/// 约束 active 但 frame 不符，无冲突日志）。CalendarPulseButton 的 NSView 模式
+/// 在本项目已验证渲染为完美正圆，照抄该模式。
+private final class CircularIconButton: NSView {
+    var onClick: (() -> Void)?
+
+    private let normalBg: NSColor
+    private let hoverBg: NSColor
+
+    init(symbol: String, pointSize: CGFloat, weight: NSFont.Weight,
+         bg: NSColor, hover: NSColor, tint: NSColor, label: String) {
+        normalBg = bg
+        hoverBg = hover
+        super.init(frame: .zero)
+        wantsLayer = true
+        layer?.backgroundColor = bg.cgColor
+        layer?.masksToBounds = true
+
+        let iconView = PassThroughImageView()
+        iconView.image = NSImage(systemSymbolName: symbol, accessibilityDescription: label)?
+            .withSymbolConfiguration(NSImage.SymbolConfiguration(pointSize: pointSize, weight: weight))
+        iconView.contentTintColor = tint
+        iconView.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(iconView)
+        NSLayoutConstraint.activate([
+            iconView.centerXAnchor.constraint(equalTo: centerXAnchor),
+            iconView.centerYAnchor.constraint(equalTo: centerYAnchor)
+        ])
+
+        toolTip = label
+        setAccessibilityLabel(label)
+        setAccessibilityRole(.button)
+    }
+
+    required init?(coder: NSCoder) { fatalError() }
+
+    /// 约束定尺寸后再算半径，保证任意尺寸下都是正圆
+    override func layout() {
+        super.layout()
+        layer?.cornerRadius = min(bounds.width, bounds.height) / 2
+    }
+
+    override func updateTrackingAreas() {
+        super.updateTrackingAreas()
+        trackingAreas.forEach { removeTrackingArea($0) }
+        addTrackingArea(NSTrackingArea(
+            rect: bounds,
+            options: [.mouseEnteredAndExited, .activeAlways, .inVisibleRect],
+            owner: self, userInfo: nil))
+    }
+
+    override func mouseEntered(with event: NSEvent) {
+        layer?.backgroundColor = hoverBg.cgColor
+    }
+
+    override func mouseExited(with event: NSEvent) {
+        layer?.backgroundColor = normalBg.cgColor
+    }
+
+    override func mouseDown(with event: NSEvent) {
+        onClick?()
+    }
+
+    // ⚠️ 2026-08-24 教训：不要覆写 hitTest 做圆形热区 —— AppKit 传入的 point 是
+    // superview 坐标系（文档原文），直接与自身 bounds 比较会全数 miss（真实点击
+    // 全部穿透，仅「直接调用」假阳性）。改用 PassThroughImageView 让图标穿透，
+    // 按钮走 NSView 默认方形热区（与 NSButton 语义一致）。
+}
+
+/// 穿透型图标视图：图标不参与事件命中（hitTest 恒 nil），
+/// 点击全归 CircularIconButton 本体。真实子视图 NSImageView 若不穿透会截获
+/// mouseDown 并默认吞掉（NSButton 时代图片是 cell 私有绘制、非子视图，无此问题）。
+private final class PassThroughImageView: NSImageView {
+    override func hitTest(_ point: NSPoint) -> NSView? { nil }
 }
 
 // MARK: - 辅助：非负整数格式化（时长输入框）

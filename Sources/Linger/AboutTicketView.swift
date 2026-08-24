@@ -132,94 +132,116 @@ final class AboutTicketView: NSView {
         name.font = NSFont.systemFont(ofSize: 20, weight: .bold)
         name.textColor = Self.ticketInk
 
-        let version = NSTextField(labelWithString: "Version 2.0.0")
+        let version = NSTextField(labelWithString: "Version 2.5.0")
         version.font = NSFont.monospacedSystemFont(ofSize: 11, weight: .regular)
         version.textColor = Self.ticketInk2
 
-        let slogan = NSTextField(labelWithString: "一拉即走，松手计时")
-        slogan.font = NSFont.systemFont(ofSize: 12, weight: .regular)
-        slogan.textColor = Self.ticketInk2
-
-        let header = NSStackView(views: [icon, name, version, slogan])
+        let header = NSStackView(views: [icon, name, version])
         header.orientation = .vertical
         header.alignment = .centerX
         header.spacing = 4
         header.setCustomSpacing(14, after: icon)
         header.setCustomSpacing(8, after: name)
-        header.setCustomSpacing(6, after: version)
         return header
     }
 
-    /// 48pt 琥珀渐变圆角图标 + Linger ring（外环 + 内点）
+    /// 48pt 应用图标（Support/LingerIcon-Fullbleed.png，与 app/Dock 图标同源）
     private func makeAppIcon() -> NSView {
-        let icon = NSView()
-        icon.wantsLayer = true
-        icon.layer?.cornerRadius = 12
-        icon.layer?.borderWidth = 1
-        icon.layer?.borderColor = LingerTheme.amberGold.withAlphaComponent(0.25).cgColor
+        let container = NSView()
+        container.wantsLayer = true
+        container.layer?.cornerRadius = 12
+        container.layer?.masksToBounds = true
 
-        let grad = CAGradientLayer()
-        grad.colors = [LingerTheme.amberGold.withAlphaComponent(0.20).cgColor,
-                       LingerTheme.amberGold.withAlphaComponent(0.06).cgColor]
-        grad.frame = NSRect(x: 0, y: 0, width: 48, height: 48)
-        icon.layer?.addSublayer(grad)
-
-        let ring = CAShapeLayer()
-        let r: CGFloat = 14
-        ring.path = CGPath(ellipseIn: CGRect(x: 24 - r, y: 24 - r, width: r * 2, height: r * 2), transform: nil)
-        ring.strokeColor = LingerTheme.amberGold.cgColor
-        ring.fillColor = NSColor.clear.cgColor
-        ring.lineWidth = 2
-
-        let dot = CAShapeLayer()
-        dot.path = CGPath(ellipseIn: CGRect(x: 24 - 3.5, y: 24 - 3.5, width: 7, height: 7), transform: nil)
-        dot.fillColor = LingerTheme.amberGold.cgColor
-
-        icon.layer?.addSublayer(ring)
-        icon.layer?.addSublayer(dot)
+        if let img = loadImage("LingerIcon-Fullbleed") {
+            let iv = NSImageView(image: img)
+            iv.imageScaling = .scaleProportionallyUpOrDown
+            iv.translatesAutoresizingMaskIntoConstraints = false
+            container.addSubview(iv)
+            NSLayoutConstraint.activate([
+                iv.leadingAnchor.constraint(equalTo: container.leadingAnchor),
+                iv.trailingAnchor.constraint(equalTo: container.trailingAnchor),
+                iv.topAnchor.constraint(equalTo: container.topAnchor),
+                iv.bottomAnchor.constraint(equalTo: container.bottomAnchor)
+            ])
+        }
 
         NSLayoutConstraint.activate([
-            icon.widthAnchor.constraint(equalToConstant: 48),
-            icon.heightAnchor.constraint(equalToConstant: 48)
+            container.widthAnchor.constraint(equalToConstant: 48),
+            container.heightAnchor.constraint(equalToConstant: 48)
         ])
-        return icon
+        return container
+    }
+
+    /// 从 SwiftPM 资源 bundle 加载（与 MenuBarManager.loadImage 同款）。
+    /// 2026-08-24 修复：.copy 资源在子目录里，url(forResource:) 不搜子目录 → 之前加载 nil
+    private func loadImage(_ name: String) -> NSImage? {
+        if let img = NSImage(named: name) { return img }
+        for ext in ["png", "pdf"] {
+            if let url = Bundle.module.url(forResource: name, withExtension: ext,
+                                           subdirectory: "AboutAssets"),
+               let img = NSImage(contentsOf: url) {
+                return img
+            }
+        }
+        return nil
     }
 
     // MARK: - 键值字段
 
+    /// 小红书品牌红（#FF2442，外部品牌色，不属于 LingerTheme 设计系统 → 局部令牌）
+    private static let xhsRed = NSColor(srgbRed: 1.0, green: 0.141, blue: 0.259, alpha: 1)
+
     private func makeFields() -> NSView {
-        // 原型占位字段（「你的名字」等待用户确认后替换）
-        let fields: [(String, String, Bool)] = [
-            ("Developer", "你的名字", false),
-            ("Blog", "https://your.blog", true),
-            ("Email", "hello@example.com", true),
-            ("Build", "2026.08.02", true),
-            ("License", "MIT", false)
+        // 2026-08-24 用户定稿内容；Release Date 每次发版时更新
+        // Blog/Email 为可点击链接（默认浏览器 / 默认邮件 app）
+        let fields: [(String, String, Bool, NSView?, URL?)] = [
+            ("Developer", "早餐酒", false, nil, nil),
+            ("Blog", "https://xhslink.cn/m/5Ky2s8BvViA", true, makeXhsIcon(),
+             URL(string: "https://xhslink.cn/m/5Ky2s8BvViA")),
+            ("Email", "breakfastwine@agent.qq.com", true, nil,
+             URL(string: "mailto:breakfastwine@agent.qq.com")),
+            ("Release Date", "2026.08.24", true, nil, nil)
         ]
         let stack = NSStackView()
         stack.orientation = .vertical
         stack.alignment = .leading
         stack.spacing = 10
         for f in fields {
-            let row = makeField(label: f.0, value: f.1, mono: f.2)
+            let row = makeField(label: f.0, value: f.1, mono: f.2,
+                                leadingIcon: f.3, linkURL: f.4)
             stack.addArrangedSubview(row)
             row.widthAnchor.constraint(equalTo: stack.widthAnchor).isActive = true
         }
         return stack
     }
 
-    private func makeField(label: String, value: String, mono: Bool) -> NSView {
+    private func makeField(label: String, value: String, mono: Bool,
+                           leadingIcon: NSView? = nil, linkURL: URL? = nil) -> NSView {
         let l = NSTextField(labelWithString: label)
         l.font = NSFont.monospacedSystemFont(ofSize: 10, weight: .regular)
         l.textColor = Self.ticketInk3
 
-        let v = NSTextField(labelWithString: value)
-        v.font = mono ? NSFont.monospacedSystemFont(ofSize: 11, weight: .regular)
-                       : NSFont.systemFont(ofSize: 12)
-        v.textColor = Self.ticketInk
+        let v: NSTextField
+        if let url = linkURL {
+            let link = LinkLabel(labelWithString: value,
+                                 font: NSFont.monospacedSystemFont(ofSize: 11, weight: .regular))
+            link.onOpen = { NSWorkspace.shared.open(url) }
+            v = link
+        } else {
+            v = NSTextField(labelWithString: value)
+            v.font = mono ? NSFont.monospacedSystemFont(ofSize: 11, weight: .regular)
+                          : NSFont.systemFont(ofSize: 12)
+            v.textColor = Self.ticketInk
+        }
         v.alignment = .right
 
-        let row = NSStackView(views: [l, NSView(), v])
+        // 值文字（含可选前置 icon）：icon 与文字同高、垂直居中
+        let valueStack = NSStackView(views: leadingIcon.map { [$0, v] } ?? [v])
+        valueStack.orientation = .horizontal
+        valueStack.alignment = .centerY
+        valueStack.spacing = 4
+
+        let row = NSStackView(views: [l, NSView(), valueStack])
         row.orientation = .horizontal
         row.alignment = .firstBaseline
         row.spacing = 12
@@ -230,15 +252,29 @@ final class AboutTicketView: NSView {
         return row
     }
 
+    /// 小红书 icon：SF Symbol book.fill + 小红书红，与值文字（mono 11pt）同高，不突兀
+    private func makeXhsIcon() -> NSView {
+        let iv = NSImageView()
+        iv.image = NSImage(systemSymbolName: "book.fill", accessibilityDescription: "小红书")?
+            .withSymbolConfiguration(NSImage.SymbolConfiguration(pointSize: 10, weight: .medium))
+        iv.contentTintColor = Self.xhsRed
+        iv.translatesAutoresizingMaskIntoConstraints = false
+        NSLayoutConstraint.activate([
+            iv.widthAnchor.constraint(equalToConstant: 12),
+            iv.heightAnchor.constraint(equalToConstant: 12)
+        ])
+        return iv
+    }
+
     // MARK: - 页脚
 
     private func makeFooter() -> NSView {
-        let t1 = NSTextField(labelWithString: "Made with care · 感谢使用 Linger")
-        t1.font = NSFont.systemFont(ofSize: 11)
+        let t1 = NSTextField(labelWithString: "酒后制造")
+        t1.font = NSFont.systemFont(ofSize: 12)
         t1.textColor = Self.ticketInk3
         t1.alignment = .center
 
-        let t2 = NSTextField(labelWithString: "— LINGER · 2026 —")
+        let t2 = NSTextField(labelWithString: "Made while drunk")
         t2.font = NSFont.monospacedSystemFont(ofSize: 9, weight: .regular)
         t2.textColor = LingerTheme.nsColor(LingerTheme.Color.ticketInk4)
         t2.alignment = .center
@@ -255,6 +291,69 @@ final class AboutTicketView: NSView {
         v.translatesAutoresizingMaskIntoConstraints = false
         v.heightAnchor.constraint(equalToConstant: 1).isActive = true
         return v
+    }
+}
+
+/// 可点击链接文字：amberDarker + 下划线（白纸上对比度足），hover 指针变手型，
+/// 点击调 onOpen（浏览器 / 邮件 app）。点击热区为整个 label bounds。
+private final class LinkLabel: NSTextField {
+    var onOpen: (() -> Void)?
+    private var isHovering = false
+    private var tracking: NSTrackingArea?
+
+    init(labelWithString string: String, font: NSFont) {
+        super.init(frame: .zero)
+        isEditable = false
+        isBezeled = false
+        drawsBackground = false
+        self.font = font
+        stringValue = string
+        updateStyle()
+    }
+
+    required init?(coder: NSCoder) { fatalError() }
+
+    private func updateStyle() {
+        let color = LingerTheme.nsColor(LingerTheme.Color.amberDarker)
+        attributedStringValue = NSAttributedString(
+            string: stringValue,
+            attributes: [
+                .font: font ?? NSFont.systemFont(ofSize: 11),
+                .foregroundColor: color,
+                .underlineStyle: NSUnderlineStyle.single.rawValue,
+                .underlineColor: color
+            ])
+        toolTip = "点击打开"
+    }
+
+    override func updateTrackingAreas() {
+        super.updateTrackingAreas()
+        if let tracking { removeTrackingArea(tracking) }
+        let t = NSTrackingArea(rect: bounds,
+                               options: [.mouseEnteredAndExited, .activeAlways, .inVisibleRect],
+                               owner: self, userInfo: nil)
+        addTrackingArea(t)
+        tracking = t
+    }
+
+    override func mouseEntered(with event: NSEvent) {
+        isHovering = true
+        NSCursor.pointingHand.push()
+    }
+
+    override func mouseExited(with event: NSEvent) {
+        isHovering = false
+        NSCursor.pointingHand.pop()
+    }
+
+    override func mouseDown(with event: NSEvent) {
+        // 记录 hover 态，mouseUp 时若仍在热区内才触发（标准按钮语义，防拖出误触）
+        isHovering = true
+    }
+
+    override func mouseUp(with event: NSEvent) {
+        if isHovering { onOpen?() }
+        isHovering = false
     }
 }
 

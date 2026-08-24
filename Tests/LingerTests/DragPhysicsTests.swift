@@ -49,6 +49,19 @@ final class DragPhysicsTests: XCTestCase {
                              DragPhysics.lineMaxDistance(maxMinutes: 30))
     }
 
+    /// 2026-08-23：滑块百分比 → 线长占比（0→25%，50→50%，100→75%，越界钳制）
+    func testDragLineFraction() {
+        XCTAssertEqual(DragPhysics.dragLineFraction(percent: 0), 0.25, accuracy: 0.0001)
+        XCTAssertEqual(DragPhysics.dragLineFraction(percent: 50), 0.5, accuracy: 0.0001)
+        XCTAssertEqual(DragPhysics.dragLineFraction(percent: 100), 0.75, accuracy: 0.0001)
+        // 越界钳制
+        XCTAssertEqual(DragPhysics.dragLineFraction(percent: -10), 0.25, accuracy: 0.0001)
+        XCTAssertEqual(DragPhysics.dragLineFraction(percent: 150), 0.75, accuracy: 0.0001)
+        // 单调递增
+        XCTAssertLessThan(DragPhysics.dragLineFraction(percent: 25),
+                          DragPhysics.dragLineFraction(percent: 75))
+    }
+
     func testDampedOvershootIsResistantAndMonotonic() {
         // overshoot=40 → ~25.3：远不到 40，体现「越拉越顶手」
         let at40 = DragPhysics.dampedOvershoot(40, headroom: 40)

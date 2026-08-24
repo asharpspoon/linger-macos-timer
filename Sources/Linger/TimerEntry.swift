@@ -125,9 +125,34 @@ final class TimerEntry {
         self.onTick = onTick
         self.onFinish = onFinish
 
-        if isScheduled, let start = dto.scheduledStartTime, start.timeIntervalSinceNow > 0 {
-            let dur = max(1, (dto.scheduledEndTime?.timeIntervalSince(start) ?? duration))
-            scheduleActivation(at: start, duration: dur)
+        if isScheduled, let start = dto.scheduledStartTime {
+            if start.timeIntervalSinceNow > 0 {
+                // 等待期预约：到点自动激活（原逻辑）
+                let dur = max(1, (dto.scheduledEndTime?.timeIntervalSince(start) ?? duration))
+                scheduleActivation(at: start, duration: dur)
+                return
+            }
+            // 2026-08-24 bug 修复（真实数据实锤：timers.json 里「发 ppt」挂起一整天）：
+            //   App 在预约开始后才启动时，旧逻辑落入下方通用分支 → isRunning=false
+            //   永远挂起，悬停列表显示「等待中」却永远不会开始（僵尸预约）。
+            if let end = dto.scheduledEndTime, end.timeIntervalSinceNow > 0 {
+                // 开始已过、结束未到 → 立即补激活，按剩余跨度倒计时
+                let span = max(1, end.timeIntervalSinceNow)
+                self.duration = span
+                self.remainingTime = span
+                self.startTime = Date()
+                self.originalStartTime = start
+                self.originalEndTime = end
+                self.isRunning = true
+                self.isPaused = false
+                startTicking()
+                return
+            }
+            // 开始/结束都已过 → 视为已结束（预约创建时已写日历，无需补记）。
+            // remainingTime=0 让悬停列表不再显示，并交由定期清理回收槽位。
+            self.remainingTime = 0
+            self.isRunning = false
+            self.isPaused = false
             return
         }
 
@@ -299,22 +324,29 @@ final class TimerEntry {
 
     // MARK: - 拖拽映射纯函数（自 Linger2.1 移植）
 
-    /// 拖拽距离 → 计时秒数（非线性 s = d² 曲线）。
+    /// 拖拽距离 → 计时秒数（非线性 s = d² 归一化曲线 + 粒度吸附）。
     ///
-    /// 规则（对齐 Linger2.1 / 原型 JS）：
-    /// - 最小拖拽距离 40px（不足按 40 计）
-    /// - `units = px / 40`
-    /// - `minutes = max(1, round(units * units))`
-    /// - `seconds = minutes * 60`，最终受 `maxSeconds` 钳制
+    /// 2026-08-23 重设计：时间映射与下拉线最大长度挂钩（WYSIWYG）——
+    /// 旧版固定物理刻度（40px=1min²），滑块调长线后时间在旧刻度处就封顶，线拉长时间不变。
+    /// 新版把距离归一化到线长：
+    /// - `p = px / lineMaxLength`（0-1，钳制）
+    /// - `raw = p² × maxSeconds`
+    /// - 吸附到 `granularity` 的整数倍（计时粒度：10/20/30/60s，默认 60 = 整分钟步进）
+    /// - 最小 1 分钟兜底，最终受 `maxSeconds` 钳制
     ///
-    /// 示例：40px→60s、80px→240s、120px→540s、<40px→60s。
+    /// 特性：拉满线（px = lineMaxLength）正好达到最大时长；曲线仍是平方（前慢后快）；
+    /// 粒度 10s 时拖拽读数按 1:00 → 1:10 → 1:20 步进。`lineMaxLength` 下限 40（与渲染侧一致）。
     static func duration(fromDragDistance dragDistance: Double,
-                         maxSeconds: TimeInterval = 30 * 60) -> TimeInterval {
-        let effectiveDistance = max(dragDistance, 40.0)
-        let units = effectiveDistance / 40.0
-        let minutes = max(1, Int((units * units).rounded()))
-        let seconds = Double(minutes) * 60.0
-        return min(TimeInterval(seconds), maxSeconds)
+                         lineMaxLength: Double,
+                         maxSeconds: TimeInterval = 30 * 60,
+                         granularity: TimeInterval = 60) -> TimeInterval {
+        let limit = max(40.0, lineMaxLength)
+        let p = min(1, max(0, dragDistance / limit))
+        let rawSeconds = p * p * maxSeconds
+        let g = max(1, granularity)
+        let snapped = (rawSeconds / g).rounded() * g
+        let seconds = max(60.0, snapped)   // 最小 1 分钟（与 2.1 行为一致）
+        return min(seconds, maxSeconds)
     }
 
     /// 整分钟吸附：秒数距某个整分钟不足 5 秒时吸附到该整分钟，否则原样返回。

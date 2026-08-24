@@ -35,8 +35,19 @@ enum DragPhysics {
     /// 线长上限与最大时长同步：达到 maxMinutes 分钟所需的拖拽距离。
     /// 由 s=d² 曲线反解：`minutes = (px/40)²` → `px = 40·√minutes`。
     /// 例：30 分钟 → 219px；60 分钟 → 310px。
+    ///
+    /// ⚠️ 2026-08-23 起不再用于拖拽线长上限（线长改由滑块百分比决定，见 dragLineFraction）；
+    /// 仅保留供历史单测校验曲线关系。
     static func lineMaxDistance(maxMinutes: Double) -> Double {
         let m = maxMinutes > 0 ? maxMinutes : 30
         return 40 * sqrt(m)
+    }
+
+    /// 2026-08-23：滑块百分比(0-100) → 下拉线最大长度占屏幕可见高度的比例。
+    /// 线性映射：0 → 25%，50 → 50%，100 → 75%（越界值钳制到 0-100）。
+    /// DragFeedbackView（渲染线长）与 MenuBarManager（时间映射）共用，保证 WYSIWYG。
+    static func dragLineFraction(percent: Double) -> Double {
+        let p = min(100, max(0, percent))
+        return 0.25 + (p / 100.0) * 0.5
     }
 }

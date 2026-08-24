@@ -2,6 +2,59 @@ import Cocoa
 import os.log
 import Carbon.HIToolbox   // RegisterEventHotKey：拖拽期全局捕获 Esc（无需辅助功能权限）
 
+/// 菜单栏图标风格（设置-通用下拉可选，`linger_iconStyle`）。
+/// 2026-08-23：4 个风格全部用用户提供的 template 矢量 PDF（36×36 画板，渲染 18pt Retina 无损；
+/// Sources/Linger/Resources/MenuBarIcons/，随 Linger_Linger.bundle 打进 app），
+/// isTemplate=true → 深浅色模式自动适配；资源缺失时回退自绘 Ring。
+enum MenuBarIconStyle: String, CaseIterable {
+    case jump                            // Jump_time_fill（默认）
+    case ring                            // Ring
+    case desk                            // Desk_fill
+    case importIcon = "import"           // Import_fill（import 是 Swift 关键字）
+
+    /// 设置下拉显示名（2026-08-23 用户要求：显示英文）
+    var displayName: String {
+        switch self {
+        case .jump: return "Jump"
+        case .ring: return "Ring"
+        case .desk: return "Desk"
+        case .importIcon: return "Import"
+        }
+    }
+
+    /// 资源文件名（不含 .png 扩展）
+    var resourceName: String {
+        switch self {
+        case .jump: return "Jump_time_fill"
+        case .ring: return "Ring"
+        case .desk: return "Desk_fill"
+        case .importIcon: return "Import_fill"
+        }
+    }
+
+    /// 当前用户选择（未设置/非法值回退 .jump —— 2026-08-23 用户指定默认图标）
+    static var current: MenuBarIconStyle {
+        let raw = UserDefaults.standard.string(forKey: LingerTheme.UserDefaultsKey.iconStyle.rawValue) ?? ""
+        return MenuBarIconStyle(rawValue: raw) ?? .jump
+    }
+
+    /// 加载 18×18 template 矢量图标（PDF，Retina 无损；对齐微信/企业微信菜单栏规格）；
+    /// bundle 里找不到返回 nil（调用方回退自绘 Ring）
+    func loadImage() -> NSImage? {
+        guard let url = Bundle.module.url(forResource: resourceName, withExtension: "pdf",
+                                          subdirectory: "MenuBarIcons"),
+              let image = NSImage(contentsOf: url) else { return nil }
+        image.isTemplate = true
+        image.size = NSSize(width: 18, height: 18)
+        return image
+    }
+}
+
+/// 设置页切换菜单栏图标后的广播（MenuBarManager 监听并热更新，无需重启）
+extension Notification.Name {
+    static let lingerMenuBarIconDidChange = Notification.Name("lingerMenuBarIconDidChange")
+}
+
 
 // MARK: - MenuBarManager（菜单栏入口）
 
@@ -48,6 +101,19 @@ final class MenuBarManager: NSObject {
     private static var escEventHandlerRef: EventHandlerRef?
     /// 当前持有拖拽的 MenuBarManager（Carbon 回调无法捕获 Swift 对象，用 weak 转发）
     private static weak var escDragOwner: MenuBarManager?
+
+    // MARK: - 常驻全局热键（Carbon，2026-08-24 用户需求）
+    // ⌘, → 打开设置；⌘⌥L → 预约日程。菜单栏 app 常年在后台，
+    // mainMenu keyEquivalent 只在本 app 激活时生效 → 必须用 Carbon 全局热键。
+    // 右键菜单里同步显示快捷键（纯展示，见 showRightClickMenu）。
+
+    private static weak var hotKeyOwner: MenuBarManager?
+    private static var settingsHotKeyRef: EventHotKeyRef?
+    private static var scheduleHotKeyRef: EventHotKeyRef?
+    private static var globalHotKeyHandlerRef: EventHandlerRef?
+    /// 热键 id（EventHotKeyID.id 区分，signature 统一 "LNGR"）
+    private static let hotKeyIDSettings: UInt32 = 2
+    private static let hotKeyIDSchedule: UInt32 = 3
     /// 触顶瞬间冻结的结束时刻（触顶后数字不再变化，直到退出溢出）
     private var overflowTil: Date?
 
@@ -66,11 +132,21 @@ final class MenuBarManager: NSObject {
     /// 鼠标真的进入过面板区域（延迟 0.3s 后判定）→ 用这个标志让面板一直保持打开直到真离开
     private var hoverIsLockedOpen: Bool = false
 
+    /// 2026-08-24 鼠标看门狗：面板显示期间 0.5s 轮询鼠标位置。
+    /// 根因：关闭链路依赖 trackingArea exit 事件，但两类场景会丢事件——
+    /// ① NSMenu.popUp tracking session 吞掉 icon 侧 mouseExited（右键路径）；
+    /// ② 面板 frame 动画缩小把鼠标「甩出」rect，AppKit 不保证补发 exit（取消预约后）。
+    /// 看门狗不依赖事件：鼠标既不在面板也不在图标附近 → 走标准延迟关闭判定。
+    /// isScheduling 展开期间豁免（NSDatePicker 的系统日历弹层在面板外，防误杀）。
+    private var hoverWatchdogTimer: Timer?
+
     // 右键菜单（不绑定到 statusItem.menu，手动弹出）
     private let rightClickMenu: NSMenu
 
     // 当前按钮尺寸 — Step 2 恢复 .variableLength，由系统根据内容自适应
     private var statusItemObserver: NSObjectProtocol?
+    /// 设置页切换菜单栏图标的通知监听（2026-08-23）
+    private var iconChangeObserver: NSObjectProtocol?
 
     override init() {
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
@@ -93,10 +169,15 @@ final class MenuBarManager: NSObject {
         DispatchQueue.main.async { [weak self] in
             self?.installHoverTracking()
         }
+        // 2026-08-24：常驻全局热键（⌘, 设置 / ⌘⌥L 预约日程）
+        installGlobalHotKeys()
     }
 
     deinit {
         if let obs = statusItemObserver {
+            NotificationCenter.default.removeObserver(obs)
+        }
+        if let obs = iconChangeObserver {
             NotificationCenter.default.removeObserver(obs)
         }
         // 拖拽期资源：轮询 timer / 点击提示 timer / 局部事件监视器
@@ -109,11 +190,10 @@ final class MenuBarManager: NSObject {
 
     // MARK: - 图标（SF Symbol + 降级为 Linger 文字）
 
-    /// T12: 菜单栏图标 —— 自绘 Ring（template，深浅自适应）。
-    /// 2026-08-06：用户提供的 LingerIcon.png 是「程序坞/app 图标」，不是菜单栏图标；
-    /// 菜单栏保持 Ring；app 图标由 build_and_run.sh 用 LingerIcon.png 生成 icns 打进 bundle。
+    /// T12: 菜单栏图标 —— 按用户选择（设置-通用「菜单栏图标」）加载 template PNG；
+    /// 资源缺失时回退自绘 Ring。app 图标由 build_and_run.sh 生成 icns 打进 bundle。
     private func buildMenuBarIcon() -> NSImage? {
-        return buildRingIcon()
+        return MenuBarIconStyle.current.loadImage() ?? buildRingIcon()
     }
 
     /// 自绘环形图标（template）：外环描边 + 中心实心点，深浅模式自适应
@@ -146,10 +226,19 @@ final class MenuBarManager: NSObject {
     /// 不再经过 NSStatusBarButton 的 cell tracking loop ——
     /// 这是「按钮吞 mouseUp → 拖拽状态机卡死 → 松手不计时」老 bug 的根治方案。
     private func configureStatusItemStep2() {
+        // 2026-08-23：宽度手动同步 —— AppKit 的 variableLength + custom view
+        // 只在内容变宽时自动跟随 intrinsicContentSize，变窄不缩回（倒计时结束
+        // 切回纯图标会在菜单栏留大片空白的根因）。每次内容变化手动设 length。
+        statusItemView.onContentWidthChanged = { [weak self] width in
+            guard let self, abs(self.statusItem.length - width) > 0.5 else { return }
+            self.statusItem.length = width
+        }
         if let icon = buildMenuBarIcon() {
             statusItemView.setIcon(icon)
         }
         statusItemView.setTitle("")
+        // 初次装配也同步一次宽度（图标态 ~26pt）
+        statusItem.length = statusItemView.intrinsicContentSize.width
 
         statusItemView.onMouseDown = { [weak self] in
             self?.beginDrag()
@@ -235,6 +324,16 @@ final class MenuBarManager: NSObject {
             self?.refreshHoverList()
         }
 
+        // 2026-08-23：设置页切换「菜单栏图标」→ 热更新，无需重启
+        iconChangeObserver = NotificationCenter.default.addObserver(
+            forName: .lingerMenuBarIconDidChange,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            guard let self else { return }
+            self.statusItemView.setIcon(self.buildMenuBarIcon())
+        }
+
         // T6: 计时归零的 UI 反馈改由 CompletionBanner（自绘玻璃横幅）+ 提示音呈现，
         //     此处不再弹出 Toast，避免与完成弹窗重复。
     }
@@ -297,13 +396,21 @@ final class MenuBarManager: NSObject {
         // 每次右键时重建菜单，确保日历权限状态实时更新
         rightClickMenu.removeAllItems()
 
-        // 2026-08-06 上线规范：右键菜单只保留两项——「设置…」+「系统授权」。
-        // 已授权时「系统授权」变「已获取授权」并灰显不可点（isEnabled=false 系统自动置灰）。
+        // 2026-08-24：设置移到最上方（用户要求），快捷键显示 ⌘,（实际触发力：Carbon 全局热键）
         let settingsItem = NSMenuItem(title: "设置…",
                                      action: #selector(showSettings(_:)),
-                                     keyEquivalent: "")
+                                     keyEquivalent: ",")
         settingsItem.target = self
         rightClickMenu.addItem(settingsItem)
+
+        // 2026-08-24 用户需求：右键直达预约录入（弹悬停面板 + 直接展开编辑区）
+        // 快捷键显示 ⌘⌥L（实际触发力：Carbon 全局热键，见 installGlobalHotKeys）
+        let scheduleItem = NSMenuItem(title: "预约日程…",
+                                      action: #selector(openScheduleEntry(_:)),
+                                      keyEquivalent: "l")
+        scheduleItem.keyEquivalentModifierMask = [.command, .option]
+        scheduleItem.target = self
+        rightClickMenu.addItem(scheduleItem)
 
         let calAuth = CalendarManager.shared.hasAccess
         // 用 hasAccess（isAuthorized || grantedByRequest）兜底裸 bundle 场景：
@@ -337,6 +444,16 @@ final class MenuBarManager: NSObject {
 
         let location = NSPoint(x: 0, y: statusItemView.bounds.height)
         rightClickMenu.popUp(positioning: nil, at: location, in: statusItemView)
+    }
+
+    /// 2026-08-24：右键「预约日程…」——模拟「hover 进入 + 点击日历按钮」的自然路径，
+    /// 不再直接 showHoverList 死板呼出：
+    /// 1. handleHoverEntered：与鼠标悬停完全同一入口/状态（面板已开则只刷新）
+    /// 2. expandScheduleDirectly：等效点击底栏日历按钮展开编辑区
+    /// 关闭判定由 hoverWatchdog 兜底（见 showHoverList），鼠标离开面板+图标即收起。
+    @objc private func openScheduleEntry(_ sender: Any?) {
+        handleHoverEntered()
+        hoverListView?.expandScheduleDirectly()
     }
 
     // MARK: - 拖拽状态机（自 Linger2.1 打磨版移植：idle → pressed → dragging）
@@ -382,6 +499,65 @@ final class MenuBarManager: NSObject {
             Self.escHotKeyRef = nil
         }
         Self.escDragOwner = nil
+    }
+
+    // MARK: - 常驻全局热键（⌘, / ⌘⌥L）
+
+    /// 注册即永久生效（MenuBarManager 是 app 生命周期单实例，无需注销）。
+    /// Carbon 热键在 app 后台时也能触发 —— 菜单栏 app 的唯一系统级快捷键方案。
+    private func installGlobalHotKeys() {
+        Self.hotKeyOwner = self
+
+        // 一个 handler 按 EventHotKeyID.id 分发两个热键
+        if Self.globalHotKeyHandlerRef == nil {
+            var eventType = EventTypeSpec(eventClass: OSType(kEventClassKeyboard),
+                                          eventKind: UInt32(kEventHotKeyPressed))
+            let handler: EventHandlerUPP = { _, event, _ in
+                var hkID = EventHotKeyID()
+                GetEventParameter(event,
+                                  EventParamName(kEventParamDirectObject),
+                                  EventParamType(typeEventHotKeyID),
+                                  nil,
+                                  MemoryLayout<EventHotKeyID>.size,
+                                  nil,
+                                  &hkID)
+                // Carbon 事件线程 → 主线程执行 UI 动作
+                DispatchQueue.main.async {
+                    guard let owner = MenuBarManager.hotKeyOwner else { return }
+                    switch hkID.id {
+                    case MenuBarManager.hotKeyIDSettings:
+                        owner.openSettingsFromHotKey()
+                    case MenuBarManager.hotKeyIDSchedule:
+                        owner.openScheduleEntry(nil)
+                    default:
+                        break
+                    }
+                }
+                return noErr
+            }
+            InstallEventHandler(GetEventDispatcherTarget(), handler, 1,
+                                &eventType, nil, &Self.globalHotKeyHandlerRef)
+        }
+
+        let sig = OSType(0x4C4E4752)   // "LNGR"，与 Esc 热键同 signature 不同 id
+        if Self.settingsHotKeyRef == nil {
+            RegisterEventHotKey(UInt32(kVK_ANSI_Comma), UInt32(cmdKey),
+                                EventHotKeyID(signature: sig, id: Self.hotKeyIDSettings),
+                                GetEventDispatcherTarget(), 0, &Self.settingsHotKeyRef)
+        }
+        if Self.scheduleHotKeyRef == nil {
+            RegisterEventHotKey(UInt32(kVK_ANSI_L), UInt32(cmdKey | optionKey),
+                                EventHotKeyID(signature: sig, id: Self.hotKeyIDSchedule),
+                                GetEventDispatcherTarget(), 0, &Self.scheduleHotKeyRef)
+        }
+        os_log("Global hotkeys installed: Cmd+, (settings) / Cmd+Opt+L (schedule)",
+               log: log, type: .info)
+    }
+
+    /// 热键路径打开设置：从后台 app 触发时需要激活本 app 才能把窗口带到前台
+    private func openSettingsFromHotKey() {
+        NSApp.activate(ignoringOtherApps: true)
+        showSettings(nil)
     }
 
     private func beginDrag() {
@@ -455,7 +631,10 @@ final class MenuBarManager: NSObject {
         guard dragState == .dragging else { return }
 
         let maxSeconds = maxDragDurationSeconds()
-        let rawSeconds = TimerEntry.duration(fromDragDistance: Double(distance), maxSeconds: maxSeconds)
+        let rawSeconds = TimerEntry.duration(fromDragDistance: Double(distance),
+                                             lineMaxLength: Double(currentDragLineMaxLength()),
+                                             maxSeconds: maxSeconds,
+                                             granularity: timerGranularitySeconds())
         let seconds = TimerEntry.snapToMinuteIfClose(rawSeconds)
         let til = Date().addingTimeInterval(seconds)
         let overflow = rawSeconds >= maxSeconds - 0.5
@@ -531,7 +710,10 @@ final class MenuBarManager: NSObject {
         }
 
         let maxSeconds = maxDragDurationSeconds()
-        let rawSeconds = TimerEntry.duration(fromDragDistance: Double(distance), maxSeconds: maxSeconds)
+        let rawSeconds = TimerEntry.duration(fromDragDistance: Double(distance),
+                                             lineMaxLength: Double(currentDragLineMaxLength()),
+                                             maxSeconds: maxSeconds,
+                                             granularity: timerGranularitySeconds())
         // 与 pollDrag 用同一套曲线 + 同一次吸附 → 松手所得 == 松手前所见（WYSIWYG）
         let seconds = TimerEntry.snapToMinuteIfClose(rawSeconds)
 
@@ -642,6 +824,25 @@ final class MenuBarManager: NSObject {
         let mins = UserDefaults.standard.double(forKey: LingerTheme.UserDefaultsKey.maxDurationMinutes.rawValue)
         let m = mins > 0 ? mins : LingerTheme.defaultMaxDurationMinutes
         return TimeInterval(m) * 60
+    }
+
+    /// 2026-08-23：当前下拉线最大长度（屏高 × dragLineFraction）。
+    /// 与 DragFeedbackView.show() 共用同一纯函数 + 同一 UserDefaults 判定，
+    /// 保证「渲染的线长上限」与「时间映射的归一化分母」严格一致（WYSIWYG）。
+    private func currentDragLineMaxLength() -> CGFloat {
+        let key = LingerTheme.UserDefaultsKey.maxDragLinePercent.rawValue
+        let hasSetValue = UserDefaults.standard.object(forKey: key) != nil
+        let raw = UserDefaults.standard.double(forKey: key)
+        let p = hasSetValue ? raw : 50
+        let screenHeight = NSScreen.main?.visibleFrame.height ?? 800
+        return screenHeight * CGFloat(DragPhysics.dragLineFraction(percent: p))
+    }
+
+    /// 2026-08-23：计时粒度（设置-通用，`linger_timerGranularity`，缺省 60s）。
+    /// 拖拽读数按该步进吸附（10s → 1:00、1:10、1:20…），松手创建的时长同样吸附。
+    private func timerGranularitySeconds() -> TimeInterval {
+        let v = UserDefaults.standard.double(forKey: LingerTheme.UserDefaultsKey.timerGranularity.rawValue)
+        return v > 0 ? v : LingerTheme.defaultTimerGranularity
     }
 
     /// 拖拽引导提示计数：每次成功创建计时 +1；前 3 次拖拽显示提示文案，之后永久隐藏（见 DragFeedbackView）。
@@ -939,8 +1140,11 @@ final class MenuBarManager: NSObject {
             win.setFrame(frame, display: false)
         }
 
-        // 在面板上挂一个 tracking area：检测鼠标进入/离开面板
+        // 面板自身加 tracking area：检测鼠标进入/离开面板
         installPanelTracking(on: view)
+
+        // 2026-08-24：看门狗兜底（trackingArea exit 事件在菜单 session / frame 动画下会丢）
+        startHoverWatchdog()
 
         os_log("Hover list shown: %d entries", log: log, type: .info, entries.count)
     }
@@ -961,10 +1165,42 @@ final class MenuBarManager: NSObject {
     }
 
     private func hideHoverListNow() {
+        hoverWatchdogTimer?.invalidate()
+        hoverWatchdogTimer = nil
         hoverListWindow?.orderOut(nil)
         hoverListWindow = nil
         hoverListView = nil
         hoverIsLockedOpen = false
+    }
+
+    // MARK: - 鼠标看门狗（面板自动关闭兜底）
+
+    private func startHoverWatchdog() {
+        hoverWatchdogTimer?.invalidate()
+        hoverWatchdogTimer = Timer.scheduledTimer(withTimeInterval: 0.5, repeats: true) { [weak self] _ in
+            self?.hoverWatchdogTick()
+        }
+    }
+
+    private func hoverWatchdogTick() {
+        guard let win = hoverListWindow else {
+            hoverWatchdogTimer?.invalidate()
+            hoverWatchdogTimer = nil
+            return
+        }
+        // 预约编辑区展开期间豁免：NSDatePicker 的系统日历弹层出现在面板外，
+        // 鼠标在上面选日期时不在面板 frame 内，不能误判离开
+        if hoverListView?.isScheduling == true { return }
+        let mouse = NSEvent.mouseLocation
+        if win.frame.contains(mouse) { return }
+        // 鼠标在图标附近（含 8pt 缓冲）→ 视为仍在 hover 语义内
+        if let iconWin = statusItemView.window {
+            let iconFrame = iconWin.convertToScreen(
+                statusItemView.convert(statusItemView.bounds, to: nil))
+            if iconFrame.insetBy(dx: -8, dy: -8).contains(mouse) { return }
+        }
+        // 鼠标既不在面板也不在图标 → 走标准关闭判定（含 0.3s 宽限，期间鼠标滑回可救）
+        scheduleHoverHideCheck()
     }
 
     /// 通知触发时调用：仅在面板已显示时刷新数据

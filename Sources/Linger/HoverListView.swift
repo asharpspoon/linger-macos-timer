@@ -4,7 +4,7 @@ import Cocoa
 
 private enum HoverDesign {
     // 颜色：暗色毛玻璃（对齐 hover-list.html glass-panel），暖橙主色（仅 running）
-    static let panelBg = NSColor(calibratedRed: 24/255.0, green: 24/255.0, blue: 28/255.0, alpha: 0.72)
+    static let panelBg = NSColor(calibratedRed: 24/255.0, green: 24/255.0, blue: 28/255.0, alpha: 0.92)
     static let rowHover = NSColor(calibratedWhite: 1.0, alpha: 0.06)       // hover 行淡高亮
     static let rowDivider = NSColor(calibratedWhite: 1.0, alpha: 0.07)     // 行间 1px 分隔线（弱，突出分组线）
     static let groupSeparator = NSColor(calibratedWhite: 0.5, alpha: 0.22)  // 分组分隔线（灰色，克制）
@@ -638,7 +638,8 @@ final class HoverListView: NSView {
         drawPanelBackground()
 
         if running.isEmpty && paused.isEmpty && scheduled.isEmpty && removedEntries.isEmpty {
-            drawEmptyHint()
+            // 2026-08-24 用户要求：预约编辑展开时隐藏空态提示（「暂无计时器」挡住输入区）
+            if !isScheduling { drawEmptyHint() }
             drawBottomArea()   // 空态也保留底栏分隔线 + 日历按钮（预约入口）
             return
         }
@@ -911,6 +912,32 @@ final class HoverListView: NSView {
         }
     }
 
+    /// 预约行「预计开始」徽标文案（缓存 formatter，避免每帧重建）
+    private static let hhmmFormatter: DateFormatter = {
+        let f = DateFormatter()
+        f.dateFormat = "HH:mm"
+        f.locale = Locale(identifier: "en_US_POSIX")
+        return f
+    }()
+    private static let mdhmFormatter: DateFormatter = {
+        let f = DateFormatter()
+        f.dateFormat = "M/d HH:mm"
+        f.locale = Locale(identifier: "en_US_POSIX")
+        return f
+    }()
+
+    private static func scheduleStartBadgeText(_ entry: TimerEntry) -> String {
+        guard let start = entry.scheduledStartTime else { return "待开始" }
+        let cal = Calendar.current
+        if cal.isDateInToday(start) {
+            return "\(hhmmFormatter.string(from: start)) 开始"
+        }
+        if cal.isDateInTomorrow(start) {
+            return "明天 \(hhmmFormatter.string(from: start))"
+        }
+        return mdhmFormatter.string(from: start)
+    }
+
     /// 右侧控件；返回时间文本右对齐锚点（badge/按钮左缘）。
     private func drawRightControls(entry: TimerEntry, rowRect: NSRect, centerY: CGFloat) -> CGFloat {
         let rightEdge = rowRect.maxX
@@ -933,7 +960,9 @@ final class HoverListView: NSView {
                                  height: iconSize)
             deleteScheduledRects[entry.id] = delRect.insetBy(dx: -hitPad, dy: -hitPad)
 
-            let text = "待开始"
+            // 2026-08-24 用户需求：显示预计开始时间（用户说不知道什么时候开始）。
+            // 今天 →「HH:mm 开始」；明天 →「明天 HH:mm」；更远 →「M/d HH:mm」。
+            let text = Self.scheduleStartBadgeText(entry)
             let attr: [NSAttributedString.Key: Any] = [
                 .font: NSFont.systemFont(ofSize: HoverDesign.badgeFontSize, weight: .medium),
                 .foregroundColor: HoverDesign.textTertiary
@@ -1184,6 +1213,14 @@ final class HoverListView: NSView {
 
     // MARK: - 内联预约展开（原型：hover-list 底部内联，无独立窗口）
 
+    /// 右键菜单「预约日程…」直达入口：面板由 MenuBarManager 保证已弹出，
+    /// 这里只负责展开编辑区（已展开则不动作）。
+    func expandScheduleDirectly() {
+        if scheduleView == nil {
+            expandInlineSchedule()
+        }
+    }
+
     private func toggleInlineSchedule() {
         if scheduleView != nil {
             closeInlineSchedule()
@@ -1383,14 +1420,28 @@ final class HoverListView: NSView {
 
         let contentX = cardRect.minX                       // 与 drawLeftTitle 起点一致
         let centerY = cardRect.midY
-        // 输入框宽度按右侧时间文本实际宽度收窄，保证回车图标不被时间挡住：
-        // 时间左缘 = 右缘 - 按钮区(31) - 间距(12) - 时间宽；再留出图标(≈12)+间距
         let rightEdge = cardRect.maxX
         let timeText = entry.displayTime
         let timeFont = NSFont.monospacedDigitSystemFont(ofSize: HoverDesign.timeFontSize(), weight: .semibold)
         let timeW = (timeText as NSString).size(withAttributes: [.font: timeFont]).width
         let timeLeft = rightEdge - 31 - 12 - timeW
-        let fieldWidth = max(40, timeLeft - 10 - 6 - 12 - contentX)
+
+        // 2026-08-24 修复：回车图标右缘锚定在时间文本左侧 10pt（与输入框宽度解耦）。
+        // 旧实现图标跟在输入框右缘 +6，输入框宽度被 max(40,...) 钳制时会越过 timeLeft
+        // 与倒计时读数重叠。现在无论输入框多宽，图标永远贴时间左侧，绝不重叠。
+        var iconLeft = timeLeft - 10 - 12
+        if let ret = makeTintedSFSymbol("return", color: HoverDesign.textTertiary, pointSize: 10) {
+            iconLeft = timeLeft - 10 - ret.size.width
+            let icon = NSImageView(image: ret)
+            icon.frame = NSRect(x: iconLeft,
+                                y: centerY - ret.size.height / 2,
+                                width: ret.size.width,
+                                height: ret.size.height)
+            addSubview(icon)
+            editingReturnIcon = icon
+        }
+
+        let fieldWidth = max(40, iconLeft - 6 - contentX)
         let fieldHeight: CGFloat = 18
         let field = NSTextField(frame: NSRect(x: contentX, y: centerY - fieldHeight / 2,
                                                width: max(40, fieldWidth),
@@ -1414,17 +1465,6 @@ final class HoverListView: NSView {
         addSubview(field)
         editingField = field
         editingEntryID = entry.id
-
-        // 输入框最右侧的灰色回车暗示（↩︎）：按回车提交
-        if let ret = makeTintedSFSymbol("return", color: HoverDesign.textTertiary, pointSize: 10) {
-            let icon = NSImageView(image: ret)
-            icon.frame = NSRect(x: field.frame.maxX + 6,
-                                y: centerY - ret.size.height / 2,
-                                width: ret.size.width,
-                                height: ret.size.height)
-            addSubview(icon)
-            editingReturnIcon = icon
-        }
 
         window?.makeFirstResponder(field)
     }

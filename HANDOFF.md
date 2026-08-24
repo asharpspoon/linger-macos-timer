@@ -14,6 +14,141 @@ s=d² 曲线 + 整分钟吸附），松手即开始计时。AppKit 原生、暗�
 > 每次交接/里程碑后在此**顶部**追加一段（最新在上），格式见 `.agents/skills/linger-handoff/`。
 > 上次交接见 git 历史；当前状态以「最新进度」为准。
 
+- **2026-08-24 凌晨⑥ · 关于页定稿 + 2.5.0 发布打包（Trae）**
+  - **关于页内容定稿（AboutTicketView.swift）**：
+    - 头部 icon：自绘琥珀圆环 → 用户 app 图标（Support/LingerIcon-Fullbleed.png 同源，48pt 圆角 12）；资源经 SwiftPM `Resources/AboutAssets` 打包
+    - 删 slogan「一拉即走，松手计时」；Version 2.5.0
+    - 字段：Developer 早餐酒 / Blog 小红书链接（前置 SF Symbol book.fill 小红书红 #FF2442 icon，12pt 与文字同高）/ Email breakfastwine@agent.qq.com / Build→**Release Date 2026.08.24**（发版时更新此值）/ License 行删除
+    - **Blog/Email 链接化**：新增 LinkLabel（amberDarker + 下划线 + hover 手型指针 + 按钮语义防拖出误触）：Blog 走默认浏览器、Email 走 `mailto:` 呼默认邮件 app
+    - 页脚：「Made with care…/— LINGER · 2026 —」→「**酒后制造 / Made while drunk**」
+  - **右键菜单**：「设置…」移到最上方（设置→预约→日历授权→退出）
+  - **修复：关于页图片不显示**：`.copy` 资源在 bundle 子目录里，`url(forResource:)` 不搜子目录 → 加载静默 nil。修法：`Bundle.module.url(forResource:withExtension:subdirectory: "AboutAssets")`（与菜单栏图标同款写法）。**教训：SwiftPM `.copy` 资源目录必须带 subdirectory 参数查**
+  - **发布打包（build_and_run.sh）**：新增 `--release` 模式（Release 构建 + 只打包不启动）；版本号变量化 `APP_VERSION=2.5.0`（发版改这一处，Info.plist 自动同步）。产物：**项目根目录 `Linger.app`**（Release 6.0MB，冒烟运行通过），拖入「应用程序」即装。未开发者签名（本机用 OK；外部分发需右键打开绕 Gatekeeper，正式分发需 Apple 开发者账号做 DMG+公证）
+  - 验证：swift build + 全测试绿 + release 实机 pid 39807
+  - **流程变更（用户指示）**：HANDOFF 不再每轮自动回填，由用户主动提醒时登记
+
+- **2026-08-24 凌晨⑤ · 修复回归：✓/✕ 按钮「按不了」（Trae，含回归解剖）**
+  - **Bug Summary [P1，凌晨④ 引入的回归]**：
+    - 症状：椭圆修复（NSButton→NSView 重写）后，确认/取消按钮完全点不了
+    - 根因（探针测试拿运行时证据）：CircularIconButton 覆写 hitTest 做「圆形热区」，但 **AppKit 的 hitTest(point) 传入 point 是 superview 坐标系**（文档原文 "in the coordinate system of the view's superview"），覆写直接拿它与自身 bounds 圆心比较 → 真实点击（window 自顶向下派发）全数错位 miss → 事件落到父级 NSStackView（无点击处理）→ 无反应
+    - 修复（双管）：
+      1. **删除 hitTest 覆写**——回到 NSView 默认方形热区（与 NSButton 语义一致）；教训已写进类注释
+      2. **新增 PassThroughImageView**（hitTest 恒 nil 的 NSImageView 子类）——真实子视图 NSImageView 会截获 mouseDown 吞掉事件（NSButton 时代图片是 cell 私有绘制、非子视图，所以以前没这问题）
+    - 回归测试 ClickChainProbeTests：① row3 层 hitTest 必须命中按钮本体（坐标系约定锁定）② 图标穿透恒 nil ③ 反向锚点（自身坐标直传必须 miss，防「双命中」假实现）
+  - **回归解剖**：原 bug 是椭圆 → 我用「自定义 hitTest 圆形热区」过度设计修外观 → 引入坐标系 bug。**预防**：外观问题用默认热区即可（26×26 方形 vs 圆形热区视觉无感）；覆写 hitTest 前必须先写坐标系约定测试
+  - **AppKit 知识沉淀（给下一位，Rule 7）**：hitTest(point) 的 point 是 superview 坐标系——测试正确姿势 `button.convert(center, to: superview)` 后再调 `superview.hitTest(...)`；直传 `button.hitTest(自身坐标)` 是 miss（可用作负例锚点）
+  - 验证：swift build + 全测试绿（新增 3 组断言）+ dist 实机 pid 37186
+
+- **2026-08-24 凌晨④ · 全局快捷键 + 椭圆按钮根治（Trae）**
+  - **本批完成（swift build 通过，全测试绿含新回归测试，dist 实机 pid 35475）**：
+    1. **全局快捷键（Carbon RegisterEventHotKey，常驻）**：⌘, → 打开设置；⌘⌥L → 预约日程（openScheduleEntry）。installGlobalHotKeys() 在 MenuBarManager.init 调用，一个 EventHandler 按 EventHotKeyID.id（2/3，signature "LNGR" 与 Esc 热键同族不同 id）分发，回调 dispatch 到主线程。热键路径 showSettings 前 NSApp.activate（后台触发需激活才带到前台）。右键菜单同步显示快捷键（keyEquivalent 纯展示，实际触发力是 Carbon）
+    2. **椭圆按钮根治**：用户报 ✓/✕ 仍是椭圆。写布局探针测试拿运行时证据：NSButton 的 width==26/height==26 约束均 active，但最终 frame 26×29/26×31（无约束冲突日志）——NSButton cell 在 NSStackView 中的内部高度行为强吃 required 约束。**修复：CircularIconButton 从 NSButton 改为 NSView**（照抄 CalendarPulseButton 已验证模式）：layer 实底 + 居中 NSImageView + trackingArea hover + mouseDown onClick + hitTest 限定正圆内命中。target/action → onClick 闭包（@objc 方法保留，传 () 兜 Any 参数）。探针升级为正式回归测试 ButtonShapeProbeTests（断言 26×26 正方形 + 不溢出行边界）
+  - **给下一位的提示**：
+    - Carbon 全局热键会**系统级遮蔽**其他 app 的同组合键：⌘, 在 Safari 等前台 app 中会打开 Linger 设置而非该 app 偏好设置；⌘⌥L 会遮蔽 Finder「下载」文件夹快捷键。用户明确要求这两个组合，属预期行为，若反馈冲突需评估换键
+    - NSButton 尺寸被 cell 侵蚀的坑（约束 active 但 frame 不符、无冲突日志）已写入 CircularIconButton 头注释，别改回 NSButton
+    - CircularIconButton 的 hitTest 只认正圆内命中（27×27 方形四角点击会穿透到父视图），这是有意的
+
+- **2026-08-24 凌晨③ · 修复：右键预约→取消后悬浮窗永久留存（Trae）**
+  - **Bug Summary [P2]**：
+    - 症状：右键「预约日程…」→ 点取消 → 悬浮面板永久留存桌面，鼠标移走也不关
+    - 根因：关闭链路完全依赖 trackingArea exit 事件，右键路径下两个事件源**都丢事件**——
+      ① icon 侧：NSMenu.popUp 是 tracking session，鼠标「离开 icon 进入菜单」的 mouseExited 被吞，菜单关闭后 AppKit 不补发；
+      ② 面板侧：点取消 → 编辑区收回 → 面板 frame 手动动画缩小把鼠标「甩出」rect，AppKit 对 rect 变化类不保证派发 exit
+    - 修复（双管齐下）：
+      1. **openScheduleEntry 改走 handleHoverEntered()**（用户建议的「模拟 hover」）：与鼠标悬停完全同一入口/状态机，面板已开只刷新，不再死板 showHoverList + 手动 lock
+      2. **鼠标看门狗**（根治兜底）：showHoverList 启动 0.5s 轮询 timer，hideHoverListNow 停止；tick 判定鼠标既不在面板 frame 也不在 icon frame（8pt 缓冲）→ 走既有 scheduleHoverHideCheck（0.3s 宽限内滑回可救）。isScheduling 展开期间豁免——NSDatePicker 系统日历弹层在面板外，防误杀
+    - 验证：swift build + 全测试绿 + dist 实机 pid 32823；实机路径：右键预约→取消→鼠标移开→面板应在 ~0.8s 内收起
+  - **给下一位的提示**：hoverWatchdogTimer 是兜底层不是替代层，面板/icon 的 trackingArea 事件链保持原样未动；同类「面板关不掉」问题（快速滑过、frame 动画）从此免疫，无需再逐个排查
+
+- **2026-08-24 凌晨② · 日程预约模块 5 项（Trae）**
+  - **本次完成（swift build 通过，全测试绿，dist 实机运行 pid 31848）**：
+    1. **右键直达预约**：右键菜单第一项「预约日程…」→ openScheduleEntry：无面板先 showHoverList（含空态）→ hoverListView.expandScheduleDirectly()（HoverListView 新公开方法，scheduleView 已存在则不动作）→ hoverIsLockedOpen=true（与悬停进入同语义，关闭判定由面板 trackingArea 接管）
+    2. **悬浮框不透明度加强**：HoverDesign.panelBg alpha 0.72 → 0.92（用户：背后窗口文字干扰；玻璃质感减弱但保留一丝通透）
+    3. **预约时间校验（bug）**：confirmTapped 里 resolveStartDate() < Date() 时钳制到当前时刻并回写 datePicker/timePicker（所见即所得，创建即开始）。没用 NSDatePicker.minDate——timePicker 只读时分、与 datePicker 日期正交组合，minDate 会把「先选明天 09:00 中的 09:00」误拦
+    4. **预约态隐藏空态提示**：draw() 空态分支加 !isScheduling 判定（「暂无计时器」之前挡住输入区）
+    5. **勾/叉正圆按钮**：新增 CircularIconButton（NSButton 子类，实底圆 + SF Symbol + hover 提亮换底色，layout 时 cornerRadius=min(w,h)/2 恒正圆）。确认 = 琥珀圆 26pt + check（hover amberLight）；取消 = surface2 圆 + ×（hover line 色；此前是裸 × 悬浮无底，观感差的根因）。尺寸 24 → 26
+  - **给下一位的提示**：
+    - CircularIconButton 是 ScheduleTimerView.swift 文件内 private 类，若其他面板要复用需提为 internal
+    - 右键菜单时序：NSMenu.popUp 阻塞至菜单关闭，action 触发时菜单已消失 → openScheduleEntry 弹面板无冲突
+    - panelBg 是整个 hover 面板共用（非预约态专属），不透明度调整对普通悬停列表同样生效
+
+- **2026-08-24 凌晨 · 「写入方式」选择器隐藏，统一自动（Trae）**
+  - 用户结论：auto/ask/manual 三种模式实际体验没区别，要求隐藏选择器、默认全用自动
+  - 改动：
+    1. SettingsWindow 日历 section 移除 buildWriteModeRow() 行（方法与 writeModeChanged action 保留，想恢复加回即可，与通用页隐藏三行同模式）
+    2. CalendarManager.init 归一：writeMode != .auto 时 setWriteMode(.auto)（否则 UI 藏了残留 ask/manual 永远改不回来）
+    3. 默认标题输入框原 isEnabled 绑定 writeMode==.auto，改为恒可用；hint 从「仅在自动写入模式下使用」改为「计时完成后自动写入时使用的标题」
+  - 行为变化：所有拖拽计时归零即自动写入（默认标题兜底）；完成横幅输入标题仍走 recordFromBanner 的「更新已有事件标题」分支（不重复建事件）；hover 编辑标题对已记录条目只改显示标题
+  - 编译 + 全测试绿 + dist 实机运行（pid 30287）
+
+- **2026-08-23 深夜⑤ · 菜单栏图标换矢量 PDF（解决模糊）（Trae）**
+  - 用户重新导出了 4 个图标为 PDF 矢量（旧 PNG 18×18 位图在高分屏发虚）。已完成替换：
+    - Resources/MenuBarIcons/ 删 4 个 PNG 进 4 个 PDF（Jump_time_fill/Ring/Desk_fill/Import_fill.pdf）
+    - loadImage 扩展名 png → pdf，NSImage(contentsOf:) 原生支持 PDF 矢量
+    - 已验证：4 个 PDF 均为 36×36 正方形画板、NSPDFImageRep 纯矢量（pixelsWide=0）、内容纯黑+alpha（标准 template，深浅模式自适应）；渲染 18pt 时矢量缩放 Retina 无损
+  - 编译 + 全测试绿 + dist 实机运行验证（pid 28051）；Package.swift 无需改（.copy 整目录）
+
+- **2026-08-23 深夜④ · 菜单栏图标 4 项调整 + 计时粒度 + 通用页精简（Trae）**
+  - **本次完成（swift build 通过，全测试绿，dist 实机运行验证）**：
+    1. **图标加大**：16 → 18pt（素材原生分辨率 18×18，对齐微信/企业微信菜单栏规格；LingerStatusItemView.iconSize + loadImage 尺寸同步改）
+    2. **下拉显示英文**：displayName 改 Jump/Ring/Desk/Import
+    3. **默认图标 Jump_time_fill**：`MenuBarIconStyle.current` 回退 .jump，allCases 顺序 jump 第一。注意：用户昨天测试若手动选过图标，defaults 里已有旧值（com.linger.app 域 linger_iconStyle），需手动切回 Jump 或 `defaults delete com.linger.app linger_iconStyle`
+    4. **倒计时只显示时间**：LingerStatusItemView 新增 applyDisplayMode —— title 非空（含拖拽预览）→ 图标隐藏 + iconWidthConstraint 收拢为 0 + 宽度=6+文字；title 空（空闲）→ 只显示图标（24pt）。intrinsicContentSize 按模式计算，statusItem.length 经 onContentWidthChanged 同步 → 无残留空白
+    5. **计时粒度（设置-通用新行）**：`linger_timerGranularity`（10/20/30/60s，默认 60）。TimerEntry.duration 新增 granularity 参数：raw=p²×maxSeconds 后吸附到粒度整数倍，最小仍 1 分钟；pollDrag/finishDrag 双调用点接入；snapToMinuteIfClose 保留（阈值 5s < 粒度最小间隔 10s，不冲突）。单测 testDurationGranularity 覆盖
+    6. **通用页精简**：「自动清理」「日历归档导出」「导出目录」三行暂隐藏（用户：还没想好怎么做），后端 + @objc action 全保留
+  - **给下一位的提示**：
+    - 显示模式切换在 setTitle→applyDisplayMode（视图自治），Manager 无需感知；icon 切换通知只 setIcon，倒计时中换图标会在计时结束后生效显示
+    - 粒度吸附在 duration 纯函数内（WYSIWYG：预览与松手同一条链路）；粒度选项数组 [10,20,30,60] 在 SettingsWindow 和 TimerEntry 测试两处硬编码，改选项要同步
+    - 最小计时仍是 1 分钟（与 2.1 一致），粒度只影响步进不影响下限
+
+- **2026-08-23 深夜③ · 菜单栏图标可选 + 宽度自适应修复 + 新 app 图标（Trae）**
+  - **本次完成（swift build 通过，全测试绿，dist 实机运行验证）**：
+    1. **菜单栏图标可选（设置-通用第一行）**：NSPopUpButton 下拉项带图标预览（NSMenuItem.image），4 个风格全部用用户提供的 18×18 template PNG（Desk_fill/Import_fill/Jump_time_fill/Ring，已验证纯黑+透明，isTemplate=true 深浅自适应）；资源走 SwiftPM `.copy("Resources/MenuBarIcons")` → Linger_Linger.bundle，build_and_run.sh 拷进 app Resources；选择即生效（NotificationCenter lingerMenuBarIconDidChange 热更新，无需重启）；复用既有 `linger_iconStyle` key（raw: ring/desk/import/jump，`import` 是关键字故枚举名 importIcon）；资源缺失回退自绘 Ring
+    2. **宽度自适应修复（bug：倒计时→图标 切换后菜单栏留大片空白）**：根因是 AppKit 对「variableLength + custom view」只在内容变宽时自动跟随 intrinsicContentSize，变窄不缩回。修法：LingerStatusItemView.setIcon/setTitle 后回调 onContentWidthChanged → MenuBarManager 手动同步 statusItem.length（双向生效，带 0.5pt 去抖）
+    3. **新 app 图标**：用户的 Linger_icon（PSD 824×833）sips 转 PNG 替换 Support/LingerIcon-Fullbleed.png，打包脚本自动生成 icns（旧图标在 git 历史）
+    4. 显示逻辑（沿既有行为）：无计时 = 纯图标；有计时 = 图标 + 最近一个倒计时读数
+  - **给下一位的提示**：
+    - SwiftPM 资源新增流程：Sources/Linger/Resources/ 下放文件 → Package.swift `.copy(...)` → build_and_run.sh 已有通用拷贝逻辑（BUILD_BIN_PATH/Linger_Linger.bundle → Contents/Resources）→ 代码用 `Bundle.module.url(forResource:withExtension:subdirectory:)` 读
+    - MenuBarIconStyle 枚举定义在 MenuBarManager.swift 顶部（文件级），SettingsWindow 直接复用其 displayName/loadImage
+    - statusItem.length 手动同步是 custom view 动态宽度的唯一可靠方案，intrinsicContentSize 双向自动跟随不可信
+
+- **2026-08-23 深夜② · 假授权诊断修复（日志实锤）+ 授权行 UI 3 项（Trae）**
+  - **日志关键证据（用户提供 20260823 日志.md）**：`RIGHTCLICK bundleID=nil status=0 granted=1 hasAccess=1` + `EKCADErrorDomain Code=1013 "Access denied"` —— 进程是**裸二进制**（无 .app bundle，可能是 swift run / 直接跑 .build/debug/Linger），TCC 归因失效；`grantedByRequest=1` 是 UserDefaults 历史残留**假授权标记**（旧二进制授权记录，新二进制身份变化后 TCC 不认）→ UI 显示「已授权」但 EventKit 实际拒绝。这解释了「以前版本都对」——以前是打包 .app 跑的
+  - **本次完成（swift build 通过，全测试绿）**：
+    1. **CalendarManager.resetAuthorization()**：清 grantedByRequest 假标记（发通知刷新 UI）→ 重新走 requestPermissionIfNeeded（notDetermined 触发系统弹窗 / denied 弹 NSAlert 引导系统设置）
+    2. **裸二进制警告**：init 时 bundleID=nil 打 error 日志提示用 build_and_run.sh 打包运行；availableCalendars 检测「granted=true 但 0 日历 + defaultCalendarForNewEvents=nil」打假授权警告（不自动重置，防 store 未就绪误判）
+    3. **UI（用户 3 项需求）**：① 授权状态去掉左侧绿点只留 ✓/⚠（删 makeStatusDot/makeAuthStatusView/calAuthDot 死代码）② 「管理…」→「管理授权」（未授权分支仍「去授权…」）③ 授权行新增循环 icon 按钮（SF Symbol arrow.triangle.2.circlepath，tooltip「重置授权并重新申请」）→ resetCalAuthorization action
+    4. **顺带修**：makeBetaBadge label 缺 translatesAutoresizingMaskIntoConstraints=false 导致的约束冲突（日志刷屏 "Will attempt to recover by breaking"）；os_log 宏内不能用隐式字符串拼接（编译错误）
+  - **待实机验收（关键）**：**必须用 `./script/build_and_run.sh` 启动（打包 .app）**，不要 swift run；启动后设置 → 日历 → 点循环按钮 → 系统弹授权窗 → 允许 → 下拉应显示真实日历。裸二进制下 TCC 每次构建漂移，重置授权也救不了
+  - **给下一位的提示**：
+    - 假授权判定三要素：bundleID=nil（裸跑）+ status=0 + granted=1；真授权失败证据是 EKCADError 1013 Access denied
+    - `grantedByRequest` 持久化标记是双刃剑：解决裸 bundle 下 status 恒 notDetermined 的问题，但二进制身份漂移后变假阳性 —— 重置按钮就是为此设计的逃生门
+    - os_log 第一个参数必须是单个字符串字面量，不能隐式拼接多段
+
+- **2026-08-23 深夜 · 3 bug 修复：时间映射跟随线长 / EventKit 异步加载 / 零时长事件（Trae）**
+  - **背景**：用户实机验收发现 3 个 bug（日志被 TRAE 沙箱拦截无法直读，靠代码审查定位）
+  - **本次完成（swift build 通过，全测试绿）**：
+    1. **Bug「线拉长时间不变」**：根因 `TimerEntry.duration` 是固定物理刻度（40px=1min²），与线长无关 → 滑块调长线后时间在旧刻度处封顶。重设计为**归一化映射**：`p = px/lineMaxLength`，`minutes = round(p² × maxMinutes)`，拉满线=最大时长（WYSIWYG）。新增纯函数 `DragPhysics.dragLineFraction(percent:)`（0→25%屏高、100→75%），`DragFeedbackView.show()`（渲染线长）与 `MenuBarManager.currentDragLineMaxLength()`（映射分母）共用同一函数保证一致；duration 签名改为 `(fromDragDistance:lineMaxLength:maxSeconds:)`，单测重写为新语义（含「线更长同一距离时间更短」「拉满任意线长=最大时长」）
+    2. **Bug「计入日历下拉读不到日历」**：根因 **EKEventStore 数据库异步加载**——授权回调/启动后立即查 `calendars()`/`sources` 可能返回空（2.0 恰好没踩到时序）。修复：CalendarManager init 监听 `.EKEventStoreChanged`（数据库就绪/变更时发 `lingerCalendarAccessDidRefresh` → 设置页重建下拉）；`availableCalendars()` 加诊断日志（数量+标题列表）
+    3. **Bug「写入日历后日历里没有」**：三重修复：① 同根源②——store 未就绪时 `findOrCreateCalendar` 找不到 source 写入失败，CalendarRecorder.writeCompletion 失败后延迟 1.5s 重试一次；② **零时长事件**：短计时（<5min）双端 5 分钟向上取整后 start==end（如 14:02→14:03 均取整 14:05）→ 日历里不可见，现保证最小 5 分钟块；③ writeEvent 成功日志带起止时间（对账用）
+  - **待实机验收**：滑块 0/50/100 三档，拉满线应分别=最大时长；打开设置看下拉列表（store 就绪后应显示真实日历）；跑一次短计时（1-2 分钟）→ 日历 app 检查「Linger」日历（**注意左侧栏勾选**，本地日历默认可能未勾选）
+  - **给下一位的提示**：
+    - TRAE RunCommand 沙箱拦截 `/usr/bin/log`（"Cannot run while sandboxed"），读统一日志需用户跑 `./script/build_and_run.sh --logs`
+    - 时间映射分母在 `MenuBarManager.currentDragLineMaxLength()`，与 `DragFeedbackView.show()` 必须同步改（WYSIWYG 铁律）
+    - EventKit 异步加载是 macOS 常见坑：授权回调 granted=true ≠ 数据库就绪，写入/查询前需容错（重试或等 EKEventStoreChanged）
+
+- **2026-08-23 晚 · 设置窗口 4 项修复：拖拽线映射 / 计入日历下拉 / Beta 标签（Trae）**
+  - **本次完成（swift build 通过，swift test 21/21 绿）**：
+    1. **拖拽线最大长度修复（bug：调了没反应）**：真凶是 `DragFeedbackView.show()` 里 `min(syncDistance, percentLimit)` —— syncDistance（由最大时长算出的物理距离，如 10 分钟 ≈ 126pt）恒压制百分比，滑块怎么调都被卡死。现改为滑块 0-100 线性映射到屏幕可见高度 **25%-75%**（0 → 25%，100 → 75%，默认 50%），彻底移除 syncDistance 约束；`currentDragLinePercent()` 同步修复（旧版把合法值 0 兜底成 50）
+    2. **「目标日历」→「计入日历」**：label 文案更新
+    3. **计入日历改回下拉菜单**：读 `CalendarManager.availableCalendars()`（日历 app 中用户已创建的可写日历），Linger 固定第一项（默认，写入时自动创建），其余按系统顺序去重；`CalendarManager` 暴露 `targetCalendarTitle`（无效选择回退 Linger）；授权变更通知 + 窗口 orderFront 时重建选项
+    4. **(Beta) 文字改胶囊标签**：`makeBetaBadge()`（10pt medium ink2 + surface2 底 + line 边框 + 8pt 全圆角，高 16）；`makeSection`/`makeRow` 各加 badge 参数，「快捷键预设」「默认标题」两处挂载
+  - **待实机验收**：拖拽线滑块 0/50/100 三档线长明显不同；计入日历下拉能看到日历 app 已有日历并可选择写入；Beta 胶囊渲染正常
+  - **给下一位的提示**：
+    - 拖拽线长度映射在 `DragFeedbackView.show()`（`fraction = 0.25 + p/100 * 0.5`），不要再把 `DragPhysics.lineMaxDistance` 约束加回来（那就是本次 bug 根源；该函数仅剩单测引用）
+    - 计入日历下拉选项重建入口：`rebuildTargetCalendarOptions(_:)`，授权后 `lingerCalendarAccessDidRefresh` 通知自动触发
+    - 时间映射（s=d² + maxSeconds 钳制）未动：滑块只控制线的视觉长度上限；若后续要求「拉满线 = 拉满最大时长」需改 `TimerEntry.duration` 纯函数 + 单测
+
 - **2026-08-23 · 设置窗口 3 轮修复 + PRD 全量同步（Codex）**
   - **本次完成（swift build 通过，swift test 21/21 绿）**：
     1. **拖拽线最大长度 → 0-100%**：滑块从 25-75% 改为 0-100%，映射到屏幕可见高度百分比；修复设置后不生效（默认值判定改用 hasSetValue 显式判断）
@@ -143,8 +278,18 @@ Linger2.5/
 - [x] **目标日历文本输入 + 默认标题/快捷键预设 (Beta) 标记**（2026-08-23）
 - [x] **通用页切页宽度修复 + 关于页宽度统一 520 + 纸张纹理增强**（2026-08-23）
 - [x] **PRD 同步至 2.5（全量状态更新）**（2026-08-23）
+- [x] **拖拽线最大长度 0-100 → 屏高 25%-75% 映射（修复调了不变 bug）**（2026-08-23 晚）
+- [x] **「目标日历」→「计入日历」+ 下拉读真实日历列表（默认 Linger）**（2026-08-23 晚）
+- [x] **(Beta) 文字改胶囊标签（快捷键预设 section / 默认标题 row）**（2026-08-23 晚）
+- [x] **时间映射归一化：拉满线=最大时长（WYSIWYG）**（2026-08-23 深夜）
+- [x] **菜单栏图标可选（4 款 template PNG 带预览热切换）+ 状态栏宽度自适应修复 + 新 app 图标**（2026-08-23 深夜③）
+- [x] **图标 18pt + 英文名 + 默认 Jump + 倒计时纯时间显示 + 计时粒度（10/20/30/60s）+ 通用页隐藏三个未定稿行**（2026-08-23 深夜④）
 
 ### 待验收 / 待办
+- [ ] **图标 + 粒度实机验收**：菜单栏图标大小接近微信规格；下拉显示 Jump/Ring/Desk/Import（默认 Jump）；倒计时进行中只显示时间（无图标）、结束后图标回归且无空白残留；计时粒度切 10 秒后拖拽读数按 1:10 步进（2026-08-23 深夜④）
+- [ ] **拖拽线滑块实机验收**：0 / 50 / 100 三档线长明显不同（25% / 50% / 75% 屏高）（2026-08-23 晚）
+- [ ] **计入日历下拉实机验收**：下拉列表显示日历 app 已有日历、可选择、计时完成后写入所选日历（2026-08-23 晚）
+- [ ] **Beta 胶囊标签实机验收**：日历页「快捷键预设」「默认标题」旁胶囊渲染正常（2026-08-23 晚）
 - [ ] **完成弹窗实机验收**：计时归零看右上角横幅（标题行/25:00/内联输入/↻/✓/8s 消失/开关）
 - [ ] **日历记录实机验收**：拖拽计时归零 / 创建预约 → 打开日历 app 看「Linger」日历事件（日历记录 12 条已实证工作正常）
 - [ ] **预约编辑区输入实机验收**：4 输入框可点击输入

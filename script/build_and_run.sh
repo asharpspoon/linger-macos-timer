@@ -5,6 +5,13 @@ MODE="${1:-run}"
 APP_NAME="Linger"
 BUNDLE_ID="com.linger.app"
 MIN_SYSTEM_VERSION="13.0"
+APP_VERSION="2.5.0"
+
+# 2026-08-24：--release 发布模式（Release 构建 + 打包不启动，供分发安装）
+BUILD_CONFIG="debug"
+if [[ "$MODE" == "--release" || "$MODE" == "release" ]]; then
+  BUILD_CONFIG="release"
+fi
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 DIST_DIR="$ROOT_DIR/dist"
@@ -21,13 +28,22 @@ fi
 
 pkill -x "$APP_NAME" >/dev/null 2>&1 || true
 
-swift build --disable-sandbox
-BUILD_BINARY="$(swift build --show-bin-path)/$APP_NAME"
+swift build -c "$BUILD_CONFIG" --disable-sandbox
+BUILD_BIN_PATH="$(swift build -c "$BUILD_CONFIG" --show-bin-path)"
+BUILD_BINARY="$BUILD_BIN_PATH/$APP_NAME"
 
 rm -rf "$APP_BUNDLE"
 mkdir -p "$APP_MACOS"
 cp "$BUILD_BINARY" "$APP_BINARY"
 chmod +x "$APP_BINARY"
+
+# 2026-08-23：拷贝 SwiftPM 资源 bundle（菜单栏可选图标）进 app，
+# Bundle.module 会在 Bundle.main.resourceURL 下找 Linger_Linger.bundle
+RESOURCE_BUNDLE="$BUILD_BIN_PATH/Linger_Linger.bundle"
+if [ -d "$RESOURCE_BUNDLE" ]; then
+  mkdir -p "$APP_CONTENTS/Resources"
+  cp -R "$RESOURCE_BUNDLE" "$APP_CONTENTS/Resources/"
+fi
 
 cat >"$INFO_PLIST" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
@@ -51,7 +67,7 @@ cat >"$INFO_PLIST" <<PLIST
   <key>CFBundlePackageType</key>
   <string>APPL</string>
   <key>CFBundleShortVersionString</key>
-  <string>2.0</string>
+  <string>$APP_VERSION</string>
   <key>CFBundleVersion</key>
   <string>1</string>
   <key>LSMinimumSystemVersion</key>
@@ -109,6 +125,10 @@ case "$MODE" in
     open_app
     sleep 1.5
     pgrep -x "$APP_NAME" >/dev/null && echo "OK: $APP_NAME is running (pid $(pgrep -x $APP_NAME))"
+    ;;
+  --release|release)
+    # 只打包不启动（发布分发用）；产物在 dist/Linger.app
+    echo "OK: $APP_BUNDLE (version $APP_VERSION, $BUILD_CONFIG build)"
     ;;
   *)
     echo "usage: $0 [run|--debug|--logs|--telemetry|--verify]" >&2

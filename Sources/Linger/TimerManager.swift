@@ -184,12 +184,15 @@ final class TimerManager {
     // MARK: - 定时清理
 
     /// 纯函数（无副作用，便于单元测试）：按清理区间策略返回应被移除的已完成条目。
-    /// 策略：remainingTime<=0 且非运行 / 非暂停 / 非预约的条目即视为可清理（2026-08-06 起
+    /// 策略：remainingTime<=0 且非运行 / 非暂停的条目即视为可清理（2026-08-06 起
     /// 不再要求 hasRecorded —— 未记录的已完成条目是看不到的僵尸，一并清掉，配合 Markdown 导出）。
+    /// 2026-08-24：去掉 `!isScheduled` —— 过期预约（restore 时 remainingTime 已置 0）
+    /// 会被该条件永久挡在清理外，攒满 10 个后 addScheduledTimer 恒返回 nil；
+    /// 未触发的预约 remainingTime 恒 > 0，前两个条件已保护，不存在误删风险。
     /// 仅 `weekly` / `monthly` 执行清理，`never` 或未知值返回空（不清理）。
     static func entriesToPrune(_ entries: [TimerEntry], interval: String) -> [TimerEntry] {
         guard interval == "weekly" || interval == "monthly" else { return [] }
-        return entries.filter { $0.remainingTime <= 0 && !$0.isRunning && !$0.isPaused && !$0.isScheduled }
+        return entries.filter { $0.remainingTime <= 0 && !$0.isRunning && !$0.isPaused }
     }
 
     /// v5 修复: 回收「已结束、未运行、未暂停」的僵尸条目 —— 它们在悬停面板里被

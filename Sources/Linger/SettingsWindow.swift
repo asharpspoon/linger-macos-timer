@@ -48,8 +48,9 @@ final class SettingsWindow: NSWindow {
     private var previewFontSizeValueLabel: NSTextField?
     private var soundPopup: NSPopUpButton?
     private var defaultTitleField: NSTextField?
+    /// 「计入日历」下拉（授权状态变化时重建选项）
+    private var targetCalendarPopup: NSPopUpButton?
     private var calAuthLabel: NSTextField?
-    private var calAuthDot: NSView?
     private var maxDurationStepper: NSStepper?
     /// 强提醒弹窗位置选择卡片（topRight / center），选中态琥珀边框
     private var bannerPositionCards: [String: NSView] = [:]
@@ -341,25 +342,36 @@ final class SettingsWindow: NSWindow {
         return v
     }
 
-    /// 行：左 label（13pt，可带 hint）+ 弹性 spacer + 右控件，min-height 34（原型 .row）
-    private func makeRow(label: String, control: NSView, hint: String? = nil) -> NSView {
+    /// 行：左 label（13pt，可带 hint、可挂 Beta 胶囊标签）+ 弹性 spacer + 右控件，min-height 34（原型 .row）
+    private func makeRow(label: String, control: NSView, hint: String? = nil,
+                         labelBetaBadge: Bool = false) -> NSView {
         let row = NSStackView()
         row.orientation = .horizontal
         row.alignment = .centerY
         row.spacing = LingerTheme.space3
+
+        // label 部分：可选挂 Beta 胶囊标签（横向排列，badge 与文字垂直居中）
+        let labelView: NSView = {
+            guard labelBetaBadge else { return makeLabel(label) }
+            let s = NSStackView(views: [makeLabel(label), makeBetaBadge()])
+            s.orientation = .horizontal
+            s.spacing = 6
+            s.alignment = .centerY
+            return s
+        }()
 
         if let hint {
             let left = NSStackView()
             left.orientation = .vertical
             left.alignment = .leading
             left.spacing = 2
-            left.addArrangedSubview(makeLabel(label))
+            left.addArrangedSubview(labelView)
             left.addArrangedSubview(makeHint(hint))
             // 2026-08-23：label+hint 列宽上限，防长 hint 把面板/窗口撑宽
             left.widthAnchor.constraint(lessThanOrEqualToConstant: 260).isActive = true
             row.addArrangedSubview(left)
         } else {
-            row.addArrangedSubview(makeLabel(label))
+            row.addArrangedSubview(labelView)
         }
         row.addArrangedSubview(spacerView())
         row.addArrangedSubview(control)
@@ -375,9 +387,9 @@ final class SettingsWindow: NSWindow {
         return v
     }
 
-    /// section：可选标题（13pt semibold ink，nil 时无标题）+ 行列表（行间 1px 分隔线）
+    /// section：可选标题（13pt semibold ink，nil 时无标题；可挂 Beta 胶囊标签）+ 行列表（行间 1px 分隔线）
     /// 2026-08-06 排版重设计：title 改可选，用于去掉冗余的单一 section 总标题（如通知面板的"提醒方式"）
-    private func makeSection(title: String?, rows: [NSView]) -> NSView {
+    private func makeSection(title: String?, rows: [NSView], titleBetaBadge: Bool = false) -> NSView {
         let section = NSView()
         var prev: NSLayoutYAxisAnchor = section.topAnchor
 
@@ -386,11 +398,21 @@ final class SettingsWindow: NSWindow {
             // title 13pt semibold ink（主文字色），与 row label(13pt regular) 同号加粗，形成 title > label > hint 三级层级
             titleLabel.font = LingerTheme.labelFont(size: 13, weight: .semibold)
             titleLabel.textColor = LingerTheme.ink
-            section.addSubview(titleLabel)
-            titleLabel.translatesAutoresizingMaskIntoConstraints = false
-            titleLabel.topAnchor.constraint(equalTo: section.topAnchor).isActive = true
-            titleLabel.leadingAnchor.constraint(equalTo: section.leadingAnchor).isActive = true
-            prev = titleLabel.bottomAnchor
+
+            let titleView: NSView = {
+                guard titleBetaBadge else { return titleLabel }
+                let s = NSStackView(views: [titleLabel, makeBetaBadge()])
+                s.orientation = .horizontal
+                s.spacing = 6
+                s.alignment = .centerY
+                return s
+            }()
+
+            section.addSubview(titleView)
+            titleView.translatesAutoresizingMaskIntoConstraints = false
+            titleView.topAnchor.constraint(equalTo: section.topAnchor).isActive = true
+            titleView.leadingAnchor.constraint(equalTo: section.leadingAnchor).isActive = true
+            prev = titleView.bottomAnchor
         }
 
         for (i, row) in rows.enumerated() {
@@ -470,6 +492,34 @@ final class SettingsWindow: NSWindow {
         return f
     }
 
+    /// Beta 胶囊标签（2026-08-23 用户要求：Beta 标记从纯文字改为标签样式）：
+    /// 10pt medium ink2 + surface2 底 + line 边框 + 全圆角胶囊，宽随内容。
+    private func makeBetaBadge() -> NSView {
+        let label = NSTextField(labelWithString: "Beta")
+        label.font = LingerTheme.labelFont(size: 10, weight: .medium)
+        label.textColor = LingerTheme.ink2
+        label.alignment = .center
+        // 2026-08-23：修复约束冲突 —— label 加入 box 前必须关掉 autoresizing mask
+        // （否则 NSAutoresizingMaskConstraint 与手动约束冲突，控制台刷屏 "Will attempt to recover by breaking"）
+        label.translatesAutoresizingMaskIntoConstraints = false
+        let box = NSView()
+        box.wantsLayer = true
+        box.layer?.backgroundColor = LingerTheme.nsColor(LingerTheme.Color.surface2).cgColor
+        box.layer?.borderColor = LingerTheme.nsColor(LingerTheme.Color.line).cgColor
+        box.layer?.borderWidth = 1
+        box.layer?.cornerRadius = 8
+        box.translatesAutoresizingMaskIntoConstraints = false
+        box.addSubview(label)
+        NSLayoutConstraint.activate([
+            label.centerXAnchor.constraint(equalTo: box.centerXAnchor),
+            label.centerYAnchor.constraint(equalTo: box.centerYAnchor),
+            label.leadingAnchor.constraint(equalTo: box.leadingAnchor, constant: 6),
+            label.trailingAnchor.constraint(equalTo: box.trailingAnchor, constant: -6),
+            box.heightAnchor.constraint(equalToConstant: 16)
+        ])
+        return box
+    }
+
     /// kbd 键帽（快捷预设标题）：10px 等宽 + surface2 底 + 圆角 5 + 边框
     private func makeKbd(_ text: String) -> NSView {
         let label = NSTextField(labelWithString: text)
@@ -491,27 +541,6 @@ final class SettingsWindow: NSWindow {
             box.heightAnchor.constraint(equalToConstant: 18)
         ])
         return box
-    }
-
-    /// 授权状态绿点（6×6 圆）
-    private func makeStatusDot() -> NSView {
-        let dot = NSView()
-        dot.wantsLayer = true
-        dot.layer?.cornerRadius = 3
-        dot.translatesAutoresizingMaskIntoConstraints = false
-        dot.widthAnchor.constraint(equalToConstant: 6).isActive = true
-        dot.heightAnchor.constraint(equalToConstant: 6).isActive = true
-        dot.layer?.backgroundColor = LingerTheme.stateSuccess.cgColor
-        return dot
-    }
-
-    /// 授权状态视图：绿点 + 文字
-    private func makeAuthStatusView(label: NSTextField, dot: NSView) -> NSStackView {
-        let stack = NSStackView(views: [dot, label])
-        stack.orientation = .horizontal
-        stack.spacing = 5
-        stack.alignment = .centerY
-        return stack
     }
 
     // MARK: - 面板 0：操作
@@ -805,43 +834,68 @@ final class SettingsWindow: NSWindow {
         authStatus.font = LingerTheme.labelFont(size: 12)
         authStatus.textColor = LingerTheme.ink2
         calAuthLabel = authStatus
-        let authDot = makeStatusDot()
-        calAuthDot = authDot
-        let authBtn = NSButton(title: "管理…", target: self, action: #selector(openCalSettings(_:)))
+        // 2026-08-23 用户要求：状态只保留文字前的 ✓/⚠ 勾标（去掉左侧绿点，避免「点+勾」重复）
+        let authBtn = NSButton(title: "管理授权", target: self, action: #selector(openCalSettings(_:)))
         authBtn.bezelStyle = .rounded
         authBtn.controlSize = .small
         calAuthButton = authBtn   // 保存引用，refreshPermissionStatuses 时同步标题
-        let authControl = NSStackView(views: [makeAuthStatusView(label: authStatus, dot: authDot), authBtn])
+        // 2026-08-23 用户要求：循环 icon 按钮 —— 重置授权并再次申请
+        // （解药：grantedByRequest 假授权残留时，清标记 → 重新走系统授权流程）
+        let resetBtn = NSButton(image: NSImage(systemSymbolName: "arrow.triangle.2.circlepath",
+                                               accessibilityDescription: "重置授权") ?? NSImage(),
+                                target: self, action: #selector(resetCalAuthorization(_:)))
+        resetBtn.bezelStyle = .rounded
+        resetBtn.controlSize = .small
+        resetBtn.toolTip = "重置授权并重新申请"
+        let authControl = NSStackView(views: [authStatus, resetBtn, authBtn])
         authControl.orientation = .horizontal
         authControl.spacing = 10
         authControl.alignment = .centerY
 
         return makePanel(sections: [
             // 2026-08-06 排版重设计：合并"授权"+"写入设置"为一个 section（授权是写入前提，单行 section 太碎）
+            // 2026-08-24：「写入方式」行隐藏（用户：三种模式实际体验没区别，统一用自动；
+            // buildWriteModeRow/writeModeChanged 代码保留，想恢复把行加回来即可）
             makeSection(title: "日历写入", rows: [
                 makeRow(label: "日历授权", control: authControl),
                 buildTargetCalendarRow(),
-                buildWriteModeRow(),
                 buildDefaultTitleRow()
             ]),
-            makeSection(title: "快捷键预设 (Beta)", rows: [
+            makeSection(title: "快捷键预设", rows: [
                 buildPresetCardRow(key: .fnTitle, kbd: "fn"),
                 buildPresetCardRow(key: .ctrlTitle, kbd: "⌃"),
                 buildPresetCardRow(key: .optTitle, kbd: "⌥")
-            ])
+            ], titleBetaBadge: true)
         ])
     }
 
-    /// 2026-08-23 用户要求：目标日历改为文本输入（用户填系统中日历的名称）
+    /// 2026-08-23 用户要求：「目标日历」改名「计入日历」，并改回下拉菜单 ——
+    /// 读取日历 app 中用户已创建的可写日历供选择，默认 "Linger"（写入时自动创建）。
     private func buildTargetCalendarRow() -> NSView {
-        let field = NSTextField()
-        field.bezelStyle = .roundedBezel
-        let stored = UserDefaults.standard.string(forKey: LingerTheme.UserDefaultsKey.targetCalendar.rawValue) ?? "Linger"
-        field.stringValue = stored
-        field.target = self
-        field.action = #selector(targetCalendarChanged(_:))
-        field.widthAnchor.constraint(equalToConstant: 160).isActive = true
-        return makeRow(label: "目标日历", control: field, hint: "填写你的日历 app 中已有的日历分类名称（如「工作」「个人」）")
+        let popup = NSPopUpButton()
+        styleSelect(popup)
+        rebuildTargetCalendarOptions(popup)
+        popup.target = self
+        popup.action = #selector(targetCalendarChanged(_:))
+        popup.widthAnchor.constraint(greaterThanOrEqualToConstant: 120).isActive = true
+        targetCalendarPopup = popup
+        return makeRow(label: "计入日历", control: popup,
+                       hint: "计时完成后自动记录到此日历")
+    }
+
+    /// 重建「计入日历」下拉选项：Linger 固定第一项（默认），
+    /// 其余为日历 app 中用户已创建的可写日历（按系统顺序、去重）。
+    private func rebuildTargetCalendarOptions(_ popup: NSPopUpButton) {
+        let current = CalendarManager.shared.targetCalendarTitle
+        var seen = Set<String>()
+        let others = CalendarManager.shared.availableCalendars()
+            .map { $0.title }
+            .filter { $0 != "Linger" && seen.insert($0).inserted }
+        popup.removeAllItems()
+        popup.addItem(withTitle: "Linger")
+        popup.addItems(withTitles: others)
+        // current 无效时已回退 "Linger"（第一项），找不到时保持默认选中第一项
+        popup.selectItem(withTitle: current)
     }
 
     private func buildWriteModeRow() -> NSView {
@@ -863,9 +917,12 @@ final class SettingsWindow: NSWindow {
         field.target = self
         field.action = #selector(defaultTitleChanged(_:))
         field.widthAnchor.constraint(equalToConstant: 240).isActive = true
-        field.isEnabled = CalendarManager.shared.writeMode == .auto
+        // 2026-08-24：写入方式已统一为自动（选择器隐藏），输入框恒可用
+        field.isEnabled = true
         defaultTitleField = field
-        return makeRow(label: "默认标题 (Beta)", control: field, hint: "仅在「自动写入」模式下使用")
+        return makeRow(label: "默认标题", control: field,
+                       hint: "计时完成后自动写入时使用的标题",
+                       labelBetaBadge: true)
     }
 
     private func buildPresetCardRow(key: LingerTheme.UserDefaultsKey, kbd: String) -> NSView {
@@ -892,46 +949,76 @@ final class SettingsWindow: NSWindow {
     // MARK: - 面板 3：通用
 
     private func buildGeneralPanel() -> NSView {
+        // 菜单栏图标选择（2026-08-23）：下拉项带图标预览，选择即生效
+        // （MenuBarManager 监听 lingerMenuBarIconDidChange 热更新，无需重启）
+        let iconPopup = NSPopUpButton()
+        styleSelect(iconPopup)
+        for style in MenuBarIconStyle.allCases {
+            let item = NSMenuItem(title: style.displayName, action: nil, keyEquivalent: "")
+            item.image = style.loadImage()   // 预览：菜单项左侧显示图标
+            iconPopup.menu?.addItem(item)
+        }
+        if let idx = MenuBarIconStyle.allCases.firstIndex(of: MenuBarIconStyle.current) {
+            iconPopup.selectItem(at: idx)
+        }
+        iconPopup.target = self
+        iconPopup.action = #selector(menuBarIconChanged(_:))
+
+        // 计时粒度（2026-08-23）：拖拽细线时倒计时读数的最小步进
+        let granularityPopup = NSPopUpButton()
+        styleSelect(granularityPopup)
+        let granularities: [TimeInterval] = [10, 20, 30, 60]
+        for g in granularities {
+            granularityPopup.addItem(withTitle: "\(Int(g)) 秒")
+        }
+        let currentG = currentTimerGranularity()
+        if let idx = granularities.firstIndex(where: { abs($0 - currentG) < 0.5 }) {
+            granularityPopup.selectItem(at: idx)
+        }
+        granularityPopup.target = self
+        granularityPopup.action = #selector(timerGranularityChanged(_:))
+
         let launchSwitch = makeSwitch(initial: currentLaunchAtLogin(), action: #selector(launchChanged(_:)))
-        let cleanupPopup = NSPopUpButton()
-        styleSelect(cleanupPopup)
-        cleanupPopup.addItems(withTitles: ["每周", "每月", "从不"])
-        let cleanupRaws = ["weekly", "monthly", "never"]
-        let cleanup = UserDefaults.standard.string(forKey: LingerTheme.UserDefaultsKey.cleanupInterval.rawValue) ?? "weekly"
-        if let idx = cleanupRaws.firstIndex(of: cleanup) { cleanupPopup.selectItem(at: idx) }
-        cleanupPopup.target = self
-        cleanupPopup.action = #selector(cleanupChanged(_:))
 
-        let exportSwitch = makeSwitch(initial: currentExportMarkdown(),
-                                       action: #selector(exportMarkdownChanged(_:)))
-        let exportDirBtn = NSButton(title: "选择目录…", target: self, action: #selector(exportDirTapped(_:)))
-        exportDirBtn.bezelStyle = .rounded
-        exportDirBtn.controlSize = .small
-        let exportNowBtn = NSButton(title: "立即导出", target: self, action: #selector(exportNowTapped(_:)))
-        exportNowBtn.bezelStyle = .rounded
-        exportNowBtn.controlSize = .small
-        let exportControl = NSStackView(views: [exportSwitch, exportDirBtn, exportNowBtn])
-        exportControl.orientation = .horizontal
-        exportControl.spacing = LingerTheme.space2
-        exportControl.alignment = .centerY
-
-        // 当前导出目录显示
-        let dirDisplay = NSTextField(labelWithString: currentExportDirDisplay())
-        dirDisplay.font = NSFont.systemFont(ofSize: 11)
-        dirDisplay.textColor = LingerTheme.nsColor(LingerTheme.Color.ink3)
+        // 2026-08-23：「自动清理」「日历归档导出」「导出目录」暂隐藏（用户：功能还没想好怎么做，
+        // 后端代码与 @objc action 全部保留，想清楚后把行加回来即可）
 
         return makePanel(sections: [
             // 2026-08-06 排版重设计：合并"启动"+"维护"为"通用"（都是日常维护类，单行 section 太碎）
             makeSection(title: "通用", rows: [
-                makeRow(label: "开机自启", control: launchSwitch),
-                makeRow(label: "自动清理", control: cleanupPopup),
-                makeRow(label: "日历归档导出", control: exportControl,
-                        hint: "开启后每天首次运行自动把日历事件导出为 Markdown（按月分文档），供 AI 做周报/复盘"),
-                makeRow(label: "导出目录", control: dirDisplay,
-                        hint: "每月一个文档（如 Linger-日历归档-2026-08.md）")
+                makeRow(label: "菜单栏图标", control: iconPopup,
+                        hint: "无计时时显示所选图标；倒计时进行中只显示时间"),
+                makeRow(label: "计时粒度", control: granularityPopup,
+                        hint: "下拉细线时倒计时读数的最小步进（如 10 秒：1:00 → 1:10 → 1:20）"),
+                makeRow(label: "开机自启", control: launchSwitch)
             ]),
             // 日期格式已合并到时间格式选择器（2026-08-23）
         ])
+    }
+
+    /// 计时粒度当前值（`linger_timerGranularity`，缺省 60s）
+    private func currentTimerGranularity() -> TimeInterval {
+        let v = UserDefaults.standard.double(forKey: LingerTheme.UserDefaultsKey.timerGranularity.rawValue)
+        return v > 0 ? v : LingerTheme.defaultTimerGranularity
+    }
+
+    /// 计时粒度切换（2026-08-23）：持久化即可，拖拽链路每次实时读取
+    @objc private func timerGranularityChanged(_ sender: NSPopUpButton) {
+        let options: [TimeInterval] = [10, 20, 30, 60]
+        let idx = sender.indexOfSelectedItem
+        guard options.indices.contains(idx) else { return }
+        UserDefaults.standard.set(options[idx],
+                                  forKey: LingerTheme.UserDefaultsKey.timerGranularity.rawValue)
+    }
+
+    /// 菜单栏图标切换（2026-08-23）：持久化选择 + 广播热更新
+    @objc private func menuBarIconChanged(_ sender: NSPopUpButton) {
+        let idx = sender.indexOfSelectedItem
+        guard MenuBarIconStyle.allCases.indices.contains(idx) else { return }
+        let style = MenuBarIconStyle.allCases[idx]
+        UserDefaults.standard.set(style.rawValue,
+                                  forKey: LingerTheme.UserDefaultsKey.iconStyle.rawValue)
+        NotificationCenter.default.post(name: .lingerMenuBarIconDidChange, object: nil)
     }
 
 
@@ -1007,9 +1094,9 @@ final class SettingsWindow: NSWindow {
 
     // MARK: - 动作：日历面板
 
-    @objc private func targetCalendarChanged(_ sender: NSTextField) {
-        let title = sender.stringValue.trimmingCharacters(in: .whitespaces)
-        UserDefaults.standard.set(title.isEmpty ? "Linger" : title,
+    @objc private func targetCalendarChanged(_ sender: NSPopUpButton) {
+        guard let title = sender.titleOfSelectedItem, !title.isEmpty else { return }
+        UserDefaults.standard.set(title,
                                   forKey: LingerTheme.UserDefaultsKey.targetCalendar.rawValue)
     }
 
@@ -1153,38 +1240,55 @@ final class SettingsWindow: NSWindow {
 
     // MARK: - 授权状态刷新
 
+    /// 循环按钮：重置授权并再次申请（清 grantedByRequest 假标记 → 重新走系统授权流程）。
+    /// 场景：UI 显示「已授权」但日历读取 Access denied（裸二进制 TCC 漂移残留）。
+    @objc private func resetCalAuthorization(_ sender: Any?) {
+        CalendarManager.shared.resetAuthorization()
+        // 授权回调后 lingerCalendarAccessDidRefresh 通知会触发刷新 + 重建下拉
+    }
+
     func refreshPermissionStatuses() {
-        // 日历（同步）：状态文字 + 状态点 + 按钮标题 三处同步
+        // 日历（同步）：状态文字 + 按钮标题 两处同步
         // 用 hasAccess 兜底裸 bundle 场景（isAuthorized 恒 false，grantedByRequest 才是真实状态）
         let ok = CalendarManager.shared.hasAccess
         if let cal = calAuthLabel {
-            // 2026-08-06 状态加图标，"已授权"/"未授权"更醒目
+            // 2026-08-23 用户要求：只保留 ✓/⚠ 勾标（不再叠加左侧状态点）
             cal.stringValue = ok ? "✓ 已授权" : "⚠ 未授权"
             cal.textColor = ok ? LingerTheme.stateSuccess : LingerTheme.ink2
-            calAuthDot?.layer?.backgroundColor = (ok ? LingerTheme.stateSuccess : LingerTheme.ink3).cgColor
         }
         if let btn = calAuthButton {
-            // 按钮标题动态化：未授权"去授权…"引导主动点击；已授权"管理…"跳系统设置
-            btn.title = ok ? "管理…" : "去授权…"
+            // 按钮标题动态化：未授权"去授权…"引导主动点击；已授权"管理授权"跳系统设置
+            btn.title = ok ? "管理授权" : "去授权…"
         }
     }
 
     override func orderFront(_ sender: Any?) {
         super.orderFront(sender)
         refreshPermissionStatuses()
+        // 重建「计入日历」选项：用户可能在日历 app 中新建/删除了日历
+        if let popup = targetCalendarPopup {
+            rebuildTargetCalendarOptions(popup)
+        }
     }
 
-    /// 日历授权状态变更通知回调：实时刷新设置页授权显示。
+    /// 日历授权状态变更通知回调：实时刷新设置页授权显示 + 重建「计入日历」选项
+    /// （未授权时日历列表为空，授权成功后才能读到用户已创建的日历）。
     @objc private func handleCalendarAccessRefresh(_ note: Notification) {
         refreshPermissionStatuses()
+        if let popup = targetCalendarPopup {
+            rebuildTargetCalendarOptions(popup)
+        }
     }
 
 
     // MARK: - 当前值读取（含默认值兜底）
 
     private func currentDragLinePercent() -> Int {
+        // 2026-08-23：0 是合法值（= 线最长 25% 屏高），只在从未设置过时才用默认 50
+        guard UserDefaults.standard.object(
+            forKey: LingerTheme.UserDefaultsKey.maxDragLinePercent.rawValue) != nil else { return 50 }
         let v = UserDefaults.standard.integer(forKey: LingerTheme.UserDefaultsKey.maxDragLinePercent.rawValue)
-        return v == 0 ? 50 : v
+        return max(0, min(100, v))
     }
 
     private func currentMaxDurationMinutes() -> Int {

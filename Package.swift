@@ -8,6 +8,12 @@ let package = Package(
         .executableTarget(
             name: "Linger",
             path: "Sources/Linger",
+            resources: [
+                // 2026-08-23：菜单栏可选图标（用户提供的 4 个 18×18 template PNG）
+                .copy("Resources/MenuBarIcons"),
+                // 2026-08-24：关于页应用图标（与 app/Dock icns 同源的 PNG）
+                .copy("Resources/AboutAssets")
+            ],
             linkerSettings: [
                 .linkedFramework("AppKit"),
                 .linkedFramework("EventKit"),

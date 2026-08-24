@@ -241,8 +241,10 @@ enum LingerTheme {
 
         /// T10: 开机自启（Bool，默认关）
         case launchAtLogin = "linger_launchAtLogin"
-        /// T12: 菜单栏图标风格（ring/classic/timer，默认 ring）
+        /// T12: 菜单栏图标风格（2026-08-23 起为 ring/desk/import/jump，默认 jump）
         case iconStyle = "linger_iconStyle"
+        /// 2026-08-23: 计时粒度 —— 拖拽细线时倒计时读数的最小步进（秒：10/20/30/60，默认 60）
+        case timerGranularity = "linger_timerGranularity"
     }
 
     // MARK: - 默认值（自 Linger2.1 移植，供拖拽链路统一兜底）
@@ -259,4 +261,6 @@ enum LingerTheme {
     static let defaultDragPreviewFontSize: Double = 16
     /// 拖拽引导提示最多显示次数，默认 3
     static let maxDragHintShownCount: Int = 3
+    /// 计时粒度（拖拽读数最小步进，秒），默认 60（整分钟）
+    static let defaultTimerGranularity: TimeInterval = 60
 }

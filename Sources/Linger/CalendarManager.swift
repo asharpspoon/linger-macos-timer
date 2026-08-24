@@ -113,6 +113,12 @@ final class CalendarManager {
     private init() {
         loadRecordedEntries()
         migrateLegacyWriteModeDefault()
+        // 2026-08-24：写入方式选择器已从设置页隐藏（用户：三种模式实际体验没区别），
+        // 统一用自动。此处把残留的 ask/manual 归一回 auto，否则 UI 藏了就永远改不回来。
+        if writeMode != .auto {
+            os_log("Write mode unified to auto (selector hidden in Settings)", log: log, type: .info)
+            setWriteMode(.auto)
+        }
         // 2026-08-06 加固：TCC 归因漂移时 authorizationStatus(for:) 恒返回 notDetermined
         // （ad-hoc 签名每次重建变化，TCC 可能不再把授权记录归因到新二进制），
         // 但 recordedCalendarEntries 非空 = 本 app 曾成功写入过日历 = 实际已授权。
@@ -128,8 +134,32 @@ final class CalendarManager {
                Bundle.main.bundleIdentifier ?? "nil",
                currentAuthorizationStatus().rawValue,
                grantedByRequest ? 1 : 0)
+        // 2026-08-23：裸二进制检测（bundleID=nil 说明进程没有 .app bundle，如 swift run /
+        // 直接执行 .build/debug/Linger）。此场景 TCC 无法稳定归因日历授权：
+        // authorizationStatus 恒 notDetermined，历史 grantedByRequest 标记随二进制变化失效
+        // → 假授权（UI 显示已授权但 EventKit Access denied）。提示用打包方式运行。
+        if Bundle.main.bundleIdentifier == nil {
+            os_log("⚠️ Running as bare executable (no bundle) — calendar TCC attribution is unreliable. Run via ./script/build_and_run.sh (packaged .app) instead.",
+                   log: log, type: .error)
+        }
+        // 2026-08-23：监听 EventKit 数据库就绪/变更（EKEventStore 数据是异步加载的：
+        // 授权回调/启动后立即查 calendars/sources 可能为空 → 设置页下拉读不到日历、
+        // 写入时找不到 source 失败）。数据库就绪后发通知让设置页重建「计入日历」下拉。
+        NotificationCenter.default.addObserver(
+            self, selector: #selector(handleEventStoreChanged),
+            name: .EKEventStoreChanged, object: store)
         // 启动时静默探测真实权限状态（已授权/已拒绝不弹窗），更新 grantedByRequest
         probeAccessOnLaunch()
+    }
+
+    /// EventKit 数据库就绪/变更（含首次异步加载完成）：广播 lingerCalendarAccessDidRefresh，
+    /// 设置页据此重建「计入日历」下拉（此前下拉可能在 store 未就绪时构建，只显示 Linger）。
+    @objc private func handleEventStoreChanged() {
+        DispatchQueue.main.async {
+            let count = self.store.calendars(for: .event).filter { $0.allowsContentModifications }.count
+            os_log("EKEventStoreChanged: %d writable calendars now visible", log: self.log, type: .info, count)
+            NotificationCenter.default.post(name: .lingerCalendarAccessDidRefresh, object: nil)
+        }
     }
 
     /// 启动时静默探测权限：只在 authorizationStatus != notDetermined 时调
@@ -449,6 +479,28 @@ final class CalendarManager {
         }
     }
 
+    // MARK: - 重置授权（2026-08-23：设置页循环按钮）
+
+    /// 手动重置授权并重新申请（用户点设置页的循环图标按钮触发）。
+    ///
+    /// 场景：grantedByRequest 持久化标记与真实 TCC 状态脱节 —— 裸二进制/ad-hoc 签名
+    /// 每次构建变化导致 TCC 归因失效，或系统授权被外部重置（tccutil / 系统设置）。
+    /// 症状：UI 显示「已授权」但 availableCalendars 为空 + 写入 Access denied。
+    ///
+    /// 做法：清除假标记（setter 发通知，UI 立即变「未授权」）→ 重新走统一授权入口
+    /// （notDetermined 触发系统弹窗；denied 弹 NSAlert 引导去系统设置）。
+    func resetAuthorization() {
+        os_log("resetAuthorization: clearing grantedByRequest and re-requesting",
+               log: log, type: .info)
+        grantedByRequest = false
+        requestPermissionIfNeeded { [weak self] granted in
+            // grantedByRequest 已在回调内更新并广播；这里仅记录结果
+            os_log("resetAuthorization finished: granted=%{public}@",
+                   log: self?.log ?? OSLog.default, type: .info,
+                   String(describing: granted))
+        }
+    }
+
     // MARK: - 日历查找/创建（含历史迁移）
 
     /// 查找或创建 "Linger" 本地日历。
@@ -500,7 +552,18 @@ final class CalendarManager {
 
     /// 返回用户可选的可写日历列表（用于设置页选择目标日历）
     func availableCalendars() -> [EKCalendar] {
-        return store.calendars(for: .event).filter { $0.allowsContentModifications }
+        let list = store.calendars(for: .event).filter { $0.allowsContentModifications }
+        // 2026-08-23：诊断日志（store 未就绪时返回空 → 下拉只剩 Linger；就绪后 EKEventStoreChanged 触发重建）
+        let titles = list.map { $0.title }.joined(separator: ", ")
+        os_log("availableCalendars: %d writable [%{public}@]",
+               log: log, type: .info, list.count, titles.isEmpty ? "-" : titles)
+        // 假授权信号：标记为已授权但连默认日历都读不到（EKCADError 1013 Access denied），
+        // 说明 grantedByRequest 是失效残留（裸二进制 TCC 漂移）。提示用户用重置按钮。
+        if list.isEmpty && grantedByRequest && store.defaultCalendarForNewEvents == nil {
+            os_log("⚠️ grantedByRequest=true but EventKit access denied (stale TCC grant). Use the reset button in Settings → Calendar.",
+                   log: log, type: .error)
+        }
+        return list
     }
 
     // MARK: - 目标日历解析（T13：闭合"目标日历下拉不生效"偏差）
@@ -517,6 +580,11 @@ final class CalendarManager {
             return s
         }
         return calendarTitle
+    }
+
+    /// 对外暴露：当前生效的目标日历标题（设置页下拉选中项用；无效选择回退 "Linger"）
+    var targetCalendarTitle: String {
+        return resolveTargetCalendarTitle()
     }
 
     /// 按标题解析实际写入的目标日历：
@@ -580,8 +648,10 @@ final class CalendarManager {
 
         do {
             try store.save(event, span: .thisEvent, commit: true)
-            os_log("Calendar event written to '%{public}@': %{public}@",
-                   log: log, type: .info, targetTitle, title.isEmpty ? defaultTitle : title)
+            os_log("Calendar event written to '%{public}@': %{public}@ %{public}@ → %{public}@",
+                   log: log, type: .info, targetTitle,
+                   title.isEmpty ? defaultTitle : title,
+                   startDate.description, endDate.description)
             return event.eventIdentifier
         } catch {
             os_log("Failed to save event: %{public}@",
@@ -624,7 +694,12 @@ final class CalendarManager {
     /// - Returns: eventIdentifier（成功）或 nil（失败 / 未授权）
     func writeEventOnFinish(title: String, start: Date, end: Date) -> String? {
         let roundedStart = roundUpToFiveMinutes(start)
-        let roundedEnd = roundUpToFiveMinutes(end)
+        var roundedEnd = roundUpToFiveMinutes(end)
+        // 2026-08-23：短计时（<5 分钟）双端向上取整后可能重叠（如 14:02→14:03 均取整到 14:05）
+        // → 零时长事件在日历 app 里不可见。保证至少 5 分钟块。
+        if roundedEnd <= roundedStart {
+            roundedEnd = roundedStart.addingTimeInterval(5 * 60)
+        }
         return writeEvent(title: title, startDate: roundedStart, endDate: roundedEnd)
     }
 }

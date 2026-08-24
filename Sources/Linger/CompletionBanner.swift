@@ -324,9 +324,10 @@ final class CompletionBannerView: NSView {
             repeatButton.heightAnchor.constraint(equalToConstant: 28),
             confirmButton.widthAnchor.constraint(equalToConstant: 28),
             confirmButton.heightAnchor.constraint(equalToConstant: 28),
-            scheduleModule.heightAnchor.constraint(equalToConstant: 28),
+            // 28pt 定高只给输入框模块；纯文案 label 用固有高度（28pt 高的 label 文字会顶对齐）
+            scheduleInput != nil ? scheduleModule.heightAnchor.constraint(equalToConstant: 28) : nil,
             timeCapsule.heightAnchor.constraint(equalToConstant: 28)
-        ])
+        ].compactMap { $0 })
 
         closeButton.target = self
         closeButton.action = #selector(closeTapped(_:))
@@ -346,20 +347,20 @@ final class CompletionBannerView: NSView {
     // MARK: - 子模块
 
     private func makeScheduleModule() -> NSView {
+        // 2026-08-24 用户要求：已有标题时直接显示纯文案（不带输入框底色/圆角），
+        // 否则用户会误以为还能编辑。无标题时保持原型的内联输入框样式。
+        if let label = scheduleLabel {
+            label.translatesAutoresizingMaskIntoConstraints = false
+            label.setContentHuggingPriority(.defaultLow, for: .horizontal)
+            return label
+        }
+
         let module = NSView()
         module.wantsLayer = true
         module.layer?.backgroundColor = LingerTheme.nsColor(LingerTheme.Color.input).cgColor
         module.layer?.cornerRadius = LingerTheme.radiusSM
 
-        if let label = scheduleLabel {
-            label.translatesAutoresizingMaskIntoConstraints = false
-            module.addSubview(label)
-            NSLayoutConstraint.activate([
-                label.leadingAnchor.constraint(equalTo: module.leadingAnchor, constant: 10),
-                label.trailingAnchor.constraint(equalTo: module.trailingAnchor, constant: -10),
-                label.centerYAnchor.constraint(equalTo: module.centerYAnchor)
-            ])
-        } else if let field = scheduleInput {
+        if let field = scheduleInput {
             let pencil = NSImageView()
             pencil.image = NSImage(systemSymbolName: "pencil", accessibilityDescription: "日程")?
                 .withSymbolConfiguration(NSImage.SymbolConfiguration(pointSize: 11, weight: .medium))
