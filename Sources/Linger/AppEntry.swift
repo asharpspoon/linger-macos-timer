@@ -48,6 +48,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         menuBarManager = MenuBarManager()
         NSLog("[Linger] MenuBarManager created")
 
+        // 2026-08-24 B 组：启动静默检查更新（内部 24h 节流 + 忽略版本 + 失败静默）
+        DispatchQueue.main.asyncAfter(deadline: .now() + 3) {
+            UpdateChecker.shared.checkSilentlyOnLaunch()
+        }
+
         // 2026-08-06：日历归档导出 — 每天首次运行时增量导出日历事件到 Markdown
         // 异步执行，不阻塞启动；需用户在设置里开启开关
         DispatchQueue.global(qos: .utility).async {

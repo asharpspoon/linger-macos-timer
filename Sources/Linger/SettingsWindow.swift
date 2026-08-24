@@ -1030,13 +1030,38 @@ final class SettingsWindow: NSWindow {
         let ticket = AboutTicketView()
         ticket.translatesAutoresizingMaskIntoConstraints = false
         panel.addSubview(ticket)
+
+        // 2026-08-24 B 组：检查更新入口（关于页票据下方，链接样式文本按钮）
+        let checkBtn = NSButton(title: "检查更新…", target: self, action: #selector(checkForUpdates))
+        checkBtn.bezelStyle = .rounded
+        checkBtn.controlSize = .small
+        checkBtn.contentTintColor = LingerTheme.nsColor(LingerTheme.Color.ink2)
+        checkBtn.translatesAutoresizingMaskIntoConstraints = false
+        panel.addSubview(checkBtn)
+
         NSLayoutConstraint.activate([
             ticket.topAnchor.constraint(equalTo: panel.topAnchor),
             ticket.leadingAnchor.constraint(equalTo: panel.leadingAnchor),
             ticket.trailingAnchor.constraint(equalTo: panel.trailingAnchor),
-            ticket.bottomAnchor.constraint(equalTo: panel.bottomAnchor)
+            checkBtn.topAnchor.constraint(equalTo: ticket.bottomAnchor, constant: 14),
+            checkBtn.centerXAnchor.constraint(equalTo: panel.centerXAnchor),
+            checkBtn.bottomAnchor.constraint(lessThanOrEqualTo: panel.bottomAnchor, constant: -12)
         ])
         return panel
+    }
+
+    /// 手动检查更新：无视节流；三态反馈（新版面板 / 已最新 chip / 失败 chip）
+    @objc private func checkForUpdates() {
+        UpdateChecker.shared.checkManually { result in
+            switch result {
+            case .available(let tag, let ver, let notes, let url):
+                UpdatePanel.shared.present(tag: tag, version: ver, notes: notes, downloadURL: url)
+            case .upToDate:
+                UpdatePanel.shared.presentUpToDate()
+            case .failed(let msg):
+                UpdatePanel.shared.presentFailure(msg)
+            }
+        }
     }
 
     // MARK: - 动作：操作面板

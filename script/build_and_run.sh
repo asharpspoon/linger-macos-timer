@@ -5,7 +5,13 @@ MODE="${1:-run}"
 APP_NAME="Linger"
 BUNDLE_ID="com.linger.app"
 MIN_SYSTEM_VERSION="13.0"
-APP_VERSION="2.5.0"
+# 版本号唯一真源：Sources/Linger/AppVersion.swift（运行时检查更新也读它）
+APP_VERSION="$(sed -n 's/.*static let current = "\(.*\)".*/\1/p' "$(
+  cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/Sources/Linger/AppVersion.swift")"
+if [[ -z "$APP_VERSION" ]]; then
+  echo "ERROR: 无法从 AppVersion.swift 解析版本号" >&2
+  exit 1
+fi
 
 # 2026-08-24：--release 发布模式（Release 构建 + 打包不启动，供分发安装）
 BUILD_CONFIG="debug"
