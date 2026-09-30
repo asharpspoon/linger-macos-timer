@@ -111,6 +111,65 @@ final class ScheduledActivationProbeTests: XCTestCase {
         XCTAssertEqual(entry.remainingTime, 0, "过期预约剩余时间应为 0（不显示、可被清理）")
     }
 
+    // MARK: - 2026-09-30「关掉软件后预约/计时乱掉」修复
+
+    /// 跨中段恢复必须保留「原始计划时长 + 真实时间轴」。
+    /// 旧逻辑把 duration 改成剩余跨度、startTime 重置为 now →
+    ///   ① 进度条重新从 0 跑；
+    ///   ② toDTO() 把变短的 duration 写回磁盘，每重启一次时长就短一截。
+    func testRestoredMidSpanScheduleKeepsFullDurationAndTimeline() {
+        let start = Date().addingTimeInterval(-30)   // 已开始 30s
+        let end = Date().addingTimeInterval(90)      // 还有 90s 结束（总跨度 120s）
+        let entry = TimerEntry(restoredFrom: makeDTO(start: start, end: end))
+
+        XCTAssertTrue(entry.isRunning, "跨中段恢复应立即激活")
+        XCTAssertEqual(entry.duration, 120, accuracy: 0.5,
+                       "必须保留完整计划时长，不能被改写成剩余跨度")
+        XCTAssertEqual(entry.startTime?.timeIntervalSince1970 ?? 0,
+                       start.timeIntervalSince1970, accuracy: 0.5,
+                       "startTime 必须锚在真实预约开始时刻，否则进度条会被清零")
+        XCTAssertEqual(entry.remainingTime, 90, accuracy: 1.5,
+                       "剩余时间 = 结束时刻 - 现在，与重启次数无关")
+
+        // 进度 = 1 - remaining/duration → 已过 30/120 = 25%，不能回到 0%
+        let progress = 1 - entry.remainingTime / entry.duration
+        XCTAssertEqual(progress, 0.25, accuracy: 0.02, "恢复后进度不得归零")
+
+        // 落盘往返后时长必须仍是完整值（否则每次重启都被改短）
+        let dto = entry.toDTO()
+        XCTAssertEqual(dto.duration, 120, accuracy: 0.5, "toDTO 必须写回完整计划时长")
+        XCTAssertEqual(dto.scheduledEndTime?.timeIntervalSince1970 ?? 0,
+                       end.timeIntervalSince1970, accuracy: 0.5,
+                       "预约结束时刻不能被改写")
+
+        entry.stop()
+    }
+
+    /// 预约「到点激活」也必须锚定预约时间轴：Mac 睡眠 / RunLoop 阻塞会让 Timer 晚触发，
+    /// 旧逻辑从触发时刻重新跑满整段时长 → 结束时间被整体推后，且与重启恢复口径不一致。
+    func testLateScheduledActivationAnchorsToScheduledTimeline() {
+        let start = Date().addingTimeInterval(-30)   // 已到点 → 定时器会立即触发
+        let end = Date().addingTimeInterval(60)
+        let entry = TimerEntry(scheduledStartTime: start, scheduledEndTime: end, title: "probe")
+
+        let exp = expectation(description: "activated")
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) { exp.fulfill() }
+        wait(for: [exp], timeout: 3)
+
+        XCTAssertTrue(entry.isRunning, "已到点的预约应立即激活")
+        XCTAssertEqual(entry.duration, 90, accuracy: 0.5,
+                       "时长应为完整预约跨度，而不是从触发时刻重算")
+        XCTAssertEqual(entry.startTime?.timeIntervalSince1970 ?? 0,
+                       start.timeIntervalSince1970, accuracy: 0.5,
+                       "startTime 必须锚在预约开始时刻，结束时间才不会被推后")
+        XCTAssertEqual(entry.remainingTime, 60, accuracy: 1.5,
+                       "剩余时间 = 结束时刻 - 现在（≈60s），不是完整 90s")
+        XCTAssertEqual(entry.originalEndTime?.timeIntervalSince1970 ?? 0,
+                       end.timeIntervalSince1970, accuracy: 0.5,
+                       "结束时刻必须等于预约结束时刻")
+        entry.stop()
+    }
+
     /// 过期预约应能被定期清理回收（修复前 !isScheduled 永久挡清理，攒满 10 个堵死新建）
     func testExpiredScheduleIsPrunable() {
         let start = Date().addingTimeInterval(-3600)

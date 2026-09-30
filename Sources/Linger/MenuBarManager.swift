@@ -3,7 +3,7 @@ import os.log
 import Carbon.HIToolbox   // RegisterEventHotKey：拖拽期全局捕获 Esc（无需辅助功能权限）
 
 /// 菜单栏图标风格（设置-通用下拉可选，`linger_iconStyle`）。
-/// 2026-08-23：4 个风格全部用用户提供的 template 矢量 PDF（36×36 画板，渲染 18pt Retina 无损；
+/// 2026-08-23：4 个风格全部用用户提供的 template 矢量 PDF（36×36 画板，渲染 20pt Retina 无损；
 /// Sources/Linger/Resources/MenuBarIcons/，随 Linger_Linger.bundle 打进 app），
 /// isTemplate=true → 深浅色模式自动适配；资源缺失时回退自绘 Ring。
 enum MenuBarIconStyle: String, CaseIterable {
@@ -22,6 +22,11 @@ enum MenuBarIconStyle: String, CaseIterable {
         }
     }
 
+    /// 菜单栏图标渲染边长（pt）。2026-09-30：18 → 20（用户反馈偏小）。
+    /// 必须与 LingerStatusItemView.iconSize 保持一致：NSImage.size 小于约束框时
+    /// AppKit 只按原尺寸居中绘制（scaleProportionallyDown 不会放大），改一处等于没改。
+    static let renderSize: CGFloat = 20
+
     /// 资源文件名（不含 .png 扩展）
     var resourceName: String {
         switch self {
@@ -38,14 +43,16 @@ enum MenuBarIconStyle: String, CaseIterable {
         return MenuBarIconStyle(rawValue: raw) ?? .jump
     }
 
-    /// 加载 18×18 template 矢量图标（PDF，Retina 无损；对齐微信/企业微信菜单栏规格）；
+    /// 加载 20×20 template 矢量图标（PDF，Retina 无损）；
+    /// 2026-09-30：18 → 20，与 LingerStatusItemView.iconSize 保持同一档位（两处必须一起改，
+    /// 否则 NSImage 尺寸小于约束框时会以原尺寸居中，视觉上并没有变大）。
     /// bundle 里找不到返回 nil（调用方回退自绘 Ring）
     func loadImage() -> NSImage? {
         guard let url = Bundle.module.url(forResource: resourceName, withExtension: "pdf",
                                           subdirectory: "MenuBarIcons"),
               let image = NSImage(contentsOf: url) else { return nil }
         image.isTemplate = true
-        image.size = NSSize(width: 18, height: 18)
+        image.size = NSSize(width: Self.renderSize, height: Self.renderSize)
         return image
     }
 }
@@ -198,7 +205,7 @@ final class MenuBarManager: NSObject {
 
     /// 自绘环形图标（template）：外环描边 + 中心实心点，深浅模式自适应
     private func buildRingIcon() -> NSImage? {
-        let size = NSSize(width: 18, height: 18)
+        let size = NSSize(width: MenuBarIconStyle.renderSize, height: MenuBarIconStyle.renderSize)
         let image = NSImage(size: size)
         image.lockFocus()
         NSColor.black.setStroke()
@@ -615,6 +622,17 @@ final class MenuBarManager: NSObject {
     }
 
     private func pollDrag() {
+        // macOS 27 修复：菜单栏 App 未激活时，拖动过程中的真实 mouseUp 事件
+        // 不再可靠送达（系统会吃掉松手事件），旧实现依赖事件判松手 → 松手不休。
+        // 改用物理按键状态判定松手：轮询发现左键已松开，立即按当前位置收尾。
+        if dragState == .dragging || dragState == .pressed {
+            if (NSEvent.pressedMouseButtons & 1) == 0 {
+                os_log("pollDrag: physical left button released, finishing", log: log, type: .debug)
+                finishDrag()
+                return
+            }
+        }
+
         let current = NSEvent.mouseLocation
         let distance = max(0, dragStartLocation.y - current.y)   // 向下拖拽 y 减小
 
@@ -687,6 +705,15 @@ final class MenuBarManager: NSObject {
     }
 
     private func finishDrag() {
+        // macOS 27 修复：菜单栏 App 不在前台时，第一次按下系统会合成一个假的
+        // leftMouseUp（物理按键仍按着），目的只是"用第一次点击激活应用"。
+        // 若把它当松手处理，拖拽刚开始就被判成"单纯点击"清空状态机 → 下拉计时失效。
+        // 以物理按键状态为准：物理左键仍按着 = 合成事件，直接忽略，等真松手。
+        if (NSEvent.pressedMouseButtons & 1) != 0 {
+            os_log("finishDrag: ignore synthetic mouseUp (button still down)",
+                   log: log, type: .debug)
+            return
+        }
         // 入口立即拆监听器 + 改状态，防止动画期间第二次 mouseUp reentry（创建重复计时）。
         detachDragInput()
         guard dragState == .dragging || dragState == .pressed else {

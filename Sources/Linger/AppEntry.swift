@@ -95,4 +95,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
         return false
     }
+
+    /// 退出前同步落盘。
+    ///
+    /// 2026-09-30 修复（用户反馈「关掉软件再打开，预约 / 正在进行的计时会乱掉」）：
+    /// TimerManager.saveToDisk() 是异步的，最后一次写入可能在进程结束前没落地 ——
+    /// 表现为重开后丢掉预约、或正在跑的计时状态/时长对不上。
+    /// 这里在进程退出前同步写一次，保证磁盘状态与内存一致。
+    func applicationWillTerminate(_ notification: Notification) {
+        TimerManager.shared.flushToDisk()
+        NSLog("[Linger] applicationWillTerminate — timers flushed to disk")
+    }
 }

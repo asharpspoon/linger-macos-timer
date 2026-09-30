@@ -7,6 +7,13 @@ final class TimerManager {
 
     private var entries: [TimerEntry] = []
     private let queue = DispatchQueue(label: "com.linger.timer-manager", qos: .userInitiated)
+
+    /// 落盘专用串行队列。
+    ///
+    /// 2026-09-30：与上面的 `queue` 分开的原因 —— 退出前需要在主线程 **同步** 等一次写入
+    /// （`flushToDisk()`），而 `queue` 上的周期清理块会 `DispatchQueue.main.sync` 回主线程，
+    /// 若两者同队列就会死锁。落盘队列永远不回调主线程，因此可以安全 `sync`。
+    private let persistQueue = DispatchQueue(label: "com.linger.timer-manager.persist", qos: .utility)
     private let log = OSLog(subsystem: "com.linger.timer", category: "TimerManager")
 
     /// 并发计时上限。改为 `static` 供 UI 层（Toast 文案）引用，避免上限值散落成硬编码 10。
@@ -145,14 +152,41 @@ final class TimerManager {
 
     // MARK: - 持久化
 
+    /// 原子写入（saveToDisk / flushToDisk 共用；抽成静态纯函数便于单测，不碰真实 App Support 目录）。
+    static func write(_ dtos: [TimerEntryDTO], to url: URL) throws {
+        let data = try JSONEncoder().encode(dtos)
+        try data.write(to: url, options: .atomic)
+    }
+
+    /// 异步落盘（沿用原行为：主线程取快照 → 落盘队列串行写，不阻塞主线程）。
     private func saveToDisk() {
         let dtos = entries.map { $0.toDTO() }
-        queue.async { [storageURL] in
+        let url = storageURL
+        persistQueue.async {
             do {
-                let data = try JSONEncoder().encode(dtos)
-                try data.write(to: storageURL, options: .atomic)
+                try TimerManager.write(dtos, to: url)
             } catch {
                 os_log("Failed to save timers: %{public}@", log: self.log, type: .error, error.localizedDescription)
+            }
+        }
+    }
+
+    /// 退出前同步落盘。
+    ///
+    /// 2026-09-30 修复（用户反馈「关掉软件后预约/计时状态会乱掉」）：
+    /// saveToDisk() 是异步的，正常退出的瞬间最后一次写入可能还没落地，
+    /// 重启后读到的就是旧状态（丢预约、丢正在跑的计时、时长对不上）。
+    /// 这里在进程结束前同步写一次，保证磁盘状态 == 内存状态。
+    ///
+    /// 必须在主线程调用（entries 是主线程约束的数据）；落盘队列本身不回主线程，不会死锁。
+    func flushToDisk() {
+        let dtos = entries.map { $0.toDTO() }
+        let url = storageURL
+        persistQueue.sync {
+            do {
+                try TimerManager.write(dtos, to: url)
+            } catch {
+                os_log("Failed to flush timers: %{public}@", log: self.log, type: .error, error.localizedDescription)
             }
         }
     }

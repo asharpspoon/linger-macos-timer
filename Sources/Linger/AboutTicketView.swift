@@ -132,7 +132,7 @@ final class AboutTicketView: NSView {
         name.font = NSFont.systemFont(ofSize: 20, weight: .bold)
         name.textColor = Self.ticketInk
 
-        let version = NSTextField(labelWithString: "Version 2.5.0")
+        let version = NSTextField(labelWithString: "Version \(AppVersion.current)")
         version.font = NSFont.monospacedSystemFont(ofSize: 11, weight: .regular)
         version.textColor = Self.ticketInk2
 
@@ -200,7 +200,7 @@ final class AboutTicketView: NSView {
              URL(string: "https://xhslink.cn/m/5Ky2s8BvViA")),
             ("Email", "breakfastwine@agent.qq.com", true, nil,
              URL(string: "mailto:breakfastwine@agent.qq.com")),
-            ("Release Date", "2026.08.24", true, nil, nil)
+            ("Release Date", "2026.09.30", true, nil, nil)
         ]
         let stack = NSStackView()
         stack.orientation = .vertical

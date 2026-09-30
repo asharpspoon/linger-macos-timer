@@ -136,11 +136,19 @@ final class TimerEntry {
             //   App 在预约开始后才启动时，旧逻辑落入下方通用分支 → isRunning=false
             //   永远挂起，悬停列表显示「等待中」却永远不会开始（僵尸预约）。
             if let end = dto.scheduledEndTime, end.timeIntervalSinceNow > 0 {
-                // 开始已过、结束未到 → 立即补激活，按剩余跨度倒计时
-                let span = max(1, end.timeIntervalSinceNow)
-                self.duration = span
-                self.remainingTime = span
-                self.startTime = Date()
+                // 开始已过、结束未到 → 立即补激活。
+                //
+                // 2026-09-30 修复（用户反馈「关掉软件再打开，预约计时会乱掉」）：
+                //   旧逻辑把 duration 改成「剩余跨度」、startTime 重置为当前时刻，
+                //   于是进度条从 0 重新跑，并且 toDTO() 把 duration 一起写回磁盘 ——
+                //   重开后「计划时长 / 已用时长 / 写进日历的记录」全被改短，越重启越短。
+                //   现在保留**原始计划时长**，startTime 锚在真实预约开始时刻，
+                //   tick 里 remaining = duration - (now - start) = 结束时刻 - 现在，
+                //   即：结束时间不变、进度按真实时间轴显示。
+                let fullSpan = max(1, end.timeIntervalSince(start))
+                self.duration = fullSpan
+                self.remainingTime = max(0, end.timeIntervalSinceNow)
+                self.startTime = start
                 self.originalStartTime = start
                 self.originalEndTime = end
                 self.isRunning = true
@@ -260,11 +268,21 @@ final class TimerEntry {
     @objc private func activateScheduled() {
         scheduledTimer?.invalidate()
         scheduledTimer = nil
-        self.duration = effectiveDuration
-        self.remainingTime = effectiveDuration
-        self.startTime = Date()
-        self.originalStartTime = Date()
-        self.originalEndTime = Date().addingTimeInterval(effectiveDuration)
+
+        // 2026-09-30 修复：锚定到预约本身的起止时刻，而不是"定时器实际触发的时刻"。
+        // Timer(fireAt:) 在 Mac 睡眠 / RunLoop 阻塞后会晚触发；旧逻辑以触发时刻为起点
+        // 重新跑满整段时长，结束时间被整体推后（与重启后的恢复口径也不一致）。
+        // 现在统一口径：duration = 预约起止跨度，startTime = 预约开始时刻，
+        // 首次 tick 即算出「结束时刻 - 现在」的剩余时间。
+        let anchorStart = scheduledStartTime ?? Date()
+        let anchorDuration = max(1, effectiveDuration)
+        let anchorEnd = scheduledEndTime ?? anchorStart.addingTimeInterval(anchorDuration)
+
+        self.duration = max(1, anchorEnd.timeIntervalSince(anchorStart))
+        self.startTime = anchorStart
+        self.remainingTime = max(0, anchorEnd.timeIntervalSinceNow)
+        self.originalStartTime = anchorStart
+        self.originalEndTime = anchorEnd
         self.isRunning = true
         self.isPaused = false
         startTicking()

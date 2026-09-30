@@ -48,10 +48,14 @@ final class SettingsWindow: NSWindow {
     private var previewFontSizeValueLabel: NSTextField?
     private var soundPopup: NSPopUpButton?
     private var defaultTitleField: NSTextField?
-    /// 「计入日历」下拉（授权状态变化时重建选项）
+    /// 「默认日历」下拉（授权状态变化时重建选项）
     private var targetCalendarPopup: NSPopUpButton?
     private var calAuthLabel: NSTextField?
     private var maxDurationStepper: NSStepper?
+    /// 「最大计时时长」输入框的即时生效绑定器。
+    /// NSTextField.delegate 是 weak 引用，这里必须强持有，否则绑定器会随作用域释放、
+    /// controlTextDidChange 不再回调（表现就是"又要按回车才生效"）。
+    private var maxDurationBinder: MaxDurationFieldBinder?
     /// 强提醒弹窗位置选择卡片（topRight / center），选中态琥珀边框
     private var bannerPositionCards: [String: NSView] = [:]
     /// 日历授权"管理/去授权"按钮引用（标题随授权状态动态切换）
@@ -96,6 +100,12 @@ final class SettingsWindow: NSWindow {
         titleVisibility = .visible
         isMovableByWindowBackground = true
         level = .floating
+        // 2026-09-24 修复（macOS 27）：本窗口原型是「暗色毛玻璃 + 琥珀金」，全窗口的
+        // surface / surface2 / input 等底色都是写死的深色，文字色却走系统动态色
+        // （LingerTheme.ink/ink2/ink3 = labelColor 系列）。macOS 27 起 .hudWindow
+        // 材质不再把窗口压成暗色 → 浅色系统下动态文字色翻成黑，形成「深色底 + 黑字」，
+        // 下拉框等控件文字不可读。显式锁定暗色外观，恢复原型配色。
+        appearance = NSAppearance(named: .darkAqua)
         backgroundColor = .windowBackgroundColor
         isOpaque = true
         hasShadow = true
@@ -115,6 +125,8 @@ final class SettingsWindow: NSWindow {
         root.material = .hudWindow
         root.blendingMode = .withinWindow
         root.state = .active
+        // 同上：材质本身也锁暗色，避免材质与窗口外观不一致导致底色发灰。
+        root.appearance = NSAppearance(named: .darkAqua)
         contentView = root
 
         // Tab 栏（图标 + 文字，居中，激活态琥珀金高亮）—— 系统标题栏之下
@@ -571,19 +583,25 @@ final class SettingsWindow: NSWindow {
 
     private func buildMaxDurationRow() -> NSView {
         let field = NSTextField()
-        field.formatter = integerFormatter(min: 5, max: 1440)
+        field.formatter = integerFormatter(min: MaxDurationFieldBinder.minMinutes,
+                                           max: MaxDurationFieldBinder.maxMinutes)
         field.integerValue = currentMaxDurationMinutes()
         field.target = self
+        // 回车 / 失焦的兜底路径（保留）；边输边生效走下面的 delegate。
         field.action = #selector(maxDurationChanged(_:))
         field.widthAnchor.constraint(equalToConstant: 56).isActive = true
         let stepper = NSStepper()
-        stepper.minValue = 5
-        stepper.maxValue = 1440
+        stepper.minValue = Double(MaxDurationFieldBinder.minMinutes)
+        stepper.maxValue = Double(MaxDurationFieldBinder.maxMinutes)
         stepper.increment = 1
         stepper.integerValue = currentMaxDurationMinutes()
         stepper.target = self
         stepper.action = #selector(maxDurationStepperChanged(_:))
         maxDurationStepper = stepper
+        // 2026-09-30：输入即生效（无需回车），超过 1440 立即钳回。
+        let binder = MaxDurationFieldBinder(stepper: stepper)
+        field.delegate = binder
+        maxDurationBinder = binder
         let unit = makeLabel("分钟")
         unit.textColor = LingerTheme.ink2
         let group = NSStackView(views: [field, stepper, unit])
@@ -869,7 +887,8 @@ final class SettingsWindow: NSWindow {
         ])
     }
 
-    /// 2026-08-23 用户要求：「目标日历」改名「计入日历」，并改回下拉菜单 ——
+    /// 2026-08-23 用户要求：「目标日历」改名「计入日历」，并改回下拉菜单；
+    /// 2026-09-30 用户要求：再改名「默认日历」。
     /// 读取日历 app 中用户已创建的可写日历供选择，默认 "Linger"（写入时自动创建）。
     private func buildTargetCalendarRow() -> NSView {
         let popup = NSPopUpButton()
@@ -879,11 +898,11 @@ final class SettingsWindow: NSWindow {
         popup.action = #selector(targetCalendarChanged(_:))
         popup.widthAnchor.constraint(greaterThanOrEqualToConstant: 120).isActive = true
         targetCalendarPopup = popup
-        return makeRow(label: "计入日历", control: popup,
+        return makeRow(label: "默认日历", control: popup,
                        hint: "计时完成后自动记录到此日历")
     }
 
-    /// 重建「计入日历」下拉选项：Linger 固定第一项（默认），
+    /// 重建「默认日历」下拉选项：Linger 固定第一项（默认），
     /// 其余为日历 app 中用户已创建的可写日历（按系统顺序、去重）。
     private func rebuildTargetCalendarOptions(_ popup: NSPopUpButton) {
         let current = CalendarManager.shared.targetCalendarTitle
@@ -1073,8 +1092,9 @@ final class SettingsWindow: NSWindow {
     }
 
     @objc private func maxDurationChanged(_ sender: NSTextField) {
-        var v = sender.integerValue
-        v = max(5, min(1440, v))
+        // 回车 / 失焦兜底（边输边生效由 MaxDurationFieldBinder 负责）
+        let parsed = MaxDurationFieldBinder.parse(sender.stringValue) ?? currentMaxDurationMinutes()
+        let v = MaxDurationFieldBinder.clamp(parsed)
         sender.integerValue = v
         maxDurationStepper?.integerValue = v
         UserDefaults.standard.set(v, forKey: LingerTheme.UserDefaultsKey.maxDurationMinutes.rawValue)
@@ -1290,13 +1310,13 @@ final class SettingsWindow: NSWindow {
     override func orderFront(_ sender: Any?) {
         super.orderFront(sender)
         refreshPermissionStatuses()
-        // 重建「计入日历」选项：用户可能在日历 app 中新建/删除了日历
+        // 重建「默认日历」选项：用户可能在日历 app 中新建/删除了日历
         if let popup = targetCalendarPopup {
             rebuildTargetCalendarOptions(popup)
         }
     }
 
-    /// 日历授权状态变更通知回调：实时刷新设置页授权显示 + 重建「计入日历」选项
+    /// 日历授权状态变更通知回调：实时刷新设置页授权显示 + 重建「默认日历」选项
     /// （未授权时日历列表为空，授权成功后才能读到用户已创建的日历）。
     @objc private func handleCalendarAccessRefresh(_ note: Notification) {
         refreshPermissionStatuses()

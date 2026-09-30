@@ -44,6 +44,8 @@ private enum HoverDesign {
     static let bottomSymbolPointSize: CGFloat = 13
 
     static let panelWidth: CGFloat = 300
+    static let rowContentInsetX: CGFloat = 12        // 行内容区左右内缩（绘制态/编辑态共用）
+    static let timeTextGap: CGFloat = 12             // 倒计时文本与右侧按钮区之间的间距
 }
 
 // MARK: - HoverListWindow
@@ -59,6 +61,12 @@ final class HoverListWindow: NSWindow {
         )
         isOpaque = false
         backgroundColor = .clear
+        // 2026-09-30（macOS 27）：面板底色是写死的深色（HoverDesign.panelBg /
+        // LingerTheme.Color.input），但文字色走系统动态色（LingerTheme.ink = labelColor）。
+        // macOS 27 起无边框窗口不再被系统自动压成暗色 → 浅色系统下动态色翻黑，
+        // 预约编辑面板出现「深色胶囊 + 黑字」，看起来就是一团黑。
+        // 与 SettingsWindow 同款修复：窗口显式锁定暗色外观。
+        appearance = NSAppearance(named: .darkAqua)
         level = .statusBar
         hasShadow = true
         ignoresMouseEvents = false
@@ -808,7 +816,7 @@ final class HoverListView: NSView {
         }
 
         // 内容区在高亮内缩 12pt 排版，分隔线仍贯穿整行
-        let contentRect = rowRect.insetBy(dx: 12, dy: 0)
+        let contentRect = HoverListView.rowContentRect(forCardRect: rowRect)
         drawRowContent(entry: entry, rowRect: contentRect)
 
         // 组内行间 1px 分隔线（原型 h-px line）
@@ -856,7 +864,7 @@ final class HoverListView: NSView {
         let timeFont = NSFont.monospacedDigitSystemFont(ofSize: HoverDesign.timeFontSize(), weight: timeWeight)
         let timeAttr: [NSAttributedString.Key: Any] = [.font: timeFont, .foregroundColor: timeColor]
         let timeSize = (timeText as NSString).size(withAttributes: timeAttr)
-        let timeRect = NSRect(x: rightAnchor - 12 - timeSize.width,
+        let timeRect = NSRect(x: rightAnchor - HoverDesign.timeTextGap - timeSize.width,
                               y: centerY - timeSize.height / 2,
                               width: timeSize.width,
                               height: timeSize.height)
@@ -1003,7 +1011,7 @@ final class HoverListView: NSView {
                                height: HoverDesign.symbolPointSize)
         pauseRects[entry.id] = pauseRect.insetBy(dx: -hitPad, dy: -hitPad)
 
-        return rightEdge - 20 - HoverDesign.symbolPointSize
+        return HoverListView.timeRightAnchor(inContent: rowRect)
     }
 
     /// 画带 tint 的 SF Symbol —— 内部通过 lockFocus 把 symbol 当 mask，用 color 填充
@@ -1412,28 +1420,77 @@ final class HoverListView: NSView {
     /// 编辑期间禁用自动隐藏
     var isEditing: Bool { editingField != nil }
 
+    // MARK: 编辑态布局（绘制态/编辑态共用；回归测试锁定点）
+
+    /// 编辑态布局数值（坐标系 = HoverListView.bounds）
+    struct EditingLayout {
+        /// 输入框左缘
+        let contentX: CGFloat
+        /// 倒计时文本左缘（必须与绘制态一致）
+        let timeLeft: CGFloat
+        /// 回车图标左缘
+        let iconLeft: CGFloat
+        /// 图标宽度（SF Symbol 取不到时按 12pt 估算）
+        let iconWidth: CGFloat
+        /// 输入框宽度（下限 40）
+        let fieldWidth: CGFloat
+    }
+
+    /// 行内容区：绘制态在高亮内缩 `HoverDesign.rowContentInsetX` 后排版。
+    /// 编辑态必须复用同一内缩，否则右侧锚点整体右移，回车图标撞上倒计时。
+    static func rowContentRect(forCardRect cardRect: NSRect) -> NSRect {
+        cardRect.insetBy(dx: HoverDesign.rowContentInsetX, dy: 0)
+    }
+
+    /// 倒计时文本右对齐锚点（右侧 stop 贴右缘 + pause 左移 20pt，各占 symbolPointSize）
+    static func timeRightAnchor(inContent contentRect: NSRect) -> CGFloat {
+        contentRect.maxX - 20 - HoverDesign.symbolPointSize
+    }
+
+    /// 编辑态整体布局：时间左缘 → 图标左缘 → 输入框宽度，全部从内容区锚点推导
+    static func editingLayout(cardRect: NSRect,
+                              timeText: String,
+                              timeFontSize: CGFloat,
+                              iconWidth: CGFloat) -> EditingLayout {
+        let contentRect = rowContentRect(forCardRect: cardRect)
+        let timeFont = NSFont.monospacedDigitSystemFont(ofSize: timeFontSize, weight: .semibold)
+        let timeWidth = (timeText as NSString).size(withAttributes: [.font: timeFont]).width
+        let timeLeft = timeRightAnchor(inContent: contentRect) - HoverDesign.timeTextGap - timeWidth
+        let iconLeft = timeLeft - 10 - iconWidth
+        // 输入框左缘沿用卡片外框（历史行为，保持文字位置不变）
+        let contentX = cardRect.minX
+        let fieldWidth = max(40, iconLeft - 6 - contentX)
+        return EditingLayout(contentX: contentX,
+                             timeLeft: timeLeft,
+                             iconLeft: iconLeft,
+                             iconWidth: iconWidth,
+                             fieldWidth: fieldWidth)
+    }
+
     private func startEditing(entry: TimerEntry, cardRect: NSRect) {
         // 已在编辑则跳过
         guard editingField == nil else { return }
         // 已有自定义标题的暂停/预约条目不重复编辑（运行中行常驻输入框语义，始终可编辑）
         if !entry.isRunning, let title = entry.predefinedTitle, !title.isEmpty { return }
 
-        let contentX = cardRect.minX                       // 与 drawLeftTitle 起点一致
         let centerY = cardRect.midY
-        let rightEdge = cardRect.maxX
-        let timeText = entry.displayTime
-        let timeFont = NSFont.monospacedDigitSystemFont(ofSize: HoverDesign.timeFontSize(), weight: .semibold)
-        let timeW = (timeText as NSString).size(withAttributes: [.font: timeFont]).width
-        let timeLeft = rightEdge - 31 - 12 - timeW
+        let retIcon = makeTintedSFSymbol("return", color: HoverDesign.textTertiary, pointSize: 10)
 
         // 2026-08-24 修复：回车图标右缘锚定在时间文本左侧 10pt（与输入框宽度解耦）。
         // 旧实现图标跟在输入框右缘 +6，输入框宽度被 max(40,...) 钳制时会越过 timeLeft
         // 与倒计时读数重叠。现在无论输入框多宽，图标永远贴时间左侧，绝不重叠。
-        var iconLeft = timeLeft - 10 - 12
-        if let ret = makeTintedSFSymbol("return", color: HoverDesign.textTertiary, pointSize: 10) {
-            iconLeft = timeLeft - 10 - ret.size.width
+        // 2026-09-30 修复：右侧锚点必须走「内容区」坐标系（高亮内缩 12pt）——绘制态
+        // drawRowContent 用的是内缩后的 contentRect，编辑态此前直接用卡片外框 cardRect，
+        // 导致输入框右缘/图标/倒计时判定整体右移 12pt，图标被倒计时压住。统一后见
+        // EditingLayout（同一套公式，回归测试 EditFieldLayoutProbeTests 锁定）。
+        let layout = HoverListView.editingLayout(cardRect: cardRect,
+                                                 timeText: entry.displayTime,
+                                                 timeFontSize: HoverDesign.timeFontSize(),
+                                                 iconWidth: retIcon?.size.width ?? 12)
+
+        if let ret = retIcon {
             let icon = NSImageView(image: ret)
-            icon.frame = NSRect(x: iconLeft,
+            icon.frame = NSRect(x: layout.iconLeft,
                                 y: centerY - ret.size.height / 2,
                                 width: ret.size.width,
                                 height: ret.size.height)
@@ -1441,7 +1498,8 @@ final class HoverListView: NSView {
             editingReturnIcon = icon
         }
 
-        let fieldWidth = max(40, iconLeft - 6 - contentX)
+        let contentX = layout.contentX
+        let fieldWidth = layout.fieldWidth
         let fieldHeight: CGFloat = 18
         let field = NSTextField(frame: NSRect(x: contentX, y: centerY - fieldHeight / 2,
                                                width: max(40, fieldWidth),

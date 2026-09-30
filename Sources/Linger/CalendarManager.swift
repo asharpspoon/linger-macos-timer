@@ -144,7 +144,7 @@ final class CalendarManager {
         }
         // 2026-08-23：监听 EventKit 数据库就绪/变更（EKEventStore 数据是异步加载的：
         // 授权回调/启动后立即查 calendars/sources 可能为空 → 设置页下拉读不到日历、
-        // 写入时找不到 source 失败）。数据库就绪后发通知让设置页重建「计入日历」下拉。
+        // 写入时找不到 source 失败）。数据库就绪后发通知让设置页重建「默认日历」下拉。
         NotificationCenter.default.addObserver(
             self, selector: #selector(handleEventStoreChanged),
             name: .EKEventStoreChanged, object: store)
@@ -153,7 +153,7 @@ final class CalendarManager {
     }
 
     /// EventKit 数据库就绪/变更（含首次异步加载完成）：广播 lingerCalendarAccessDidRefresh，
-    /// 设置页据此重建「计入日历」下拉（此前下拉可能在 store 未就绪时构建，只显示 Linger）。
+    /// 设置页据此重建「默认日历」下拉（此前下拉可能在 store 未就绪时构建，只显示 Linger）。
     @objc private func handleEventStoreChanged() {
         DispatchQueue.main.async {
             let count = self.store.calendars(for: .event).filter { $0.allowsContentModifications }.count

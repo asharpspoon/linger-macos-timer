@@ -27,9 +27,14 @@ final class LingerStatusItemView: NSView {
     /// 图标宽度约束（倒计时文本态收拢为 0，不留图标空位）
     private var iconWidthConstraint: NSLayoutConstraint!
 
-    /// 菜单栏图标边长：2026-08-23 从 16 调到 18，
-    /// 对齐微信/企业微信等主流菜单栏图标的视觉规格（18×18 也是素材原生分辨率）。
-    private static let iconSize: CGFloat = 18
+    /// 菜单栏图标边长：2026-08-23 从 16 调到 18；2026-09-30 再调到 20
+    /// （用户反馈「稍微小了一点，不太协调」）。
+    /// 唯一真相源放在 MenuBarIconStyle.renderSize —— NSImage 的 size 与这里的约束
+    /// 必须同档位，否则图标只按自身尺寸居中绘制，视觉上并没有变大。
+    /// 素材是 36×36 PDF 矢量画板，按 20pt 渲染 Retina 下依然无损；
+    /// 图标态固有宽度 = 2 + 20 + 2 + 2 = 26，与原先 max(26, 24) 的结果一致 ——
+    /// 图标视觉变大一圈，菜单栏占位宽度不变，不会挤压倒计时文字。
+    private static let iconSize: CGFloat = MenuBarIconStyle.renderSize
 
     override init(frame frameRect: NSRect) {
         super.init(frame: NSRect(x: 0, y: 0, width: 28, height: 22))
@@ -90,7 +95,7 @@ final class LingerStatusItemView: NSView {
     }
 
     override var intrinsicContentSize: NSSize {
-        // 文本态：2 + 0(图标收拢) + 2 + 文字 + 2；图标态：2 + 18 + 2 + 2
+        // 文本态：2 + 0(图标收拢) + 2 + 文字 + 2；图标态：2 + iconSize + 2 + 2
         let textMode = !titleLabel.stringValue.trimmingCharacters(in: .whitespaces).isEmpty
         let width: CGFloat
         if textMode {
@@ -113,6 +118,20 @@ final class LingerStatusItemView: NSView {
             userInfo: nil
         )
         addTrackingArea(area)
+    }
+
+    /// macOS 27 起，点击图标会先命中 NSImageView / NSTextField 子视图，
+    /// 父视图的 mouseDown 不再可靠触发。图标与文字只负责绘制，所有点击
+    /// 统一交给本容器，恢复按下拖拽、松开结束和右键菜单的事件链路。
+    override func hitTest(_ point: NSPoint) -> NSView? {
+        guard super.hitTest(point) != nil else { return nil }
+        return self
+    }
+
+    /// 菜单栏 App 不在前台时，第一次点击默认只用于激活应用，AppKit 会立刻
+    /// 合成 mouseUp，导致拖拽刚开始就结束。菜单栏图标必须接受 first mouse。
+    override func acceptsFirstMouse(for event: NSEvent?) -> Bool {
+        true
     }
 
     // 刻意不调用 super —— 阻止任何 tracking loop 介入，

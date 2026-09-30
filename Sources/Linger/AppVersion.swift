@@ -6,7 +6,7 @@ import Foundation
 /// 发版流程：改这里 → ./script/build_and_run.sh --release → git tag v同版本号。
 enum AppVersion {
     /// 当前应用版本（发版时更新，格式严格 SemVer：主.次.修订）
-    static let current = "2.5.1"
+    static let current = "2.5.2"
 
     /// GitHub 仓库（owner/repo），检查更新与下载直链的来源
     static let gitHubRepo = "asharpspoon/linger-macos-timer"

@@ -50,4 +50,44 @@ final class SchedulePersistenceRoundTripTests: XCTestCase {
         XCTAssertTrue(entry.isRunning, "JSON 往返恢复的预约到点必须激活")
         entry.stop()
     }
+
+    /// 2026-09-30「关掉软件后预约/计时乱掉」修复：
+    /// 跨中段预约走真实落盘函数（TimerManager.write）→ 读回 → 二次恢复，
+    /// 计划时长与真实时间轴必须原样保留（旧逻辑每次落盘都会把时长改短）。
+    func testMidSpanScheduleWriteThenReloadKeepsFullDuration() throws {
+        let start = Date().addingTimeInterval(-30)
+        let end = Date().addingTimeInterval(90)      // 总跨度 120s，已过 30s
+        let entry = TimerEntry(restoredFrom: TimerEntryDTO(
+            id: UUID(), duration: 120, remainingTime: 120,
+            isRunning: false, isPaused: false,
+            startTime: nil, originalStartTime: nil, originalEndTime: nil,
+            hasRecorded: false, isScheduled: true,
+            scheduledStartTime: start, scheduledEndTime: end,
+            scheduledTitle: "probe", predefinedTitle: nil, calendarEventId: nil))
+        entry.stop()
+
+        let tmp = FileManager.default.temporaryDirectory
+            .appendingPathComponent("linger-midspan-\(UUID().uuidString).json")
+        defer { try? FileManager.default.removeItem(at: tmp) }
+
+        try TimerManager.write([entry.toDTO()], to: tmp)
+        let data = try Data(contentsOf: tmp)
+        let decoded = try JSONDecoder().decode([TimerEntryDTO].self, from: data)
+
+        XCTAssertEqual(decoded.count, 1)
+        XCTAssertEqual(decoded[0].duration, 120, accuracy: 0.5,
+                       "落盘必须保留完整计划时长（旧逻辑写的是剩余跨度）")
+        XCTAssertEqual(decoded[0].scheduledEndTime?.timeIntervalSince1970 ?? 0,
+                       end.timeIntervalSince1970, accuracy: 0.5)
+
+        let again = TimerEntry(restoredFrom: decoded[0])
+        XCTAssertEqual(again.duration, 120, accuracy: 0.5,
+                       "二次恢复仍应是完整时长，不能被改短")
+        XCTAssertEqual(again.remainingTime, 90, accuracy: 1.5,
+                       "剩余时间仍按真实结束时刻计算")
+        XCTAssertEqual(again.startTime?.timeIntervalSince1970 ?? 0,
+                       start.timeIntervalSince1970, accuracy: 0.5,
+                       "时间轴必须保持真实预约起点")
+        again.stop()
+    }
 }
