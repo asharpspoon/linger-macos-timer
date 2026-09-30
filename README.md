@@ -2,6 +2,8 @@
 
 一款 macOS 菜单栏倒计时工具：**一拉即走，松手计时**。按住菜单栏图标下拉，拉多长就计多长，松手即开始。专为「不想打开日历、不想点一堆按钮，只想快速起个倒计时」的时刻设计。
 
+**Linger** is a countdown timer for the macOS menu bar, built around a single gesture: **pull and let go**. Hold the menu bar icon and drag downward — how far you pull is how long you get — then release to start. Made for the moments when you don't want to open Calendar or click through a stack of dialogs; you just want a timer, right now.
+
 ![macOS 13+](https://img.shields.io/badge/macOS-13.0%2B-blue) ![Swift](https://img.shields.io/badge/Swift-5.9-orange) ![License](https://img.shields.io/badge/License-MIT-green)
 
 ## 功能
