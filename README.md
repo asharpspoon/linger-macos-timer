@@ -6,12 +6,12 @@
 
 | 版本 | 系统要求 | 安装包 |
 | --- | --- | --- |
-| **2.6.1 测试版** | macOS 26 或更新版本，安装包包含 Apple Silicon 和 Intel 架构 | [下载 2.6.1 DMG](https://github.com/asharpspoon/linger-macos-timer/releases/download/v2.6.1/Linger-2.6.1.dmg) |
-| **2.5.2 正式版** | macOS 13 或更新版本，Apple Silicon | [下载 2.5.2 DMG](https://github.com/asharpspoon/linger-macos-timer/releases/download/v2.5.2/Linger-2.5.2.dmg) |
+| **2.6.1 最新版** | macOS 26 或更新版本，安装包包含 Apple Silicon 和 Intel 架构 | [下载 2.6.1 DMG](https://github.com/asharpspoon/linger-macos-timer/releases/download/v2.6.1/Linger-2.6.1.dmg) |
+| **2.5.2 旧版** | macOS 13 或更新版本，Apple Silicon | [下载 2.5.2 DMG](https://github.com/asharpspoon/linger-macos-timer/releases/download/v2.5.2/Linger-2.5.2.dmg) |
 
 打开 DMG，把 **Linger.app** 拖进「应用程序」，再打开 Linger。升级前先退出旧版 Linger。
 
-> 2.6.1 测试版尚未获得 Apple 公证，macOS 可能会阻止打开。Intel 架构尚未在 Intel Mac 上实测。[查看测试版说明](https://github.com/asharpspoon/linger-macos-timer/releases/tag/v2.6.1)
+> 2.6.1 尚未获得 Apple 公证，macOS 可能会阻止打开。Intel 架构尚未在 Intel Mac 上实测。[查看 2.6.1 发布说明](https://github.com/asharpspoon/linger-macos-timer/releases/tag/v2.6.1)
 
 ## 2.6.1 可以做什么
 
@@ -31,6 +31,6 @@ Linger 无需注册账号，计时记录和设置保存在本机。日历集成�
 
 Linger is a free macOS menu bar timer. Pull down from the menu bar icon to set a duration, then release to start. With version 2.6.1, you can schedule timers, track deadlines and subtasks, review timer history, and log completed timers to Calendar.
 
-[Download 2.6.1 preview](https://github.com/asharpspoon/linger-macos-timer/releases/download/v2.6.1/Linger-2.6.1.dmg) for macOS 26 and later. The preview is not notarized and may be blocked by macOS. The download includes Apple Silicon and Intel builds. Testing on a physical Intel Mac is pending. [Download 2.5.2 stable](https://github.com/asharpspoon/linger-macos-timer/releases/download/v2.5.2/Linger-2.5.2.dmg) for Apple Silicon Macs running macOS 13 or later.
+[Download 2.6.1](https://github.com/asharpspoon/linger-macos-timer/releases/download/v2.6.1/Linger-2.6.1.dmg) for macOS 26 and later. The app is not notarized and may be blocked by macOS. The download includes Apple Silicon and Intel builds. Testing on a physical Intel Mac is pending. [Download 2.5.2](https://github.com/asharpspoon/linger-macos-timer/releases/download/v2.5.2/Linger-2.5.2.dmg) for Apple Silicon Macs running macOS 13 or later.
 
 Open the DMG and drag Linger into Applications. Quit Linger before replacing an existing copy.
